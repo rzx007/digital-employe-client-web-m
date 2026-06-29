@@ -75,6 +75,90 @@ def test_inject_passes_text_and_queued_fallback(db_session, monkeypatch):
     assert kwargs["priority"] == 7
 
 
+def test_inject_pushes_turn_started_event_on_start(db_session, monkeypatch):
+    """成功起流（非 REJECTED）→ 必须推 orchestrator_turn_started，
+    让前端 refetch→resume→实时显示服务端自发起的总管 turn（后台命令唤醒等）。"""
+    conv = Conversation(workspace_id=3, user_id="1", target_type="curator",
+                        target_id=0, status="idle")
+    db_session.add(conv); db_session.commit()
+
+    captured = {}
+    fake_loop = MagicMock()
+    fake_loop.call_soon_threadsafe.side_effect = (
+        lambda fn: captured.setdefault("fn", fn))
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.curator_injection._get_main_loop",
+        lambda: fake_loop)
+
+    fake_registry = MagicMock()
+    fake_registry.start.return_value = object()  # 非 REJECTED
+    monkeypatch.setattr("src.service.stream_registry.registry", fake_registry)
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.get_orchestrator_agent",
+        lambda *a, **k: MagicMock())
+
+    pushes = []
+    import src.service.workspace_events as we
+    monkeypatch.setattr(
+        we.WorkspaceEventBus, "push",
+        classmethod(lambda cls, ws, ev: pushes.append((ws, ev))))
+
+    from src.service.agent.orchestrator.curator_injection import (
+        inject_curator_instruction,
+    )
+    inject_curator_instruction(db_session, conv, "后台命令已结束", source="background_wake")
+    captured["fn"]()
+
+    turn_events = [
+        (ws, ev) for ws, ev in pushes
+        if ev.get("type") == "orchestrator_turn_started"
+    ]
+    assert len(turn_events) == 1
+    ws, ev = turn_events[0]
+    assert ws == conv.workspace_id
+    assert ev["orchestrator_conversation_id"] == conv.id
+
+
+def test_inject_no_turn_started_event_when_rejected(db_session, monkeypatch):
+    """起流被拒（REJECTED，会话已有活跃/排队流）→ 不推 orchestrator_turn_started。"""
+    conv = Conversation(workspace_id=3, user_id="1", target_type="curator",
+                        target_id=0, status="idle")
+    db_session.add(conv); db_session.commit()
+
+    captured = {}
+    fake_loop = MagicMock()
+    fake_loop.call_soon_threadsafe.side_effect = (
+        lambda fn: captured.setdefault("fn", fn))
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.curator_injection._get_main_loop",
+        lambda: fake_loop)
+
+    from src.service.agent_stream_queue import StartResult
+    fake_registry = MagicMock()
+    fake_registry.start.return_value = StartResult.REJECTED
+    monkeypatch.setattr("src.service.stream_registry.registry", fake_registry)
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.get_orchestrator_agent",
+        lambda *a, **k: MagicMock())
+
+    pushes = []
+    import src.service.workspace_events as we
+    monkeypatch.setattr(
+        we.WorkspaceEventBus, "push",
+        classmethod(lambda cls, ws, ev: pushes.append((ws, ev))))
+
+    from src.service.agent.orchestrator.curator_injection import (
+        inject_curator_instruction,
+    )
+    inject_curator_instruction(db_session, conv, "x", source="background_wake")
+    captured["fn"]()
+
+    assert not [
+        ev for _, ev in pushes
+        if ev.get("type") == "orchestrator_turn_started"
+    ]
+
+
 def test_inject_marks_channel_source_on_user_msg(db_session, monkeypatch):
     """飞书等 channel 来源给 user 消息 extra_meta 打 channel 标。"""
     conv = Conversation(workspace_id=3, user_id="1", target_type="curator",

@@ -6,7 +6,7 @@
  *
  * 与 UI 的衔接：
  * - `message-classifier` 将 parts 分为 thinking / tool-group / final-response 等
- * - `mergeRoutineToolGroups` 合并相邻 routine 工具行
+ * - `mergeConsecutiveToolGroups` 合并相邻工具行（不分类型）
  * - `collapseWriteTodosBlocks` 将同条消息内多次 `write_todos` 收成单块 `todo-plan`
  * - `ToolDetailPanel` + `ToolOutputViewport` 展示 stdout / CodeHighlight（StickToBottom + 虚拟化）
  *
@@ -20,6 +20,7 @@ import type {
   ToolMessage,
   ToolOutputData,
 } from "./langchain-sse-schema"
+import { LANGCHAIN_REASONING_TEXT_PROVIDER_METADATA } from "./langchain-reasoning-text"
 import { LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA } from "./langchain-summarization-text"
 import { resolveToolCallIdForToolOutput } from "./tool-output-routing"
 
@@ -53,8 +54,9 @@ export interface LangChainStreamParseState {
   toolCallKeysByChunkIndex: Map<string, string>
   currentPhase: ParsePhase
   currentTextId: string | null
-  /** 当前打开的 text 流是否与 summarization 元数据对应（用于与后续正文拆段） */
-  currentTextStreamTag: "summarization" | "default" | null
+  /** 当前打开的 text 流标记：summarization=会话压缩流；reasoning=模型思考流；
+   *  default=普通正文。用于在不同流之间切换时拆段（关旧段、开新段）。 */
+  currentTextStreamTag: "summarization" | "reasoning" | "default" | null
   didSendFinish: boolean
   toolOutputAccumulators: Map<string, string>
   toolNamesById: Map<string, string>
@@ -126,7 +128,7 @@ function closeCurrentTextPhase(
 
 function openNewTextPhase(
   state: LangChainStreamParseState,
-  streamTag: "summarization" | "default"
+  streamTag: "summarization" | "reasoning" | "default"
 ): UIMessageChunk[] {
   const lifecycle: UIMessageChunk[] = closeCurrentTextPhase(state)
   const textId = transitionToTextPhase(state)
@@ -134,7 +136,9 @@ function openNewTextPhase(
   const providerMetadata =
     streamTag === "summarization"
       ? LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
-      : undefined
+      : streamTag === "reasoning"
+        ? LANGCHAIN_REASONING_TEXT_PROVIDER_METADATA
+        : undefined
   lifecycle.push({
     type: "text-start",
     id: textId,
@@ -346,10 +350,7 @@ function appendToolInputDelta(
     inputTextDelta,
   })
 
-  if (
-    !pending.sentEarlyPathInput &&
-    FILE_TOOL_NAMES.has(toolName)
-  ) {
+  if (!pending.sentEarlyPathInput && FILE_TOOL_NAMES.has(toolName)) {
     const earlyPath = tryExtractEarlyFilePathInput(pending.inputText)
     if (earlyPath) {
       result.push({
@@ -621,6 +622,27 @@ function extractAssistantText(payload: unknown) {
   }
 
   return content
+}
+
+/** 提取模型思考增量：DeepSeek/Qwen3 的 reasoning_content（经后端补进 additional_kwargs）。 */
+function extractReasoningText(payload: unknown) {
+  if (!Array.isArray(payload) || payload.length === 0) {
+    return null
+  }
+
+  const chunk = payload[0]
+
+  if (!isLangChainAiMessageChunk(chunk)) {
+    return null
+  }
+
+  const reasoning = chunk.kwargs?.additional_kwargs?.reasoning_content
+
+  if (typeof reasoning !== "string" || reasoning.length === 0) {
+    return null
+  }
+
+  return reasoning
 }
 
 /**
@@ -921,9 +943,7 @@ function parseUpdatesPayloadToChunks(
   }
 
   const result: UIMessageChunk[] = []
-  for (const nodeUpdate of Object.values(
-    obj.data as Record<string, unknown>
-  )) {
+  for (const nodeUpdate of Object.values(obj.data as Record<string, unknown>)) {
     if (!nodeUpdate || typeof nodeUpdate !== "object") continue
     const messages = (nodeUpdate as { messages?: unknown }).messages
     if (!Array.isArray(messages)) continue
@@ -1006,7 +1026,9 @@ function buildToolOutputChunks(
       {
         toolCallId,
         toolName: invocationToolName,
-        input: pending ? tryParseToolInput(pending.inputText) ?? undefined : undefined,
+        input: pending
+          ? (tryParseToolInput(pending.inputText) ?? undefined)
+          : undefined,
         inputText: pending?.inputText,
       },
       result
@@ -1140,7 +1162,10 @@ export function parseLangChainPayloadToChunks(options: {
   payload: unknown
   state: LangChainStreamParseState
 }): UIMessageChunk[] {
-  const updateChunks = parseUpdatesPayloadToChunks(options.payload, options.state)
+  const updateChunks = parseUpdatesPayloadToChunks(
+    options.payload,
+    options.state
+  )
   if (updateChunks.length > 0) {
     return updateChunks
   }
@@ -1244,6 +1269,34 @@ export function parseLangChainPayloadToChunks(options: {
           LANGCHAIN_SUMMARIZATION_TEXT_PROVIDER_METADATA
       }
       result.push(deltaChunk)
+    }
+  }
+
+  // 模型思考增量（reasoning_content）：与正文同走 model 节点，但单独成一条
+  // reasoning 标记的 text 流。与 content 互斥（reasoning chunk 的 content 为空），
+  // 流切换时上面的 default/summarization 段会因 tag 不同被关闭、这里另起 reasoning 段。
+  const reasoningText = extractReasoningText(payload)
+  if (reasoningText) {
+    const langgraphNode = getLangGraphNode(payload)
+    if (langgraphNode === "model" || langgraphNode === null) {
+      const streamTag = "reasoning"
+      if (
+        state.currentPhase === "text" &&
+        state.currentTextStreamTag !== null &&
+        state.currentTextStreamTag !== streamTag
+      ) {
+        result.push(...closeCurrentTextPhase(state))
+        state.currentPhase = "idle"
+      }
+      if (state.currentPhase !== "text") {
+        result.push(...openNewTextPhase(state, streamTag))
+      }
+      result.push({
+        type: "text-delta",
+        id: state.currentTextId!,
+        delta: reasoningText,
+        providerMetadata: LANGCHAIN_REASONING_TEXT_PROVIDER_METADATA,
+      } as UIMessageChunk)
     }
   }
 
@@ -1364,7 +1417,7 @@ function hasAnyToolDelta(chunk: AIMessageChunk): boolean {
  *   UIMessageChunk[]
  *        --> useChat 组装 UIMessage.parts (tool-* / text)
  *        --> classifyMessageParts
- *              --> mergeRoutineToolGroups (shell_execute / grep / ls … 紧凑组)
+ *              --> mergeConsecutiveToolGroups (相邻工具不分类型合并成紧凑组)
  *              --> collapseWriteTodosBlocks (多次 write_todos -> 单块 todo-plan)
  *        --> RenderClassifiedBlocks
  *              --> TodoPlanBlock      (任务规划，原位更新 + 可选 sticky)

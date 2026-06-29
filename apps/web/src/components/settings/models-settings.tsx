@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@workspace/ui/components/select"
 import { Skeleton } from "@workspace/ui/components/skeleton"
+import { Switch } from "@workspace/ui/components/switch"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   fetchAvailableCatalogIds,
@@ -104,6 +105,7 @@ export function ModelsSettings() {
   const [promptCacheMode, setPromptCacheMode] =
     React.useState<PromptCacheModeSetting>("")
   const [savingTokens, setSavingTokens] = React.useState(false)
+  const [thinkingDisabled, setThinkingDisabled] = React.useState(false)
 
   const registryQuery = useQuery({
     queryKey: modelKeys.registry(),
@@ -119,8 +121,9 @@ export function ModelsSettings() {
     void Promise.all([
       getConfigKv("MODEL_MAX_INPUT_TOKENS"),
       getConfigKv("PROMPT_CACHE_MODE"),
+      getConfigKv("MODEL_THINKING_DISABLED"),
     ])
-      .then(([tokensKv, cacheKv]) => {
+      .then(([tokensKv, cacheKv, thinkingKv]) => {
         setMaxInputTokens(tokensKv?.config_value?.trim() ?? "")
         const raw = (cacheKv?.config_value ?? "").trim().toLowerCase()
         if (raw === "auto" || raw === "explicit" || raw === "off") {
@@ -128,14 +131,18 @@ export function ModelsSettings() {
         } else {
           setPromptCacheMode("")
         }
+        const thinking = (thinkingKv?.config_value ?? "").trim().toLowerCase()
+        setThinkingDisabled(["1", "true", "yes", "on"].includes(thinking))
       })
-      .catch(() => { })
+      .catch(() => {})
   }, [])
 
   const handleRegistryChange = (next: LlmRegistry) => {
     queryClient.setQueryData(modelKeys.registry(), next)
     void queryClient.invalidateQueries({ queryKey: modelKeys.runtimeConfig() })
-    void queryClient.invalidateQueries({ queryKey: modelKeys.availableCatalog() })
+    void queryClient.invalidateQueries({
+      queryKey: modelKeys.availableCatalog(),
+    })
   }
 
   const handleSyncRemoteModel = async () => {
@@ -165,6 +172,10 @@ export function ModelsSettings() {
       await setManyConfigKv([
         { key: "MODEL_MAX_INPUT_TOKENS", value: trimmed },
         { key: "PROMPT_CACHE_MODE", value: promptCacheMode },
+        {
+          key: "MODEL_THINKING_DISABLED",
+          value: thinkingDisabled ? "true" : "false",
+        },
       ])
       toast.success("高级选项已保存")
     } catch {
@@ -186,7 +197,7 @@ export function ModelsSettings() {
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 pb-4">
         <div className="space-y-1.5">
           <CardTitle className="text-lg">模型设置</CardTitle>
-          <CardDescription className="text-pretty leading-relaxed">
+          <CardDescription className="leading-relaxed text-pretty">
             多家供应商凭证可并存；在下方列表中单选一个模型作为 Agent 当前使用
           </CardDescription>
         </div>
@@ -228,7 +239,9 @@ export function ModelsSettings() {
             <div
               className={cn(
                 "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
-                active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                active
+                  ? "bg-primary/10 text-primary"
+                  : "bg-muted text-muted-foreground"
               )}
             >
               {registryQuery.isLoading ? (
@@ -250,7 +263,9 @@ export function ModelsSettings() {
                 </div>
               ) : active ? (
                 <>
-                  <p className="truncate text-sm font-medium">{active.providerName}</p>
+                  <p className="truncate text-sm font-medium">
+                    {active.providerName}
+                  </p>
                   <p className="truncate font-mono text-xs text-muted-foreground">
                     {active.modelId}
                   </p>
@@ -345,7 +360,9 @@ export function ModelsSettings() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="default">自动（按供应商）</SelectItem>
-                  <SelectItem value="auto">通用兼容（prompt_cache_key）</SelectItem>
+                  <SelectItem value="auto">
+                    通用兼容（prompt_cache_key）
+                  </SelectItem>
                   <SelectItem value="explicit">显式 cache_control</SelectItem>
                   <SelectItem value="off">关闭</SelectItem>
                 </SelectContent>
@@ -355,6 +372,22 @@ export function ModelsSettings() {
                   {selectedPromptCacheOption.description}
                 </p>
               )}
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col gap-0.5">
+                <Label htmlFor="model-thinking-disabled" className="text-sm">
+                  禁用模型思考（MODEL_THINKING_DISABLED）
+                </Label>
+                <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
+                  开启后从源头关闭模型思考（不再生成思考过程），响应更快、更省
+                  Token； 下个新会话生效。部分模型/端点不支持时无效。
+                </p>
+              </div>
+              <Switch
+                id="model-thinking-disabled"
+                checked={thinkingDisabled}
+                onCheckedChange={setThinkingDisabled}
+              />
             </div>
             <Button
               type="button"

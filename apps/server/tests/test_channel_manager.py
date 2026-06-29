@@ -129,3 +129,38 @@ def test_reconcile_interrupted(db_session, monkeypatch):
     db_session.refresh(row)
     assert row.status == "failed"
     assert fake.reports and "中断" in fake.reports[0][1]
+
+
+def test_start_is_idempotent(monkeypatch):
+    """重复 start 不起多个分发线程/不重复订阅全局队列。"""
+    from src.service.workspace_events import WorkspaceEventBus
+    from src.service.channel.manager import ChannelManager
+
+    mgr = ChannelManager()
+    # 避免真跑 reconcile（不依赖 DB）
+    monkeypatch.setattr(mgr, "reconcile_on_start", lambda db: None)
+
+    # start() 内 `from src.db.session import get_session_local` → patch 源模块
+    import src.db.session as dbs
+
+    class _FakeSession:
+        def close(self):
+            ...
+
+    monkeypatch.setattr(dbs, "get_session_local", lambda: (lambda: _FakeSession()))
+
+    before = len(WorkspaceEventBus._global_subscribers)
+    try:
+        mgr.start()
+        after1 = len(WorkspaceEventBus._global_subscribers)
+        thread1 = mgr._thread
+        mgr.start()  # 第二次：应被守卫挡掉
+        after2 = len(WorkspaceEventBus._global_subscribers)
+        thread2 = mgr._thread
+
+        assert after1 == before + 1   # 第一次订阅了一个全局队列
+        assert after2 == after1       # 第二次没再订阅（幂等）
+        assert thread1 is thread2      # 没换/没起第二条分发线程
+        assert mgr._thread is not None
+    finally:
+        mgr.stop()

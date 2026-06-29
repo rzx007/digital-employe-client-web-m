@@ -115,7 +115,7 @@ HITL 生命周期判断被拆在：`hitl/constants.ts`（工具集合）、`hitl
 
 ### 🟡 R7. 展示层多趟 collapse / 错误吞没
 
-- 分类器有多趟后处理：`mergeRoutineToolGroups` → `collapseWriteTodosBlocks` → `collapseDocumentPlanBlocks`，顺序契约隐式（message-classifier.ts）。
+- 分类器有多趟后处理：`mergeConsecutiveToolGroups` → `collapseWriteTodosBlocks` → `collapseDocumentPlanBlocks`，顺序契约隐式（message-classifier.ts）。
 - `block-render-map.tsx` 默认分支假设 `block.text` 存在，对未覆盖的 `kind` 不是类型安全的 exhaustive 处理。
 - 错误普遍被吞：`doSend` 的 `catch {}` 被注释空置（chat-conversation-view.tsx:256-258）、resume 失败静默、SSE `dropped event` 仅 DEV log。表现为"点了没反应也没报错"。
 - 各 `*-payload.ts` 重复实现 `parseJsonObject` / `asNumber`。

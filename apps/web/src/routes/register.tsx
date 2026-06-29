@@ -7,9 +7,9 @@ import { Label } from "@workspace/ui/components/label"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconEye, IconEyeOff, IconLoader2, IconX } from "@tabler/icons-react"
 import { motion, AnimatePresence } from "motion/react"
-import logoImage from "@/assets/logo.png"
 import bgImage from "@/assets/Group.png"
 import { registerApi } from "@/api/auth"
+import { useBrand } from "@/lib/brand/brand"
 import { getDeptTree } from "@/api/dept"
 import { togglePath, type DeptTreeNode } from "@/lib/dept-tree"
 import { RegisterDeptTree } from "@/components/login/register-dept-tree"
@@ -20,6 +20,7 @@ export const Route = createFileRoute("/register")({
 })
 
 function RegisterPage() {
+  const brand = useBrand()
   const [regUsername, setRegUsername] = useState("")
   const [regPassword, setRegPassword] = useState("")
   const [showRegPassword, setShowRegPassword] = useState(false)
@@ -196,7 +197,11 @@ function RegisterPage() {
               : "mx-auto flex w-full max-w-md items-center justify-center gap-2 pb-6",
           )}
         >
-          <img src={logoImage} alt="DigitalEmployee" className="h-7 w-9" />
+          <img
+            src={brand.logos.login}
+            alt={brand.productName}
+            className="h-7 w-9"
+          />
           <h1
             className={cn(
               "text-gray-800 tracking-wider",
@@ -205,7 +210,7 @@ function RegisterPage() {
                 : "text-xl font-semibold",
             )}
           >
-            数字员工
+            {brand.productName}
           </h1>
         </div>
       </div>

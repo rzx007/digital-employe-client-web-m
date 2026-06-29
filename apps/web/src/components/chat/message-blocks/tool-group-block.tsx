@@ -1,11 +1,11 @@
 /**
  * tool-group 块的 UI 入口。
  *
- * 分类器 + mergeRoutineToolGroups 产出 kind === "tool-group" 的块后，由
+ * 分类器 + mergeConsecutiveToolGroups 产出 kind === "tool-group" 的块后，由
  * chat-message-item 传入 toolAutoCollapseMap（按 tool.key 延迟收起）。
  *
  * 单工具：默认紧凑 ToolActivityLine；含 todo 列表或 diff 时用 ToolActionRow。
- * 多工具：可折叠活动流（合并后的 routine 组），组头展示 summarizeToolGroup 摘要。
+ * 多工具：可折叠活动流（合并后的连续工具组），组头展示 summarizeToolGroup 摘要。
  */
 import { cn } from "@workspace/ui/lib/utils"
 import {
@@ -98,7 +98,7 @@ function ToolGroupBlockInner({
     )
   }
 
-  // 多工具块：由 mergeRoutineToolGroups 合并的相邻 routine 工具
+  // 多工具块：由 mergeConsecutiveToolGroups 合并的相邻工具
   return (
     <RoutineToolActivityBlock
       block={block}

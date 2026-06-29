@@ -2,7 +2,7 @@
 
 > 入口：`chat-message-item.tsx`  
 > 分类：`@/lib/chat/message-classifier.ts`  
-> 工具合并：`merge-routine-tool-groups.ts`、`collapse-write-todos-blocks.ts`  
+> 工具合并：`merge-consecutive-tool-groups.ts`、`collapse-write-todos-blocks.ts`  
 > 收起策略：`@/lib/chat/tool-collapse-policy.ts`  
 > 流式解析：`@/lib/chat/langchain-stream-parser.ts` → `langchain-chat-transport.ts`
 
@@ -99,7 +99,7 @@
      |              +-- 其它 tool-*                    --> tool-group (单 tool/块)
      |              |
      v              v
-  blocks[] -----> mergeRoutineToolGroups()
+  blocks[] -----> mergeConsecutiveToolGroups()
                       |
                       v
                 collapseWriteTodosBlocks()
@@ -340,7 +340,7 @@
 
   lib/chat/
     message-classifier.ts
-    merge-routine-tool-groups.ts
+    merge-consecutive-tool-groups.ts
     collapse-write-todos-blocks.ts
     tool-collapse-policy.ts
     tool-label-registry.ts

@@ -88,3 +88,32 @@ def test_duplicate_event_id(db_session, monkeypatch):
     ch.handle_inbound(db_session, msg)
     ch.handle_inbound(db_session, msg)  # 第二次去重
     assert db_session.query(ChannelInbox).filter_by(external_event_id="edup").count() == 1
+
+
+def test_feishu_start_idempotent(monkeypatch):
+    """重复 start 不起第二条 ws 线程（防多条连接致重复 ACK）。"""
+    import time
+    from src.service.channel.feishu_channel import FeishuChannel
+
+    ch = FeishuChannel.__new__(FeishuChannel)  # 不走 __init__，避免构造 lark client
+    ch._thread = None
+    ch._stopped = False
+    ch._app_id = "a"
+    ch._app_secret = "b"
+
+    started = {"n": 0}
+
+    def _fake_run():
+        started["n"] += 1
+        time.sleep(0.5)
+
+    monkeypatch.setattr(ch, "_run_ws", _fake_run)
+
+    ch.start()
+    t1 = ch._thread
+    ch.start()  # 第二次：线程仍 alive，应跳过
+    t2 = ch._thread
+
+    assert t1 is t2          # 同一线程，没起第二条 ws 连接
+    time.sleep(0.6)
+    assert started["n"] == 1  # _run_ws 只被跑了一次
