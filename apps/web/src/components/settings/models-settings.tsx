@@ -407,6 +407,7 @@ export function ModelsSettings() {
         open={addOpen}
         onOpenChange={setAddOpen}
         availableCatalogIds={availableQuery.data ?? []}
+        existingProviderIds={registry?.providers.map((p) => p.id) ?? []}
         onAdded={handleRegistryChange}
       />
     </Card>

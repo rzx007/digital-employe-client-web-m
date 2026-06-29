@@ -80,11 +80,13 @@ export function AddProviderDialog({
   open,
   onOpenChange,
   availableCatalogIds,
+  existingProviderIds = [],
   onAdded,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   availableCatalogIds: string[]
+  existingProviderIds?: string[]
   onAdded: (registry: LlmRegistry) => void
 }) {
   const [step, setStep] = React.useState<Step>("pick")
