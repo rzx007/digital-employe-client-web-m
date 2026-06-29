@@ -218,8 +218,8 @@ export function ChatPanel({
     ? getContactDisplayName(contact)
     : "AI 助手"
 
-  // 把当前会话的并行子任务（task 工具调用）聚合进 subtask-panel-store，
-  // 供右侧子任务面板展示。用 composer（含实时流式 preliminary 输出）作为数据源。
+  // 把当前会话的并行子任务（task 工具调用）聚合进 tasks-panel-store，
+  // 供右侧合并任务面板展示。用 composer（含实时流式 preliminary 输出）作为数据源。
   useSyncConversationSubtasks(composerMessages ?? messages)
 
   const displayMessages = isDraftMode ? EMPTY_MESSAGES : messages

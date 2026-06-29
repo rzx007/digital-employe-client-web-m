@@ -5,9 +5,7 @@ import { getRequestBaseUrl } from "@/lib/request"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore, type ActiveTab } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
-import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
-import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
-import { useShellTasksPanelStore } from "@/stores/shell-tasks-panel-store"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
 
 const MIN_WIDTH_RATIO = 0.3
 const MAX_WIDTH_RATIO = 0.8
@@ -68,9 +66,7 @@ function clampRatio(value: number): number {
 function closeOtherRightPanels() {
   useMonitorStore.getState().closeMonitor()
   useArtifactStore.getState().closeArtifact()
-  useSubtaskPanelStore.getState().close()
-  useEmployeeTasksPanelStore.getState().close()
-  useShellTasksPanelStore.getState().close()
+  useTasksPanelStore.getState().close()
 }
 
 function normalizeUrl(input: string): string {

@@ -25,12 +25,8 @@ import { getElectronApi } from "@/lib/electron/host"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
-import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
-import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
-import { useShellTasksPanelStore } from "@/stores/shell-tasks-panel-store"
-import { SubtaskPanel } from "../panel/subtask-panel"
-import { EmployeeTasksPanel } from "../panel/employee-tasks-panel"
-import { ShellTasksPanel } from "../panel/shell-tasks-panel"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
+import { TasksPanel } from "../panel/tasks-panel"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { AppToolbar } from "./app-toolbar"
 import { SkillsPage } from "@/components/skills"
@@ -45,13 +41,7 @@ import { BrowserPanel } from "../right-panels/browser-panel"
 import { BrowserWidthSlider } from "../right-panels/browser-width-slider"
 import { useBrowserStore } from "@/stores/browser-store"
 
-type RightPanel =
-  | "artifact"
-  | "monitor"
-  | "browser"
-  | "subtask"
-  | "employee-tasks"
-  | "shell-tasks"
+type RightPanel = "artifact" | "monitor" | "browser" | "tasks"
 
 const RIGHT_PANEL_SHELL = "shrink-0 overflow-hidden border-l bg-muted/20 p-3"
 
@@ -213,11 +203,8 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
   const { closeArtifact, isPanelOpen } = useArtifactStore()
   const { isOpen: isMonitorOpen, closeMonitor } = useMonitorStore()
-  const isSubtaskPanelOpen = useSubtaskPanelStore((s) => s.isOpen)
-  const isEmployeeTasksPanelOpen = useEmployeeTasksPanelStore((s) => s.isOpen)
-  const closeEmployeeTasksPanel = useEmployeeTasksPanelStore((s) => s.close)
-  const isShellTasksPanelOpen = useShellTasksPanelStore((s) => s.isOpen)
-  const closeShellTasksPanel = useShellTasksPanelStore((s) => s.close)
+  const isTasksPanelOpen = useTasksPanelStore((s) => s.isOpen)
+  const closeTasksPanel = useTasksPanelStore((s) => s.close)
   const isBrowserOpen = useBrowserStore((s) => s.isOpen)
   const isBrowserMinimized = useBrowserStore((s) => s.isMinimized)
   const isBrowserFullscreen = useBrowserStore((s) => s.isFullscreen)
@@ -308,15 +295,11 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
     ? "browser"
     : isPanelOpen
       ? "artifact"
-      : isSubtaskPanelOpen
-        ? "subtask"
-        : isEmployeeTasksPanelOpen
-          ? "employee-tasks"
-          : isShellTasksPanelOpen
-            ? "shell-tasks"
-            : isMonitorOpen
-              ? "monitor"
-              : null
+      : isTasksPanelOpen
+        ? "tasks"
+        : isMonitorOpen
+          ? "monitor"
+          : null
 
   const hasRightPanel = rightPanel !== null
   const isBrowserRightPanel = rightPanel === "browser"
@@ -411,36 +394,16 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
           </div>
         )}
 
-        {hasRightPanel && activeTab === "chat" && rightPanel === "subtask" && (
+        {hasRightPanel && activeTab === "chat" && rightPanel === "tasks" && (
           <div className={cn(RIGHT_PANEL_SHELL, NARROW_RIGHT_PANEL_WIDTH)}>
-            <SubtaskPanel className="h-full rounded-xl" />
+            <TasksPanel
+              conversationId={artifactPanelConversationId}
+              curatorContactId={selectedContact?.curator?.id}
+              onClose={closeTasksPanel}
+              className="h-full rounded-xl"
+            />
           </div>
         )}
-
-        {hasRightPanel &&
-          activeTab === "chat" &&
-          rightPanel === "employee-tasks" && (
-            <div className={cn(RIGHT_PANEL_SHELL, NARROW_RIGHT_PANEL_WIDTH)}>
-              <EmployeeTasksPanel
-                curatorConversationId={artifactPanelConversationId}
-                curatorContactId={selectedContact?.curator?.id}
-                onClose={closeEmployeeTasksPanel}
-                className="h-full rounded-xl"
-              />
-            </div>
-          )}
-
-        {hasRightPanel &&
-          activeTab === "chat" &&
-          rightPanel === "shell-tasks" && (
-            <div className={cn(RIGHT_PANEL_SHELL, NARROW_RIGHT_PANEL_WIDTH)}>
-              <ShellTasksPanel
-                conversationId={artifactPanelConversationId}
-                onClose={closeShellTasksPanel}
-                className="h-full rounded-xl"
-              />
-            </div>
-          )}
 
         {hasRightPanel && activeTab === "chat" && rightPanel === "monitor" && (
           <div className={cn(RIGHT_PANEL_SHELL, NARROW_RIGHT_PANEL_WIDTH)}>

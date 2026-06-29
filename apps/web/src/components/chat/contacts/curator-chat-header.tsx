@@ -5,7 +5,6 @@ import {
   IconDots,
   IconFolder,
   IconHistory,
-  IconLayoutGrid,
   IconTrash,
   IconUsers,
 } from "@tabler/icons-react"
@@ -27,10 +26,8 @@ import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { focusAfterDeletedConversation } from "@/lib/chat/conversation-selection"
 import { useArtifactStore } from "@/stores/artifact-store"
-import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
-import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
-import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
-import { ACTIVE_TASK_RUN_STATUSES } from "@/types/schedule-monitor"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
+import { useUnifiedRunningCount } from "@/hooks/use-unified-tasks"
 import { Separator } from "@workspace/ui/components/separator"
 import {
   DropdownMenu,
@@ -66,15 +63,9 @@ export function CuratorChatHeader({
   const deleteMutation = useDeleteConversationMutation()
   const isArtifactPanelOpen = useArtifactStore((s) => s.isPanelOpen)
   const setArtifactPanelOpen = useArtifactStore((s) => s.setPanelOpen)
-  const isSubtaskPanelOpen = useSubtaskPanelStore((s) => s.isOpen)
-  const toggleSubtaskPanel = useSubtaskPanelStore((s) => s.toggle)
-  const subtaskCount = useSubtaskPanelStore((s) => s.subtasks.length)
-  const isEmployeeTasksPanelOpen = useEmployeeTasksPanelStore((s) => s.isOpen)
-  const toggleEmployeeTasksPanel = useEmployeeTasksPanelStore((s) => s.toggle)
-  const { data: executions = [] } = useCuratorTaskExecutions(conversationId)
-  const runningTaskCount = executions.filter((e) =>
-    ACTIVE_TASK_RUN_STATUSES.has(e.run_status)
-  ).length
+  const isTasksPanelOpen = useTasksPanelStore((s) => s.isOpen)
+  const toggleTasksPanel = useTasksPanelStore((s) => s.toggle)
+  const runningTaskCount = useUnifiedRunningCount(conversationId)
 
   const displayTitle = title?.trim() || "总管助手"
   const contactId = getContactId(contact)
@@ -155,27 +146,13 @@ export function CuratorChatHeader({
               <IconHistory className="size-4" />
             </Button>
           )}
-          {conversationId != null && subtaskCount > 0 && (
-            <Button
-              title={isSubtaskPanelOpen ? "收起并行子任务" : "查看并行子任务"}
-              variant="ghost"
-              size="icon-sm"
-              className="relative"
-              onClick={toggleSubtaskPanel}
-            >
-              <IconLayoutGrid className="size-4" />
-              <span className="absolute -top-0.5 -right-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground">
-                {subtaskCount}
-              </span>
-            </Button>
-          )}
           {conversationId != null && (
             <Button
-              title={isEmployeeTasksPanelOpen ? "收起员工任务" : "员工任务"}
+              title={isTasksPanelOpen ? "收起任务" : "查看任务"}
               variant="ghost"
               size="icon-sm"
               className="relative"
-              onClick={toggleEmployeeTasksPanel}
+              onClick={toggleTasksPanel}
             >
               <IconChecklist className="size-4" />
               {runningTaskCount > 0 && (

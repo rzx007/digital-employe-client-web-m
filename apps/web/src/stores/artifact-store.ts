@@ -8,9 +8,7 @@ import type {
 
 import { useBrowserStore } from "@/stores/browser-store"
 import { useMonitorStore } from "@/stores/monitor-store"
-import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
-import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
-import { useShellTasksPanelStore } from "@/stores/shell-tasks-panel-store"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
 
 export type {
   ClearPendingResourceRef,
@@ -20,9 +18,7 @@ export type {
 
 function closeOtherSidePanels() {
   useMonitorStore.getState().closeMonitor()
-  useSubtaskPanelStore.getState().close()
-  useEmployeeTasksPanelStore.getState().close()
-  useShellTasksPanelStore.getState().close()
+  useTasksPanelStore.getState().close()
   // 浏览器改为最小化（保活）而非销毁——切到本 panel 不中断浏览器操作。
   useBrowserStore.getState().minimizeBrowser()
 }

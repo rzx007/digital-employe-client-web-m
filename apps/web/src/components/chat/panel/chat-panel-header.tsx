@@ -5,8 +5,8 @@ import { useShallow } from "zustand/react/shallow"
 import {
   IconCalendar,
   IconArchive,
+  IconChecklist,
   IconFolder,
-  IconLayoutGrid,
   IconMessage2Plus,
   IconDots,
   IconHistory,
@@ -40,7 +40,8 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
-import { useSubtaskPanelStore } from "@/stores/subtask-panel-store"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
+import { useUnifiedRunningCount } from "@/hooks/use-unified-tasks"
 import { cn } from "@workspace/ui/lib/utils"
 import { Separator } from "@workspace/ui/components/separator"
 import type { ChatViewContact } from "../shared/chat-view-shared"
@@ -77,9 +78,9 @@ export function ChatPanelHeader({
   const isArtifactPanelOpen = useArtifactStore((s) => s.isPanelOpen)
   const setArtifactPanelOpen = useArtifactStore((s) => s.setPanelOpen)
   const isCompactMode = useChatStore((s) => s.isCompactMode)
-  const isSubtaskPanelOpen = useSubtaskPanelStore((s) => s.isOpen)
-  const toggleSubtaskPanel = useSubtaskPanelStore((s) => s.toggle)
-  const subtaskCount = useSubtaskPanelStore((s) => s.subtasks.length)
+  const isTasksPanelOpen = useTasksPanelStore((s) => s.isOpen)
+  const toggleTasksPanel = useTasksPanelStore((s) => s.toggle)
+  const runningTaskCount = useUnifiedRunningCount(selectedConversationId)
 
   const handleDeleteClick = () => {
     setMenuOpen(false)
@@ -182,18 +183,20 @@ export function ChatPanelHeader({
               <IconHistory className="size-4" />
             </Button>
           )}
-          {selectedConversationId && subtaskCount > 0 && (
+          {selectedConversationId && (
             <Button
-              title={isSubtaskPanelOpen ? "收起并行子任务" : "查看并行子任务"}
+              title={isTasksPanelOpen ? "收起任务" : "查看任务"}
               variant="ghost"
               size="icon-sm"
               className="relative"
-              onClick={toggleSubtaskPanel}
+              onClick={toggleTasksPanel}
             >
-              <IconLayoutGrid className="size-4" />
-              <span className="absolute -top-0.5 -right-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground">
-                {subtaskCount}
-              </span>
+              <IconChecklist className="size-4" />
+              {runningTaskCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground">
+                  {runningTaskCount}
+                </span>
+              )}
             </Button>
           )}
           {selectedConversationId && (
