@@ -90,6 +90,9 @@ class ChannelManager:
 
     def start(self) -> None:
         """启动各 channel、做重启对账、起后台订阅线程。"""
+        if self._running:
+            logger.warning("ChannelManager 已启动，跳过重复 start")
+            return
         for ch in list(self._channels.values()):
             try:
                 ch.start()

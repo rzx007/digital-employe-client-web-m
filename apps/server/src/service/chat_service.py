@@ -44,6 +44,38 @@ _TERMINAL_STREAM_STATES = ("completed", "cancelled", "error", "interrupted")
 _IN_FLIGHT_STREAM_STATES = ("streaming", "queued")
 
 
+def _serialize_buffer_event_to_sse(
+    ev: dict, debug_content_only: bool
+) -> tuple[list[str], bool]:
+    """单个 buffer 事件 → SSE 行；返回 (lines, is_terminal)。
+
+    终态事件(completed/cancelled/error/interrupted)附 [DONE] 并标记 is_terminal。
+    与 resume 实时回放逐事件逻辑一致，供「终态但 buffer 仍 linger」的重放复用。
+    """
+    data = ev.get("data")
+    if not data:
+        return [], False
+    seq = ev.get("seq")
+    prefix = f"id: {seq}\n" if seq is not None else ""
+    if isinstance(data, dict) and data.get("status") in _TERMINAL_STREAM_STATES:
+        out: list[str] = []
+        if data.get("status") == "error":
+            out.append(
+                prefix
+                + f"data: {json.dumps({'error': data.get('error')}, ensure_ascii=False)}\n\n"
+            )
+        elif data.get("status") == "interrupted":
+            out.append(
+                prefix + f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+            )
+        out.append(prefix + "data: [DONE]\n\n")
+        return out, True
+    if debug_content_only:
+        text_part = ChatService._extract_text_from_chunk(data)
+        return ([prefix + f"data: {text_part}\n\n"] if text_part else []), False
+    return [prefix + f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"], False
+
+
 def reconcile_stale_stream_state_on_resume(
     db: Session,
     conversation_id: int,
@@ -996,6 +1028,49 @@ class ChatService:
                 yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'interrupted', 'message_id': status_info.get('message_id')}}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
+
+            # 服务端自发短 turn（后台命令唤醒/汇报）常在前端 resume 到达前就完成 → task 终态
+            # 但仍 linger（TASK_TTL_SECONDS）、buffer 里有完整正文。原先只发 stream_ended 会丢
+            # 正文 → 前端留空壳，必须切会话重灌 DB 才显示。这里若 lingering buffer 仍有(after_seq
+            # 之后的)正文，先重放再收尾，让晚到的 resume 也拿到内容（与 live 回放同源逻辑）。
+            lingering = registry.get_task(conversation_id)
+            if lingering is not None and lingering.buffer._events:
+                replay_events = [
+                    e
+                    for e in list(lingering.buffer._events)
+                    if after_seq is None or e.get("seq", 0) > after_seq
+                ]
+                # 冷启(after_seq=None)对已结束历史流沿用 RESUME_COLD_REPLAY_CAP 截断，
+                # 防超长 buffer 反复全量重放卡死（与 live 回放 ended 分支一致）。
+                if after_seq is None:
+                    cold_cap = get_settings().resume_cold_replay_cap
+                    if cold_cap > 0 and len(replay_events) > cold_cap:
+                        replay_events = replay_events[-cold_cap:]
+                if replay_events:
+
+                    def _replay_terminal_buffer() -> tuple[list[str], bool]:
+                        out: list[str] = []
+                        term = False
+                        for ev in replay_events:
+                            lines, is_term = _serialize_buffer_event_to_sse(
+                                ev, debug_content_only
+                            )
+                            out.extend(lines)
+                            if is_term:
+                                term = True
+                                break
+                        return out, term
+
+                    replay_lines, replayed_terminal = await asyncio.to_thread(
+                        _replay_terminal_buffer
+                    )
+                    for line in replay_lines:
+                        yield line
+                    if not replayed_terminal:
+                        yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error'), 'cursor': status_info.get('cursor', 0)}}, ensure_ascii=False)}\n\n"
+                        yield "data: [DONE]\n\n"
+                    return
+
             yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error'), 'cursor': status_info.get('cursor', 0)}}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return

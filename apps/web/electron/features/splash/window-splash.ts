@@ -1,4 +1,5 @@
 import { getWindowManager } from "../../core/services/window-registry"
+import { getResolvedBrand } from "../branding/brand-config"
 
 export function createSplashWindow(): void {
   const wm = getWindowManager()
@@ -10,7 +11,7 @@ export function createSplashWindow(): void {
     overrides: {
       width: 400,
       height: 250,
-      title: "数字员工",
+      title: getResolvedBrand().windowTitle,
       frame: false,
       transparent: true,
       resizable: false,

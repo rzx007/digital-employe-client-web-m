@@ -82,7 +82,7 @@ export function ChartWidget({
       <Bar
         key={s.key}
         dataKey={s.key}
-        fill={`var(--color-${s.key})`}
+        fill={`url(#bar-${widget.id}-${s.key})`}
         radius={[4, 4, 0, 0]}
         maxBarSize={48}
       />
@@ -126,6 +126,29 @@ export function ChartWidget({
                         offset="100%"
                         stopColor={`var(--color-${s.key})`}
                         stopOpacity={0.02}
+                      />
+                    </linearGradient>
+                  ))
+                : null}
+              {type === "bar"
+                ? series.map((s) => (
+                    <linearGradient
+                      key={s.key}
+                      id={`bar-${widget.id}-${s.key}`}
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor={`var(--color-${s.key})`}
+                        stopOpacity={0.95}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor={`var(--color-${s.key})`}
+                        stopOpacity={0.5}
                       />
                     </linearGradient>
                   ))

@@ -1,7 +1,7 @@
 import * as React from "react"
 import { IconFolderOpen, IconDownload } from "@tabler/icons-react"
 import pkg from "../../../package.json"
-import logoSvg from "@/assets/logo.png"
+import { useBrand, withYear } from "@/lib/brand/brand"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -19,6 +19,7 @@ import { toast } from "sonner"
 export function AboutSettings() {
   const [exporting, setExporting] = React.useState(false)
   const desktop = isElectron()
+  const brand = useBrand()
 
   const handleOpenLogsDir = async () => {
     await withElectronApi((api) => api.openLogsDirectory(), {
@@ -55,11 +56,11 @@ export function AboutSettings() {
         <CardContent className="flex flex-col gap-5">
           <div className="flex flex-col items-center gap-3 py-4">
             <div className="flex size-16 items-center justify-center rounded-2xl text-2xl font-bold text-primary-foreground">
-              <img src={logoSvg} className="w-10" alt="" />
+              <img src={brand.logos.app} className="w-10" alt="" />
             </div>
-            <span className="text-xl font-semibold">BobanStaff</span>
+            <span className="text-xl font-semibold">{brand.productName}</span>
             <span className="text-xs text-muted-foreground">
-              数字员工智能助手
+              {brand.subtitle}
             </span>
           </div>
 
@@ -88,7 +89,7 @@ export function AboutSettings() {
           </div>
 
           <p className="text-center text-xs text-muted-foreground">
-            © {new Date().getFullYear()} Bobandata. All rights reserved.
+            {withYear(brand.copyright)}
           </p>
         </CardContent>
       </Card>

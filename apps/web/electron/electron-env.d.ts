@@ -20,5 +20,16 @@ declare namespace NodeJS {
     APP_ROOT: string
     /** /dist/ or /public/ */
     VITE_PUBLIC: string
+    /** 品牌目录覆盖（指向含 brand.json 的目录）；见 features/branding。 */
+    DE_BRANDING_DIR?: string
+  }
+}
+
+import type { ResolvedBrand } from "./shared/brand"
+
+declare global {
+  interface Window {
+    /** preload 注入的已解析品牌；非 Electron 环境为 undefined。 */
+    brand?: ResolvedBrand
   }
 }

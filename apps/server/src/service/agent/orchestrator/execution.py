@@ -174,7 +174,11 @@ def execute_plan(db: Session, plan: OrchestrationPlan, workspace_id: int) -> str
 
     # 即时计划：唯一原语 manual run，立即派活。
     execute_plan_run(db, plan, trigger="manual", auto_accept=False)
-    return f"编排计划 #{plan.id} 执行中。"
+    return (
+        f"编排计划 #{plan.id} 已派发执行。子任务**尚未产出任何结果**"
+        "（员工流要等你这一轮结束才起）——本轮只能报「进度 0/N · 已派发 ⏳」、"
+        "**严禁报「完成」**；完成与否由系统在结果就绪后**另起一轮**通知你。"
+    )
 
 
 # 兼容 orchestration_api 等既有 import

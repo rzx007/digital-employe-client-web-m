@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { cn } from "@workspace/ui/lib/utils"
-import logoImage from "@/assets/logo.png"
+import { useBrand } from "@/lib/brand/brand"
 import { subscribeElectron } from "@/lib/electron/host"
 
 export const Route = createFileRoute("/splash")({
@@ -9,6 +9,7 @@ export const Route = createFileRoute("/splash")({
 })
 
 function SplashPage() {
+  const brand = useBrand()
   const [status, setStatus] = useState("正在启动服务...")
   const isError = status.includes("失败")
 
@@ -26,7 +27,7 @@ function SplashPage() {
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       <div className="flex flex-col items-center">
-        <img src={logoImage} alt="logo" className="mb-5 w-14" />
+        <img src={brand.logos.splash} alt="logo" className="mb-5 w-14" />
         <div
           className={cn(
             "h-7 w-7 animate-spin rounded-full border-[3px] border-muted",

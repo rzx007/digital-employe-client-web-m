@@ -1,0 +1,8 @@
+{
+  "productName": "数字员工",
+  "windowTitle": "BobanStaff",
+  "subtitle": "数字员工智能助手",
+  "companyName": "Bobandata",
+  "copyright": "© {year} Bobandata. All rights reserved.",
+  "logos": { "app": "logo.png", "login": "logo.png", "splash": "logo.png" }
+}

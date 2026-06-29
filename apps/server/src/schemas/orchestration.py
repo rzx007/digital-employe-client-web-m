@@ -5,7 +5,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-OrchestrationTaskStatus = Literal["pending", "running", "success", "failed", "queued"]
+# run_status 透传：失败/取消 子任务会带 "cancelled"（见 orchestration_api._build_task_items）。
+# 缺它 → 含已取消子任务的计划在「总管会话加载」时 OrchestrationTaskItem 校验失败 → 500。
+OrchestrationTaskStatus = Literal[
+    "pending", "running", "success", "failed", "queued", "cancelled"
+]
 
 
 class OrchestrationTaskEdit(BaseModel):

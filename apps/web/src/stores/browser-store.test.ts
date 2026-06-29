@@ -14,8 +14,7 @@ vi.mock("@/lib/request", () => ({
 // openBrowser/restore 内部会触达其它 right-panel store，测试中将其 mock 成 no-op。
 const closeArtifact = vi.fn()
 const closeMonitor = vi.fn()
-const closeSubtask = vi.fn()
-const closeEmployeeTasks = vi.fn()
+const closeTasks = vi.fn()
 vi.mock("@/stores/artifact-store", () => ({
   useArtifactStore: { getState: () => ({ closeArtifact }) },
 }))
@@ -29,11 +28,8 @@ vi.mock("@/stores/chat-store", () => ({
 vi.mock("@/stores/monitor-store", () => ({
   useMonitorStore: { getState: () => ({ closeMonitor }) },
 }))
-vi.mock("@/stores/subtask-panel-store", () => ({
-  useSubtaskPanelStore: { getState: () => ({ close: closeSubtask }) },
-}))
-vi.mock("@/stores/employee-tasks-panel-store", () => ({
-  useEmployeeTasksPanelStore: { getState: () => ({ close: closeEmployeeTasks }) },
+vi.mock("@/stores/tasks-panel-store", () => ({
+  useTasksPanelStore: { getState: () => ({ close: closeTasks }) },
 }))
 
 import { useBrowserStore } from "./browser-store"
@@ -80,8 +76,7 @@ describe("browser-store minimize/restore（切换 panel 不中断浏览器）", 
     browserHide.mockClear()
     closeArtifact.mockClear()
     closeMonitor.mockClear()
-    closeSubtask.mockClear()
-    closeEmployeeTasks.mockClear()
+    closeTasks.mockClear()
     useBrowserStore.getState().reset()
   })
 
@@ -125,7 +120,6 @@ describe("browser-store minimize/restore（切换 panel 不中断浏览器）", 
     // 不通过 open() 重新导航（保留页面状态，由 BrowserPanel 挂载 show()）
     expect(browserOpen).not.toHaveBeenCalled()
     // 恢复时收起占栏的其它 panel
-    expect(closeSubtask).toHaveBeenCalled()
-    expect(closeEmployeeTasks).toHaveBeenCalled()
+    expect(closeTasks).toHaveBeenCalled()
   })
 })

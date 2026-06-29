@@ -58,4 +58,36 @@ describe("KpiWidget", () => {
     render(<KpiWidget widget={baseWidget} data={{}} />)
     expect(screen.getByText("KPI 指标")).toBeTruthy()
   })
+
+  it("同单位数值组自动渲染对比条(榜单)", () => {
+    render(
+      <KpiWidget
+        widget={baseWidget}
+        data={{
+          items: [
+            { label: "德国", value: 10, unit: "球" },
+            { label: "法国", value: 8, unit: "球" },
+          ],
+        }}
+      />
+    )
+    expect(screen.getAllByTestId("kpi-bar").length).toBe(2)
+    // 单位作为后缀渲染(10 球,而非 球10)
+    expect(screen.getAllByText("球").length).toBe(2)
+  })
+
+  it("混合单位不渲染对比条", () => {
+    render(
+      <KpiWidget
+        widget={baseWidget}
+        data={{
+          items: [
+            { label: "结算", value: 1234, unit: "¥" },
+            { label: "排名", value: 2 },
+          ],
+        }}
+      />
+    )
+    expect(screen.queryByTestId("kpi-bar")).toBeNull()
+  })
 })

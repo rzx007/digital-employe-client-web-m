@@ -137,6 +137,14 @@ export function summarizeToolCall(options: {
           : display.label
       return { toolName, label, icon: display.icon }
     }
+    if (toolName === "web_search") {
+      const q = input?.query
+      const label =
+        typeof q === "string" && q.trim()
+          ? `联网搜索「${truncate(q.trim(), 24)}」`
+          : display.label
+      return { toolName, label, icon: display.icon }
+    }
     return { toolName, label: display.label, icon: display.icon }
   }
 

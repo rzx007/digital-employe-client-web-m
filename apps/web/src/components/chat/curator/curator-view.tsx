@@ -72,8 +72,7 @@ import { CuratorEmptyWelcome } from "./curator-empty-welcome"
 import { CuratorFileProvider } from "./curator-file-provider"
 import { CuratorRecruitmentProvider } from "./curator-recruitment-provider"
 import { CuratorPlanFeedbackProvider } from "./curator-plan-feedback-context"
-import { RunningTasksIndicator } from "./running-tasks-indicator"
-import { ShellTasksIndicator } from "./shell-tasks-indicator"
+import { TasksIndicator } from "./tasks-indicator"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 import { UserAvatar } from "@/components/user-avatar"
@@ -304,8 +303,7 @@ export function CuratorView({
   size = "default",
   resourcesOpen,
   onToggleResources,
-  employeeTasksOpen,
-  onToggleEmployeeTasks,
+  onToggleTasks,
   onOpenResourceFile,
   onOpenContacts,
   onOpenConversations,
@@ -322,9 +320,8 @@ export function CuratorView({
   /** compact 工作台：由 WorkbenchContentSplit 控制资源分栏 */
   resourcesOpen?: boolean
   onToggleResources?: () => void
-  /** compact 工作台：由 WorkbenchContentSplit 控制员工任务分栏 */
-  employeeTasksOpen?: boolean
-  onToggleEmployeeTasks?: () => void
+  /** compact 工作台：由 WorkbenchContentSplit 在打开合并任务面板时收起资源分栏 */
+  onToggleTasks?: () => void
   /** 工作台：打开资源面板并选中文件 */
   onOpenResourceFile?: (path: string) => void
   onOpenContacts?: () => void
@@ -412,7 +409,7 @@ export function CuratorView({
 
   useSyncPendingFromComposer(curatorConversationId, messages, status)
 
-  // 把总管会话里派发的并行子任务（task 工具）同步进 subtask-panel-store，
+  // 把总管会话里派发的并行子任务（task 工具）同步进 tasks-panel-store，
   // 让挂在 chat 布局右侧的子任务面板（与普通员工会话同源）能展示。
   useSyncConversationSubtasks(messages)
 
@@ -898,8 +895,6 @@ export function CuratorView({
           isCreatingConversation={isCreatingConversation}
           resourcesOpen={resourcesOpen}
           onToggleResources={onToggleResources}
-          employeeTasksOpen={employeeTasksOpen}
-          onToggleEmployeeTasks={onToggleEmployeeTasks}
         />
       ) : (
         <CuratorChatHeader
@@ -971,14 +966,9 @@ export function CuratorView({
         </CuratorRecruitmentProvider>
       </CuratorFileProvider>
 
-      <RunningTasksIndicator
-        curatorConversationId={curatorConversationId}
-        onOpenEmployeeTasks={onToggleEmployeeTasks}
-        className="mb-2"
-      />
-
-      <ShellTasksIndicator
+      <TasksIndicator
         conversationId={curatorConversationId}
+        onOpen={onToggleTasks}
         className="mb-2"
       />
 

@@ -95,9 +95,15 @@ def extract_claimed_binary_files(text: str) -> list[str]:
 
 
 def detect_missing_delivery_artifacts(
-    output_text: str, artifacts_dir: Path
+    output_text: str,
+    artifacts_dir: Path,
+    this_turn_names: set[str] | None = None,
 ) -> str | None:
-    """员工自报了二进制交付物却在产物区找不到对应非空文件 → 返回告警，否则 None。
+    """核验员工自报的交付物，发现问题返回告警，否则 None。两类问题：
+    ① **缺失/空壳**：自报已交付却在产物区找不到对应非空文件。
+    ② **旧产物充数**：磁盘上有该文件、但它**不在本轮写入**（共享累积目录里的历史残留）
+       —— 仅当传入 `this_turn_names`（本会话 file_outputs 的 basename 小写集）时才判这档；
+       这是补「文件存在≠本次产出」的核心防线（旧产物会骗过纯存在性核验）。
 
     容错：任何异常都返回 None（兜底核验不该影响主流程）。
     """
@@ -122,18 +128,35 @@ def detect_missing_delivery_artifacts(
                 continue
 
         missing: list[str] = []
+        stale: list[str] = []
         for fname in claimed:
             best = size_by_name.get(fname.lower())
             if best is None or best <= 0:  # 不存在 或 空壳
                 missing.append(fname)
+            elif this_turn_names is not None and fname.lower() not in this_turn_names:
+                # 文件在、非空，但本轮根本没写它 → 共享目录里的旧产物
+                stale.append(fname)
 
-        if not missing:
+        parts: list[str] = []
+        if missing:
+            parts.append(
+                "员工自报已交付 "
+                + "、".join(missing)
+                + "，但产物区找不到对应的非空文件（疑似假交付/空壳）"
+            )
+        if stale:
+            parts.append(
+                "员工自报已交付 "
+                + "、".join(stale)
+                + "，但该文件**本轮并未写入**、是共享目录里的历史旧产物"
+                "（疑似拿旧产物充数/本次未真正产出）"
+            )
+        if not parts:
             return None
         return (
-            "⚠️ 代码抽检：员工自报已交付 "
-            + "、".join(missing)
-            + "，但产物区找不到对应的非空文件——疑似假交付/空壳，"
-            "务必 redispatch_task 打回核实，勿据自报放行。"
+            "⚠️ 代码抽检："
+            + "；".join(parts)
+            + "——务必 redispatch_task 打回核实，勿据自报放行。"
         )
     except Exception:
         logger.debug("detect_missing_delivery_artifacts failed", exc_info=True)
@@ -161,6 +184,23 @@ def _resolve_artifacts_dir(db, conversation_id: int) -> Path | None:
         return None
 
 
+def _this_turn_names(db, conversation_id: int) -> set[str] | None:
+    """该员工会话本轮写入文件的 basename(小写) 集，供「旧产物充数」核验。
+
+    源是 per-turn 执行日志（assistant 消息 extra_meta.file_outputs，含 write/edit/bash
+    写的文件），由 `_conversation_file_outputs` 聚合。解析失败返回 None（=不启用旧产物
+    核验，回退到纯存在性核验，避免 file_outputs 链路异常时误报）。
+    """
+    try:
+        from src.service.orchestration_lifecycle import _conversation_file_outputs
+
+        outputs = _conversation_file_outputs(db, conversation_id)
+        return {Path(o["path"]).name.lower() for o in outputs if o.get("path")}
+    except Exception:
+        logger.debug("_this_turn_names failed", exc_info=True)
+        return None
+
+
 def check_log_delivery(db, log) -> str | None:
     """对一条已成功的执行日志做交付物兜底核验（供执行快照注入）。无问题/不适用→None。"""
     try:
@@ -179,7 +219,9 @@ def check_log_delivery(db, log) -> str | None:
         adir = _resolve_artifacts_dir(db, conversation_id)
         if adir is None:
             return None
-        return detect_missing_delivery_artifacts(output_text, adir)
+        return detect_missing_delivery_artifacts(
+            output_text, adir, this_turn_names=_this_turn_names(db, conversation_id)
+        )
     except Exception:
         logger.debug("check_log_delivery failed", exc_info=True)
         return None

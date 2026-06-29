@@ -203,22 +203,29 @@ def guard_external_write(target: str, *, db: Session, workspace_id: int, convers
 # Shell 命令启发式路径抽取 + shell 写守卫
 # ---------------------------------------------------------------------------
 
-# 各类绝对路径候选正则（保守：字符类排除空白与 "<>|，避免误吸选项/管道/重定向符）
+# 各类绝对路径候选正则（保守：字符类排除空白与 "<>|;,，
+# 避免误吸选项/管道/重定向符；排 ; , 是为防把 C:\x;%PATH% 这类 list 变量整段吞成一个路径）
 _WIN_DRIVE_RE = re.compile(
-    r"""[A-Za-z]:[/\\][^\s"'<>|]*""",
+    r"""[A-Za-z]:[/\\][^\s"'<>|;,]*""",
 )
 _UNC_RE = re.compile(
-    r"""\\\\[^\s"'<>|]+""",
+    r"""\\\\[^\s"'<>|;,]+""",
 )
 _ENV_VAR_RE = re.compile(
-    r"""%[^%\s]+%[/\\][^\s"'<>|]*""",
+    r"""%[^%\s]+%[/\\][^\s"'<>|;,]*""",
 )
 _TILDE_RE = re.compile(
-    r"""~[/\\][^\s"'<>|]*""",
+    r"""~[/\\][^\s"'<>|;,]*""",
 )
 _UNIX_ABS_RE = re.compile(
     # 负后向断言：前面不是盘符字母+冒号（避免把 C:/foo 中的 /foo 单独抽出）
-    r"""(?<![A-Za-z]:)/[^\s"'<>|]+""",
+    r"""(?<![A-Za-z]:)/[^\s"'<>|;,]+""",
+)
+# URL（scheme://...）：抽路径前先整段剥掉——URL 是网络读、绝非本地写。
+# 否则 https:// 里的 ``s:`` 会被 _WIN_DRIVE_RE 误当盘符 ``s:\``、//host/path
+# 被 _UNIX_ABS_RE 误当绝对路径，导致 curl/wget/pip 等安装命令被误拦。
+_URL_RE = re.compile(
+    r"""\b[A-Za-z][A-Za-z0-9+.\-]*://[^\s"'<>|]+""",
 )
 
 _ALL_PATTERNS = [_WIN_DRIVE_RE, _UNC_RE, _ENV_VAR_RE, _TILDE_RE, _UNIX_ABS_RE]
@@ -229,6 +236,129 @@ def _strip_quotes(s: str) -> str:
     if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
         return s[1:-1]
     return s
+
+
+def _expand_and_validate(raw: str) -> str | None:
+    """对单个原始候选 token：剥引号 → 展开 %VAR%/$VAR/~ → 校验仍是绝对路径。
+    返回展开后的绝对路径；非法（含未解析变量 / 非绝对 / 展开成 list 变量）→ None。
+    """
+    token = _strip_quotes(raw.strip())
+    expanded = os.path.expandvars(token)
+    expanded = os.path.expanduser(expanded)
+    # 展开后仍含未解析的 %...%，说明变量不存在，丢弃
+    if re.search(r"%[^%]+%", expanded):
+        return None
+    # list 变量（如 %PATH% 展开）：含 os.pathsep 或多个盘符 → 不是单一路径，丢弃
+    if os.pathsep in expanded:
+        return None
+    if len(re.findall(r"[A-Za-z]:[/\\]", expanded)) > 1:
+        return None
+    # 只保留展开后仍是绝对路径的候选
+    if not (os.path.isabs(expanded) or re.match(r"[A-Za-z]:[/\\]", expanded)):
+        return None
+    return expanded
+
+
+def _collect_abs_paths(text: str) -> list[str]:
+    """从一段文本里收集绝对路径候选（URL 剥离 + 各正则匹配 + 展开校验 + 去重）。
+    不做任何写/读上下文判断——纯 token 抽取，供上层按需筛选。
+    """
+    text = _URL_RE.sub(lambda m: " " * len(m.group(0)), text)
+
+    non_unix_patterns = [_WIN_DRIVE_RE, _UNC_RE, _ENV_VAR_RE, _TILDE_RE]
+    non_unix_spans: list[tuple[int, int]] = []
+    raw_candidates: list[str] = []
+
+    for pat in non_unix_patterns:
+        for m in pat.finditer(text):
+            non_unix_spans.append(m.span())
+            raw_candidates.append(m.group(0))
+
+    for m in _UNIX_ABS_RE.finditer(text):
+        start, _end = m.span()
+        overlaps = any(ns <= start < ne for ns, ne in non_unix_spans)
+        if not overlaps:
+            raw_candidates.append(m.group(0))
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in raw_candidates:
+        expanded = _expand_and_validate(raw)
+        if expanded is not None and expanded not in seen:
+            seen.add(expanded)
+            result.append(expanded)
+    return result
+
+
+# 写/删命令集（命令名去路径/扩展名后小写比对）
+_WRITE_COMMANDS = {
+    # bash/unix
+    "cp", "mv", "rm", "mkdir", "tee", "dd", "ln", "touch", "install",
+    "rmdir", "truncate",
+    # cmd
+    "copy", "move", "del", "erase", "md", "rd", "xcopy", "robocopy",
+    "ren", "rename",
+    # powershell
+    "out-file", "set-content", "add-content", "new-item", "remove-item",
+    "copy-item", "move-item", "rename-item", "ni", "ri",
+}
+
+# 重定向算子：> >> 1> 2> &> >&（后面跟写目标路径 token）
+_REDIRECT_RE = re.compile(
+    r"""(?:\d*>>?|&>|>&)\s*("[^"]*"|'[^']*'|[^\s"'<>|;&]+)""",
+)
+
+# 子命令分隔符：&& || | ; & 换行
+_SUBCMD_SPLIT_RE = re.compile(r"""(?:&&|\|\||[|;&\n])""")
+
+
+def _command_name(token: str) -> str:
+    """取命令名：去引号 → 去路径目录 → 去扩展名 → 小写。"""
+    t = _strip_quotes(token.strip())
+    t = t.replace("\\", "/")
+    base = t.rsplit("/", 1)[-1]
+    if "." in base:
+        base = base.rsplit(".", 1)[0]
+    return base.lower()
+
+
+def extract_write_target_paths(command: str) -> list[str]:
+    """收窄到「写上下文」的绝对路径抽取：只抽写/删操作的目标绝对路径。
+
+    两类来源：
+    1. 重定向目标：``> >> 1> 2> &> >&`` 后面跟的路径 token（动机案例：echo > 桌面\\x）。
+    2. 写/删命令的绝对路径参数：按 ``&& || | ; & 换行`` 拆子命令，对每个子命令取首个
+       token 作命令名（去路径/扩展名/小写），若在写/删命令集里，则抽该子命令内的绝对路径。
+
+    写上下文之外的绝对路径（curl/pip/set PATH/cat/dir/URL/list 变量）一律不抽。
+    保守：宁可漏拦个别冷门写法，也不误拦合法命令。
+    """
+    # URL 整段剥成等长空格（保持后续 span 对齐），避免 https:// 被误当盘符/绝对路径
+    sanitized = _URL_RE.sub(lambda m: " " * len(m.group(0)), command)
+
+    targets: list[str] = []
+    seen: set[str] = set()
+
+    def _add(paths: list[str]) -> None:
+        for p in paths:
+            if p not in seen:
+                seen.add(p)
+                targets.append(p)
+
+    # 来源 1：重定向目标
+    for m in _REDIRECT_RE.finditer(sanitized):
+        _add(_collect_abs_paths(m.group(1)))
+
+    # 来源 2：写/删命令子命令的绝对路径参数
+    for sub in _SUBCMD_SPLIT_RE.split(sanitized):
+        sub = sub.strip()
+        if not sub:
+            continue
+        first = sub.split(None, 1)[0]
+        if _command_name(first) in _WRITE_COMMANDS:
+            _add(_collect_abs_paths(sub))
+
+    return targets
 
 
 def extract_command_paths(command: str) -> list[str]:
@@ -245,6 +375,11 @@ def extract_command_paths(command: str) -> list[str]:
     已知限制：若 Windows 盘符路径含正斜杠（如 C:/foo），同一字符串中的子路径
     （/foo）可能同时被 Unix 正则抽取，后处理阶段会过滤掉此类子串。
     """
+    # 第零阶段：把 URL（http(s)/ftp/git+ssh/file...）整段抹成等长空格——URL 是网络
+    # 读取目标、不是本地写路径；不剥掉则 https:// 的 s: 会被当盘符、//host 被当绝对路径。
+    # 用等长空格替换以保持后续 span 位置对齐。
+    command = _URL_RE.sub(lambda m: " " * len(m.group(0)), command)
+
     # 第一阶段：用各模式收集原始候选 token（连同在命令字符串中的位置）
     # 非 Unix 模式优先抽取（盘符、UNC、环境变量、~），Unix 模式最后
     non_unix_patterns = [_WIN_DRIVE_RE, _UNC_RE, _ENV_VAR_RE, _TILDE_RE]
@@ -292,8 +427,12 @@ def guard_external_shell(
     conversation_id: int,
     roots: list[Path],
 ) -> str | None:
-    """扫命令里的绝对路径，任一在工作区外且未授权 → 返回挡回提示串；否则 None。"""
-    for p in extract_command_paths(command):
+    """扫命令的「写目标」绝对路径，任一在工作区外且未授权 → 返回挡回提示串；否则 None。
+
+    收窄到写上下文（重定向目标 + 写/删命令参数），不再扫命令里所有绝对路径，
+    消除 curl/pip/set PATH/cat 等读取或安装命令的误拦。
+    """
+    for p in extract_write_target_paths(command):
         reason = guard_external_write(
             p,
             db=db,

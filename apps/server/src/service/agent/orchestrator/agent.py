@@ -68,6 +68,7 @@ from src.service.agent.orchestrator.tools import (
 from src.service.context_compression import build_summarization_middleware_stack
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.get_current_time_tool import get_current_time_tool
+from src.service.agent.web_search import create_web_search_tool
 from src.service.agent.shell_execute_tool import (
     create_shell_execute_tool,
     create_shell_kill_tool,
@@ -335,6 +336,7 @@ def get_orchestrator_agent(
         create_shell_kill_tool(),
         remember_memory_tool,
         get_current_time_tool,
+        create_web_search_tool(),
     ]
 
     # 工作区外目录写授权：与员工对称接线。登记本会话合法写入根集合 + workspace_id，

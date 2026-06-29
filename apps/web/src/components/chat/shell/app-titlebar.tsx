@@ -5,16 +5,19 @@ import {
   IconMaximize,
   IconMinus,
 } from "@tabler/icons-react"
-import logoSvg from "@/assets/logo.png"
 import { UpdatePill } from "@/components/common/app-updater"
 import { cn } from "@workspace/ui/lib/utils"
+import { useBrand } from "@/lib/brand/brand"
 import { isElectron, withElectronApi } from "@/lib/electron/host"
 
 interface AppTitlebarProps {
   title?: string
 }
 
-export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
+export function AppTitlebar({ title }: AppTitlebarProps) {
+  const brand = useBrand()
+  const resolvedTitle = title ?? brand.productName
+  const logoSvg = brand.logos.app
   const [isMaximized, setIsMaximized] = React.useState(false)
   const [isMac, setIsMac] = React.useState(false)
 
@@ -78,7 +81,9 @@ export function AppTitlebar({ title = "数字员工" }: AppTitlebarProps) {
           >
             <div className="flex items-center gap-2">
               <img src={logoSvg} alt="" className="w-4" />
-              <span className="text-xs text-muted-foreground">{title}</span>
+              <span className="text-xs text-muted-foreground">
+                {resolvedTitle}
+              </span>
             </div>
           </div>
           <div className="h-full w-[76px] shrink-0" aria-hidden />

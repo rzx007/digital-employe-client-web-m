@@ -98,6 +98,11 @@ def create_app() -> FastAPI:
 
         # 离线 IO 密集型初始化到线程池，避免阻塞事件循环导致前端请求挂起
         def _startup_db_init():
+            # 升级迁移：从旧数据目录(.boban-staff/.digital-employee)拷激活文件到新目录，
+            # 免老用户升级后重新激活。幂等、失败不抛，须在激活中间件鉴权前跑。
+            from src.core.activation.storage import migrate_legacy_activation
+
+            migrate_legacy_activation()
             init_db()
             with get_session_local()() as db:
                 workspace = WorkspaceService.ensure_default_workspace(db)
@@ -278,14 +283,17 @@ def create_app() -> FastAPI:
             from src.core.runtime_capabilities import get_capabilities as _get_caps
             from src.service.channel.manager import manager as _channel_manager
             from src.service.channel.feishu_channel import FeishuChannel as _FeishuChannel
+            from src.service.channel.credentials import get_channel_credentials
 
             _s = _get_settings()
-            if (_get_caps().feishu_platform and _s.feishu_app_id and _s.feishu_app_secret
+            # 渠道凭证独立于登录 FEISHU_APP_ID/SECRET，避免扫码建的应用与登录应用串用
+            _ch_app_id, _ch_app_secret = get_channel_credentials("feishu")
+            if (_get_caps().feishu_platform and _ch_app_id and _ch_app_secret
                     and _s.feishu_channel_enabled):
                 _wl = _parse_feishu_whitelist(_s.feishu_whitelist_open_ids)
                 if not _wl:
                     logger.warning("飞书 channel 白名单为空，所有飞书消息将被拒答")
-                _channel_manager.register(_FeishuChannel(_s.feishu_app_id, _s.feishu_app_secret, _wl))
+                _channel_manager.register(_FeishuChannel(_ch_app_id, _ch_app_secret, _wl))
                 _channel_manager.start()
                 logger.info("飞书 channel 已启动（白名单 %d 人）", len(_wl))
         except Exception:

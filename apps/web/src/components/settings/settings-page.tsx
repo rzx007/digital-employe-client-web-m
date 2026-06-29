@@ -37,7 +37,8 @@ export function SettingsPage() {
   return (
     <div className="flex h-full min-h-0 w-full bg-background">
       <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
-      <ScrollArea className="flex-1 p-6">
+      <ScrollArea className="min-w-0 flex-1">
+        <div className="min-w-0 max-w-full p-6">
         {activeTab === "account" && canAccount ? <AccountSettings /> : null}
         {activeTab === "general" && <GeneralSettings />}
         {activeTab === "shortcuts" && <ShortcutsSettings />}
@@ -46,6 +47,7 @@ export function SettingsPage() {
         {activeTab === "extensions" && <ExtensionsSettings />}
         {activeTab === "channels" && canFeishu ? <ChannelsSettings /> : null}
         {activeTab === "about" && <AboutSettings />}
+        </div>
       </ScrollArea>
     </div>
   )

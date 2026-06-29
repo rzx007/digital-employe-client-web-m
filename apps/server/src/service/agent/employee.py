@@ -20,6 +20,7 @@ from src.service.agent.prompts import build_system_prompt
 from src.service.agent.skill_sources import resolve_builtin_skill_creator_source
 from src.service.context_compression import build_summarization_middleware_stack
 from src.service.agent.get_current_time_tool import get_current_time_tool
+from src.service.agent.web_search import create_web_search_tool
 from src.service.agent.shell_execute_tool import (
     create_shell_execute_tool,
     create_shell_kill_tool,
@@ -251,6 +252,7 @@ def get_agent(
         remember_memory_tool,
         get_current_time_tool,
     ]
+    extra_tools.append(create_web_search_tool())
     # 技能在用中自改进：员工可就地修订已加载技能并落库同步（A）。
     # 需 employee_id 反查 workspace/user；available_skills 作「只能改已加载技能」守卫。
     if employee_id is not None:
