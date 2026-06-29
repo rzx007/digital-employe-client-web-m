@@ -94,7 +94,6 @@ export function AddProviderDialog({
   const [selectedCatalogId, setSelectedCatalogId] = React.useState("")
   const [apiKey, setApiKey] = React.useState("")
   const [models, setModels] = React.useState<RegistryModelInput[]>([])
-  const [customId, setCustomId] = React.useState("")
   const [customName, setCustomName] = React.useState("")
   const [customUrl, setCustomUrl] = React.useState("")
   const [customApiKey, setCustomApiKey] = React.useState("")
@@ -107,7 +106,6 @@ export function AddProviderDialog({
       setSelectedCatalogId("")
       setApiKey("")
       setModels([])
-      setCustomId("")
       setCustomName("")
       setCustomUrl("")
       setCustomApiKey("")
@@ -339,7 +337,7 @@ export function AddProviderDialog({
                 type="button"
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-muted/60"
                 onClick={() => {
-                  setModels([{ id: "", display_name: "" }])
+                  setModels([{ id: "" }])
                   setStep("custom")
                 }}
               >
