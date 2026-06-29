@@ -81,11 +81,12 @@ function getLevel(dayData: ScheduleDay): 0 | 1 | 2 | 3 {
   return 3
 }
 
+// 热力档用主题色 primary + 不同不透明度，随明暗/皮肤自适应（不写死 dark: 变体）。
 const LEVEL_COLORS: Record<number, string> = {
   0: "bg-muted-foreground/10 border-muted-foreground/10",
-  1: "bg-emerald-200 border-emerald-300 dark:bg-emerald-900/70 dark:border-emerald-800/70",
-  2: "bg-emerald-400 border-emerald-500 dark:bg-emerald-600/70 dark:border-emerald-500/70",
-  3: "bg-emerald-600 border-emerald-700 dark:bg-emerald-800/70 dark:border-emerald-700/70",
+  1: "bg-primary/25 border-primary/25",
+  2: "bg-primary/55 border-primary/55",
+  3: "bg-primary border-primary",
 }
 
 function getCalendarGrid(year: number, month: number) {
@@ -259,19 +260,19 @@ export function ScheduleCalendar({
 
       <div className="mt-2 flex items-center justify-end gap-3">
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-muted-foreground/8" />
+          <span className="size-2.5 rounded-sm bg-muted-foreground/10" />
           <span className="text-[10px] text-muted-foreground">无</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-50 dark:bg-emerald-950/40" />
+          <span className="size-2.5 rounded-sm bg-primary/25" />
           <span className="text-[10px] text-muted-foreground">少</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-100 dark:bg-emerald-900/35" />
+          <span className="size-2.5 rounded-sm bg-primary/55" />
           <span className="text-[10px] text-muted-foreground">中</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-200 dark:bg-emerald-800/45" />
+          <span className="size-2.5 rounded-sm bg-primary" />
           <span className="text-[10px] text-muted-foreground">多</span>
         </div>
       </div>
