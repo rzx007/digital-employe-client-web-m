@@ -60,8 +60,17 @@ export const langgraphMetadataSchema = z.object({
 
 // ── Message schemas ────────────────────────────────────────────────
 
+/** provider 专有字段：DeepSeek/Qwen3 思考增量 reasoning_content 经后端 PromptCacheChatOpenAI
+ *  覆写后落在此处（base ChatOpenAI 默认丢弃）。passthrough 容忍其它未知 kwargs。 */
+export const aiMessageChunkAdditionalKwargsSchema = z
+  .object({
+    reasoning_content: z.string().optional(),
+  })
+  .passthrough()
+
 export const aiMessageChunkKwargsSchema = z.object({
   content: z.string().optional(),
+  additional_kwargs: aiMessageChunkAdditionalKwargsSchema.optional(),
   response_metadata: responseMetadataSchema.optional(),
   type: z.string().optional(),
   id: z.string().optional(),

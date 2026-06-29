@@ -62,6 +62,7 @@ import {
   messageHasFileOutputs,
   type FileChangeItem,
 } from "./file-change-utils"
+import { isReasoningTextPart } from "./langchain-reasoning-text"
 import { isSummarizationTextPart } from "./langchain-summarization-text"
 import { collapseWriteTodosBlocks } from "./collapse-write-todos-blocks"
 import { collapseDocumentPlanBlocks } from "./hitl/collapse-document-plan-blocks"
@@ -271,6 +272,74 @@ function stripThinkSections(text: string): string {
   return text.replace(THINK_BLOCK_RE, "").trim()
 }
 
+/**
+ * 把 final-response/纯聊天文本里的 <think> 拆出来：思考内容归 thinking、其余归正文。
+ *
+ * - 完整 `<think>…</think>` 块 → 内容并入 thinking，从正文移除；
+ * - 末尾未闭合的 `<think>…`（流式进行中）→ 自该处起全部当 thinking，之前的当正文。
+ *
+ * 这样无论有没有工具调用，inline `<think>` 的思考都能显示，而不是像旧逻辑那样
+ * 被 stripThinkSections 整段丢弃。
+ */
+function splitThinkContent(raw: string): {
+  thinking: string
+  response: string
+} {
+  let thinking = ""
+  const completed = raw.replace(THINK_BLOCK_RE, (block) => {
+    const inner = stripThinkTags(block)
+    if (inner) thinking += (thinking ? "\n" : "") + inner
+    return ""
+  })
+  const openMatch = completed.match(/<think\s*>?/)
+  if (openMatch && openMatch.index !== undefined) {
+    const tail = completed
+      .slice(openMatch.index)
+      .replace(THINK_OPEN_RE, "")
+      .trim()
+    if (tail) thinking += (thinking ? "\n" : "") + tail
+    return {
+      thinking: thinking.trim(),
+      response: completed.slice(0, openMatch.index).trim(),
+    }
+  }
+  return { thinking: thinking.trim(), response: completed.trim() }
+}
+
+/**
+ * 把一段（可能含 inline <think>）的 final-response 文本拆分入块：
+ * 先推思考块（若有），再推 error/final-response。供「工具后正文」与「纯聊天正文」复用。
+ */
+function pushThinkAwareResponseBlocks(
+  blocks: ClassifiedBlock[],
+  messageId: string,
+  rawText: string,
+  keySuffix: string
+): void {
+  const { thinking, response } = splitThinkContent(rawText)
+  if (thinking) {
+    blocks.push({
+      kind: "thinking",
+      key: `${messageId}:thinking:${keySuffix}`,
+      text: thinking,
+    })
+  }
+  if (!response) return
+  if (isErrorText(response)) {
+    blocks.push({
+      kind: "error",
+      key: `${messageId}:error:${keySuffix}`,
+      text: formatErrorDisplayText(response),
+    })
+  } else {
+    blocks.push({
+      kind: "final-response",
+      key: `${messageId}:response:${keySuffix}`,
+      text: response,
+    })
+  }
+}
+
 function mergeSummarizationCheckpointBlock(
   blocks: ClassifiedBlock[],
   messageId: string,
@@ -389,25 +458,23 @@ export function classifyMessageParts(
       const p = parts[i]
       if (p.type !== "text" || !("text" in p) || !p.text) continue
 
-      if (isSummarizationTextPart(p)) {
+      // reasoning_content 流：恒为思考块，不并入正文。
+      if (isReasoningTextPart(p)) {
         if (responseAccum.trim()) {
-          const c = stripThinkSections(responseAccum)
-          if (c) {
-            if (isErrorText(c)) {
-              return [
-                {
-                  kind: "error",
-                  key: `${message.id}:error:0`,
-                  text: formatErrorDisplayText(c),
-                },
-              ]
-            }
-            out.push({
-              kind: "final-response",
-              key: `${message.id}:response:${out.length}`,
-              text: c,
-            })
-          }
+          pushThinkAwareResponseBlocks(out, message.id, responseAccum, `${i}`)
+          responseAccum = ""
+        }
+        const reasoning = p.text.trim()
+        if (reasoning) {
+          out.push({
+            kind: "thinking",
+            key: `${message.id}:reasoning:${i}`,
+            text: reasoning,
+          })
+        }
+      } else if (isSummarizationTextPart(p)) {
+        if (responseAccum.trim()) {
+          pushThinkAwareResponseBlocks(out, message.id, responseAccum, `${i}`)
           responseAccum = ""
         }
         mergeSummarizationCheckpointBlock(out, message.id, i, p.text)
@@ -417,23 +484,7 @@ export function classifyMessageParts(
     }
 
     if (responseAccum.trim()) {
-      const c = stripThinkSections(responseAccum)
-      if (c) {
-        if (isErrorText(c)) {
-          return [
-            {
-              kind: "error",
-              key: `${message.id}:error:0`,
-              text: formatErrorDisplayText(c),
-            },
-          ]
-        }
-        out.push({
-          kind: "final-response",
-          key: `${message.id}:response:final`,
-          text: c,
-        })
-      }
+      pushThinkAwareResponseBlocks(out, message.id, responseAccum, "final")
     }
 
     return out
@@ -543,25 +594,34 @@ export function classifyMessageParts(
 
     // 处理文本类型的部分：区分最终响应和思考内容
     if (part.type === "text" && "text" in part && part.text) {
+      // reasoning_content 流（DeepSeek/Qwen3 思考增量）：恒定渲染为思考块，
+      // 不受工具位置影响、不并入正文。已是纯思考文本，无需剥 <think> 标签。
+      if (isReasoningTextPart(part)) {
+        flushSkillExplore("end")
+        const reasoning = part.text.trim()
+        if (reasoning) {
+          if (skillExploreOpen) {
+            skillThinkingText += (skillThinkingText ? "\n" : "") + reasoning
+          } else {
+            blocks.push({
+              kind: "thinking",
+              key: `${message.id}:reasoning:${i}`,
+              text: reasoning,
+            })
+          }
+        }
+        continue
+      }
+
       if (isSummarizationTextPart(part)) {
         flushSkillExplore("end")
         if (i > lastToolIndex && responseText) {
-          const respCleaned = stripThinkSections(responseText)
-          if (respCleaned) {
-            if (isErrorText(respCleaned)) {
-              blocks.push({
-                kind: "error",
-                key: `${message.id}:error:flush-${i}`,
-                text: formatErrorDisplayText(respCleaned),
-              })
-            } else {
-              blocks.push({
-                kind: "final-response",
-                key: `${message.id}:response:${i}`,
-                text: respCleaned,
-              })
-            }
-          }
+          pushThinkAwareResponseBlocks(
+            blocks,
+            message.id,
+            responseText,
+            `flush-${i}`
+          )
           responseText = ""
         }
         mergeSummarizationCheckpointBlock(blocks, message.id, i, part.text)
@@ -623,20 +683,7 @@ export function classifyMessageParts(
   flushSkillExplore("end")
 
   if (responseText) {
-    const cleaned = stripThinkSections(responseText)
-    if (isErrorText(cleaned)) {
-      blocks.push({
-        kind: "error",
-        key: `${message.id}:error:final`,
-        text: formatErrorDisplayText(cleaned),
-      })
-    } else {
-      blocks.push({
-        kind: "final-response",
-        key: `${message.id}:response:final`,
-        text: cleaned,
-      })
-    }
+    pushThinkAwareResponseBlocks(blocks, message.id, responseText, "final")
   }
 
   const shouldIncludeFileChanges = options.includeFileChanges === true
