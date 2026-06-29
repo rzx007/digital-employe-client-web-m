@@ -59,6 +59,7 @@ export const BUSINESS_TOOL_NAMES = new Set([
   "install_market_skill",
   "list_builtin_skills",
   "install_builtin_skill",
+  "web_search",
 ])
 
 export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
@@ -418,6 +419,16 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplayDef> = {
       running: "正在获取当前时间...",
       done: "当前时间已获取",
       error: "获取失败",
+    },
+  },
+  web_search: {
+    icon: "🌐",
+    label: "联网搜索",
+    verb: "联网搜索",
+    simple: {
+      running: "正在联网搜索...",
+      done: "搜索完成",
+      error: "搜索失败",
     },
   },
   add_workbench_widget: {
