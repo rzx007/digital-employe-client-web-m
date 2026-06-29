@@ -41,6 +41,41 @@ function PasswordInput({
   )
 }
 
+export function slugifyProviderId(source: string): string {
+  const slug = source
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  if (!slug) return "provider"
+  // 后端要求小写字母开头
+  return /^[a-z]/.test(slug) ? slug : `p-${slug}`
+}
+
+export function uniqueProviderId(source: string, taken: string[]): string {
+  const base = slugifyProviderId(source)
+  const set = new Set(taken.map((t) => t.toLowerCase()))
+  if (!set.has(base)) return base
+  let i = 2
+  while (set.has(`${base}-${i}`)) i += 1
+  return `${base}-${i}`
+}
+
+export function hostFromUrl(url: string): string {
+  try {
+    return new URL(url.trim()).host
+  } catch {
+    return ""
+  }
+}
+
+export function splitModelIds(raw: string): string[] {
+  return raw
+    .split(/[\n,，]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 export function AddProviderDialog({
   open,
   onOpenChange,
