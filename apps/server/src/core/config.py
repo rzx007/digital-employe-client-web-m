@@ -196,6 +196,17 @@ def read_agent_serial_mode(default: bool = False) -> bool:
     return _get_kv_bool(_read_config_kv_data(), "AGENT_SERIAL_MODE", default=default)
 
 
+def read_thinking_disabled(default: bool = False) -> bool:
+    """每次从 config_kvs 读取「全局禁用模型思考」开关（设置页热更新，不走 get_settings 缓存）。
+
+    默认关（不禁用=正常思考）。打开后 build_chat_model 会按 provider/model 给请求注入禁用
+    思考参数（见 factory.merge_disable_thinking_extra_body），下一个新会话/新任务生效。
+    """
+    return _get_kv_bool(
+        _read_config_kv_data(), "MODEL_THINKING_DISABLED", default=default
+    )
+
+
 def read_subagent_enabled(default: bool = True) -> bool:
     """每次从 config_kvs 读取「并行子任务总开关」（设置页热更新，不走 get_settings 缓存）。
 

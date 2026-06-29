@@ -40,7 +40,6 @@ DEFAULT_API_KEY = "not-needed"
 
 # DeepSeek V4 thinking + LangChain tool-call 需回传 reasoning_content，暂不可用
 _DEEPSEEK_V4_PATTERN = re.compile(r"deepseek[-_/ ]?v4", re.IGNORECASE)
-_THINKING_DISABLED_EXTRA_BODY = {"thinking": {"type": "disabled"}}
 
 
 def is_deepseek_v4_model(model_name: str | None) -> bool:
@@ -49,14 +48,40 @@ def is_deepseek_v4_model(model_name: str | None) -> bool:
     return bool(_DEEPSEEK_V4_PATTERN.search(str(model_name).strip()))
 
 
-def _merge_deepseek_v4_extra_body(
-    model_name: str, extra_kwargs: dict[str, Any]
+def _uses_thinking_key_disable(model_name: str | None, provider_id: str | None) -> bool:
+    """DeepSeek 与智谱 GLM 走 OpenAI 兼容的 thinking:{type:disabled}；其余走 enable_thinking。"""
+    name = (model_name or "").strip().lower()
+    pid = (provider_id or "").strip().lower()
+    return "deepseek" in name or pid in ("deepseek", "zhipu") or name.startswith("glm")
+
+
+def merge_disable_thinking_extra_body(
+    model_name: str | None,
+    provider_id: str | None,
+    extra_kwargs: dict[str, Any],
+    *,
+    user_disabled: bool,
 ) -> dict[str, Any]:
-    if not is_deepseek_v4_model(model_name):
+    """按需向 extra_body 注入「禁用思考」参数。
+
+    - DeepSeek V4：永远禁用（thinking+工具调用冲突的硬约束，与开关无关）。
+    - user_disabled=True（用户在模型设置里开了总开关）：对当前 provider/model 追加禁用参数。
+      DeepSeek/GLM → thinking:{type:disabled}；其余(Qwen3/本地/自定义) → enable_thinking=False
+      并同时塞 chat_template_kwargs.enable_thinking=False（覆盖 DashScope 顶层 / vLLM·llama.cpp 模板两种读法）。
+    - 既不禁用又非 V4：原样返回，不动。
+    """
+    must_disable = user_disabled or is_deepseek_v4_model(model_name)
+    if not must_disable:
         return extra_kwargs
     merged = dict(extra_kwargs)
     extra_body = dict(merged.get("extra_body") or {})
-    extra_body.update(_THINKING_DISABLED_EXTRA_BODY)
+    if _uses_thinking_key_disable(model_name, provider_id):
+        extra_body["thinking"] = {"type": "disabled"}
+    else:
+        extra_body["enable_thinking"] = False
+        ctk = dict(extra_body.get("chat_template_kwargs") or {})
+        ctk["enable_thinking"] = False
+        extra_body["chat_template_kwargs"] = ctk
     merged["extra_body"] = extra_body
     return merged
 
@@ -119,8 +144,16 @@ def build_chat_model(
     resolved_key = api_key if api_key is not None else settings.api_key
     resolved_key = (resolved_key or "").strip() or DEFAULT_API_KEY
     resolved_base = _resolve_base_url(settings, base_url)
-    llm_kwargs = _merge_deepseek_v4_extra_body(resolved_model, dict(extra_kwargs))
     provider_id = settings.llm_provider or resolve_provider_id(resolved_base)
+    # 全局「禁用思考」开关：每次热读 config_kvs（设置页改完下个新会话即生效，不走 get_settings 缓存）。
+    from src.core.config import read_thinking_disabled
+
+    llm_kwargs = merge_disable_thinking_extra_body(
+        resolved_model,
+        provider_id,
+        dict(extra_kwargs),
+        user_disabled=read_thinking_disabled(),
+    )
     cache_strategy = build_prompt_cache_strategy(
         base_url=resolved_base,
         provider_id=provider_id,
