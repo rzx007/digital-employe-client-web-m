@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react"
 import { decryptPwd } from "@/lib/password-sm"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
+import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
+import { Checkbox } from "@workspace/ui/components/checkbox"
+import { cn } from "@workspace/ui/lib/utils"
 import {
   IconEye,
   IconEyeOff,
@@ -9,7 +14,7 @@ import {
   IconX,
 } from "@tabler/icons-react"
 import { motion, AnimatePresence } from "motion/react"
-import logoImage from "@/assets/logo1.png"
+import logoImage from "@/assets/logo.png"
 import feishuIcon from "@/assets/feishu.svg"
 import { useAuthStore } from "@/stores/auth-store"
 import type { LoginUser } from "@/api/types"
@@ -30,31 +35,14 @@ export const Route = createFileRoute("/login")({
 
 type LoginView = "login" | "endpoint" | "changePassword"
 
-/* 方案A · 浅色精致版 —— 品牌靛蓝取自全局 --primary token */
-const PRIMARY = "oklch(0.488 0.243 264.376)"
-const HERO_BG =
-  "linear-gradient(135deg, oklch(0.488 0.243 264.376) 0%, oklch(0.52 0.225 264) 55%, oklch(0.57 0.2 264) 100%)"
-const BTN_BG =
-  "linear-gradient(135deg, oklch(0.488 0.243 264.376), oklch(0.55 0.215 264))"
+/* 登录窗内表单字段统一尺寸(基于 @workspace/ui 组件的 className 覆写) */
+const FIELD_CLASS = "h-10 rounded-lg text-sm"
+const LABEL_CLASS = "mb-2 text-[13px] font-semibold text-foreground"
 
-/* 输入框聚焦 / 占位符 + 主按钮微交互。作用域以 .lgn- 前缀隔离,不污染全局。 */
-const SCOPED_CSS = `
-.lgn-field::placeholder{color:#A8AEC2}
-.lgn-field:focus{border-color:${PRIMARY};background:#fff;box-shadow:0 0 0 3px oklch(0.488 0.243 264.376 / 0.14)}
-.lgn-field:disabled{opacity:.6;cursor:not-allowed}
-.lgn-primary{transition:transform .12s ease,box-shadow .12s ease,opacity .12s ease}
-.lgn-primary:hover:not(:disabled){transform:translateY(-1px)}
-.lgn-primary:active:not(:disabled){transform:translateY(0)}
-.lgn-primary:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
-.lgn-icon-btn{transition:background .15s ease,border-color .15s ease}
-@media (prefers-reduced-motion: reduce){
-  .lgn-primary{transition:none}
-  .lgn-primary:hover:not(:disabled){transform:none}
-}
-`
-
-const HERO_COPY: Record<LoginView, { title: string; subtitle: string }> = {
-  login: { title: "欢迎回来", subtitle: "登录以继续使用数字员工" },
+const SUBVIEW_COPY: Record<
+  Exclude<LoginView, "login">,
+  { title: string; subtitle: string }
+> = {
   endpoint: { title: "通信设置", subtitle: "配置后端服务通讯地址" },
   changePassword: { title: "修改密码", subtitle: "密码已过期，请设置新密码" },
 }
@@ -207,279 +195,140 @@ function LoginPage() {
     return () => window.removeEventListener("message", handler)
   }, [])
 
-  const hero = HERO_COPY[currentView]
-
   return (
     <div
-      className={
+      className={cn(
+        "relative flex w-screen overflow-hidden",
         inElectron
-          ? "relative flex h-screen w-screen flex-col overflow-hidden"
-          : "relative flex min-h-screen w-screen items-center justify-center overflow-hidden px-4 py-10"
-      }
-      style={{
-        background: inElectron
-          ? "#FFFFFF"
-          : "radial-gradient(120% 80% at 50% -10%, #E9EEFC 0%, rgba(233,238,252,0) 60%), linear-gradient(180deg, #F4F6FD 0%, #FBFCFE 100%)",
-        ...dragStyle(inElectron),
-      }}
+          ? "h-screen flex-col bg-background"
+          : "min-h-screen items-center justify-center bg-muted/40 px-4 py-10"
+      )}
+      style={dragStyle(inElectron)}
     >
-      <style>{SCOPED_CSS}</style>
-
       <div
-        className="flex w-full flex-col overflow-hidden"
-        style={{
-          background: "#FFFFFF",
-          fontFamily:
-            "'Raleway Variable', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif",
-          ...(inElectron
-            ? { height: "100%", borderRadius: 0, boxShadow: "none" }
-            : {
-              maxWidth: 360,
-              borderRadius: 18,
-              boxShadow: "0 24px 60px -20px rgba(40,52,120,0.28)",
-            }),
-          ...noDrag,
-        }}
+        className={cn(
+          "flex w-full flex-col",
+          inElectron
+            ? "h-full bg-background"
+            : "max-w-[360px] rounded-2xl border border-border bg-card shadow-sm"
+        )}
+        style={noDrag}
       >
-        {/* ── Hero ── */}
+        {/* 顶栏:窗口控制(Electron 专属) + 拖拽手柄 */}
         <div
-          className="relative shrink-0 overflow-hidden"
-          style={{
-            padding: "18px 24px 22px",
-            background: HERO_BG,
-            ...dragStyle(inElectron),
-          }}
+          className="flex h-11 shrink-0 items-center justify-between px-3"
+          style={dragStyle(inElectron)}
         >
-          {/* 品牌微光装饰(替换方案A的条纹占位,贴合"克制专业") */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute"
-            style={{
-              right: -34,
-              top: -30,
-              width: 168,
-              height: 168,
-              borderRadius: 28,
-              transform: "rotate(8deg)",
-              background:
-                "radial-gradient(120% 120% at 30% 20%, rgba(255,255,255,0.22), rgba(255,255,255,0) 62%)",
-              border: "1px solid rgba(255,255,255,0.12)",
-            }}
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute"
-            style={{
-              right: 18,
-              top: 22,
-              opacity: 0.5,
-              transform: "rotate(8deg)",
-            }}
-          >
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M2 14c3.5-6 6.5-6 10 0s6.5 6 10 0"
-                stroke="rgba(255,255,255,0.55)"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-              <path
-                d="M2 9c3.5-6 6.5-6 10 0s6.5 6 10 0"
-                stroke="rgba(255,255,255,0.28)"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
-
-          {/* 顶栏:logo + 标题 + 窗口控制 */}
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div
-                className="flex items-center justify-center"
-
-              >
-                <img
-                  src={logoImage}
-                  alt="数字员工"
-                  style={{ width: 20, height: 20, objectFit: "contain" }}
-                />
-              </div>
-              <span
-                style={{
-                  color: "#fff",
-                  fontWeight: 600,
-                  fontSize: 16,
-                  letterSpacing: "0.02em",
-                }}
-              >
-                数字员工
-              </span>
-            </div>
-
-            {inElectron && (
-              <div className="flex items-center gap-1.5" style={noDrag}>
-                <button
-                  type="button"
-                  title="通信设置"
-                  onClick={() =>
-                    setCurrentView(
-                      currentView === "endpoint" ? "login" : "endpoint"
-                    )
-                  }
-                  className="lgn-icon-btn flex items-center justify-center"
-                  style={{
-                    width: 28,
-                    height: 28,
-                    border: "none",
-                    borderRadius: 8,
-                    background: "rgba(255,255,255,0.16)",
-                    color: "#fff",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) =>
-                  (e.currentTarget.style.background =
-                    "rgba(255,255,255,0.28)")
-                  }
-                  onMouseLeave={(e) =>
-                  (e.currentTarget.style.background =
-                    "rgba(255,255,255,0.16)")
-                  }
-                >
-                  <IconSettings size={15} />
-                </button>
-                <button
-                  type="button"
-                  title="关闭"
-                  onClick={() => void withElectronApi((api) => api.quitApp())}
-                  className="lgn-icon-btn flex items-center justify-center"
-                  style={{
-                    width: 28,
-                    height: 28,
-                    border: "none",
-                    borderRadius: 8,
-                    background: "rgba(255,255,255,0.16)",
-                    color: "#fff",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) =>
-                  (e.currentTarget.style.background =
-                    "rgba(255,255,255,0.28)")
-                  }
-                  onMouseLeave={(e) =>
-                  (e.currentTarget.style.background =
-                    "rgba(255,255,255,0.16)")
-                  }
-                >
-                  <IconX size={15} />
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* 标题区(随视图变化) */}
-          <div className="relative" style={{ marginTop: 22 }}>
-            <div
-              style={{
-                color: "#fff",
-                fontSize: 24,
-                fontWeight: 700,
-                letterSpacing: "0.01em",
-              }}
+          {inElectron ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title="通信设置"
+              className="size-8 text-muted-foreground"
+              style={noDrag}
+              onClick={() =>
+                setCurrentView(
+                  currentView === "endpoint" ? "login" : "endpoint"
+                )
+              }
             >
-              {hero.title}
-            </div>
-            <div
-              style={{
-                color: "rgba(255,255,255,0.82)",
-                fontSize: 12.5,
-                marginTop: 4,
-              }}
+              <IconSettings className="size-[18px]" />
+            </Button>
+          ) : (
+            <span />
+          )}
+
+          {inElectron && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title="关闭"
+              className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              style={noDrag}
+              onClick={() => void withElectronApi((api) => api.quitApp())}
             >
-              {hero.subtitle}
-            </div>
-          </div>
+              <IconX className="size-[18px]" />
+            </Button>
+          )}
         </div>
 
-        {/* ── Body ── */}
+        {/* 主体 */}
         <div
-          style={{
-            padding: 24,
-            ...(inElectron ? { flex: 1, overflowY: "auto" } : {}),
-            ...noDrag,
-          }}
+          className={cn(
+            "flex flex-1 flex-col px-7 pb-6",
+            inElectron && "overflow-y-auto"
+          )}
+          style={noDrag}
         >
           {currentView === "endpoint" ? (
-            <EndpointConfig
-              key="endpoint"
-              isElectron={inElectron}
-              onCancel={() => setCurrentView("login")}
-              onSaved={handleEndpointSaved}
-            />
+            <SubViewFrame copy={SUBVIEW_COPY.endpoint}>
+              <EndpointConfig
+                isElectron={inElectron}
+                onCancel={() => setCurrentView("login")}
+                onSaved={handleEndpointSaved}
+              />
+            </SubViewFrame>
           ) : (
             <AnimatePresence mode="wait" initial={false}>
               {currentView === "changePassword" ? (
                 <motion.div
                   key="changePassword"
-                  initial={{ x: 240, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -240, opacity: 0 }}
-                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
                 >
-                  <ChangePasswordForm
-                    isElectron={inElectron}
-                    onSuccess={handleChangePasswordSuccess}
-                    onCancel={handleChangePasswordCancel}
-                  />
+                  <SubViewFrame copy={SUBVIEW_COPY.changePassword}>
+                    <ChangePasswordForm
+                      isElectron={inElectron}
+                      onSuccess={handleChangePasswordSuccess}
+                      onCancel={handleChangePasswordCancel}
+                    />
+                  </SubViewFrame>
                 </motion.div>
               ) : (
                 <motion.div
                   key="login"
-                  initial={{ x: 240, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -240, opacity: 0 }}
-                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  className="flex flex-1 flex-col"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
                 >
+                  {/* 品牌 —— 突出 logo 与名称 */}
+                  <div
+                    className="flex flex-col items-center pt-3.5 pb-6"
+                    style={dragStyle(inElectron)}
+                  >
+                    <img
+                      src={logoImage}
+                      alt="数字员工"
+                      className="h-[58px] w-auto object-contain"
+                    />
+                    <div className="mt-4 text-2xl font-bold tracking-[0.06em] text-foreground">
+                      数字员工
+                    </div>
+                    <div className="mt-1.5 text-[11.5px] tracking-[0.34em] text-muted-foreground/70 uppercase">
+                      Digital Employee
+                    </div>
+                  </div>
+
                   {registerSuccessHint && (
-                    <div
-                      className="mb-4 flex items-center gap-2"
-                      style={{
-                        borderRadius: 10,
-                        border: "1px solid rgba(16,185,129,0.28)",
-                        background: "rgba(16,185,129,0.08)",
-                        padding: "8px 12px",
-                        fontSize: 12,
-                        color: "#047857",
-                      }}
-                    >
-                      <span
-                        className="inline-block shrink-0 rounded-full"
-                        style={{
-                          width: 6,
-                          height: 6,
-                          background: "#10b981",
-                        }}
-                      />
+                    <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-200/70 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-400">
+                      <span className="inline-block size-1.5 shrink-0 rounded-full bg-emerald-500" />
                       注册成功，请登录
                     </div>
                   )}
 
                   <form onSubmit={handleSubmit}>
-                    <label
-                      htmlFor="username"
-                      style={{
-                        display: "block",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "#5A6072",
-                        marginBottom: 8,
-                      }}
-                    >
+                    <Label htmlFor="username" className={LABEL_CLASS}>
                       账号
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="username"
-                      className="lgn-field"
+                      className={FIELD_CLASS}
                       type="text"
                       placeholder="请输入你的用户名"
                       value={username}
@@ -487,243 +336,120 @@ function LoginPage() {
                       autoComplete="username"
                       disabled={loading}
                       autoFocus
-                      style={{
-                        width: "100%",
-                        height: 46,
-                        border: "1px solid #E4E7F0",
-                        background: "#F7F8FC",
-                        borderRadius: 11,
-                        padding: "0 14px",
-                        fontSize: 14,
-                        color: "#2A2E3C",
-                        outline: "none",
-                        transition: "all .15s",
-                      }}
                     />
 
-                    <label
+                    <Label
                       htmlFor="password"
-                      style={{
-                        display: "block",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "#5A6072",
-                        margin: "18px 0 8px",
-                      }}
+                      className={cn(LABEL_CLASS, "mt-4")}
                     >
                       密码
-                    </label>
-                    <div style={{ position: "relative" }}>
-                      <input
+                    </Label>
+                    <div className="relative">
+                      <Input
                         id="password"
-                        className="lgn-field"
+                        className={cn(FIELD_CLASS, "pr-10")}
                         type={showPassword ? "text" : "password"}
                         placeholder="初始密码 Aa123456"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         autoComplete="current-password"
                         disabled={loading}
-                        style={{
-                          width: "100%",
-                          height: 46,
-                          border: "1px solid #E4E7F0",
-                          background: "#F7F8FC",
-                          borderRadius: 11,
-                          padding: "0 44px 0 14px",
-                          fontSize: 14,
-                          color: "#2A2E3C",
-                          outline: "none",
-                          transition: "all .15s",
-                        }}
                       />
-                      <button
+                      <Button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
+                        variant="ghost"
+                        size="icon"
                         tabIndex={-1}
                         disabled={loading}
                         title={showPassword ? "隐藏密码" : "显示密码"}
-                        className="flex items-center justify-center"
-                        style={{
-                          position: "absolute",
-                          right: 6,
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          width: 34,
-                          height: 34,
-                          border: "none",
-                          background: "transparent",
-                          color: "#8A8F9E",
-                          cursor: "pointer",
-                        }}
+                        className="absolute top-1/2 right-1 size-8 -translate-y-1/2 text-muted-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
                       >
                         {showPassword ? (
-                          <IconEyeOff size={18} />
+                          <IconEyeOff className="size-[18px]" />
                         ) : (
-                          <IconEye size={18} />
+                          <IconEye className="size-[18px]" />
                         )}
-                      </button>
+                      </Button>
                     </div>
 
-                    <div
-                      className="flex items-center justify-between"
-                      style={{ marginTop: 16 }}
-                    >
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={rememberMe}
-                        onClick={() => setRememberMe(!rememberMe)}
-                        disabled={loading}
-                        className="flex items-center gap-2 select-none"
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          padding: 0,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span
-                          className="flex items-center justify-center"
-                          style={{
-                            width: 17,
-                            height: 17,
-                            borderRadius: 5,
-                            border: `1.5px solid ${rememberMe ? PRIMARY : "#CFD3E0"}`,
-                            background: rememberMe ? PRIMARY : "#fff",
-                            transition: "all .12s",
-                          }}
+                    <div className="mt-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="remember"
+                          checked={rememberMe}
+                          onCheckedChange={(checked) =>
+                            setRememberMe(checked === true)
+                          }
+                          disabled={loading}
+                        />
+                        <Label
+                          htmlFor="remember"
+                          className="cursor-pointer text-[13px] font-normal text-muted-foreground"
                         >
-                          {rememberMe && (
-                            <svg
-                              width="11"
-                              height="11"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="#fff"
-                              strokeWidth="3.2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M4 12.5l5 5L20 6" />
-                            </svg>
-                          )}
-                        </span>
-                        <span style={{ fontSize: 13, color: "#5A6072" }}>
                           记住密码
-                        </span>
-                      </button>
+                        </Label>
+                      </div>
 
-                      <div style={{ fontSize: 13, color: "#9298AB" }}>
+                      <div className="flex items-center text-[13px] text-muted-foreground">
                         还没有账号？
-                        <button
+                        <Button
                           type="button"
+                          variant="link"
+                          className="h-auto p-0 text-[13px] font-semibold"
                           onClick={handleOpenRegister}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            padding: 0,
-                            marginLeft: 2,
-                            color: PRIMARY,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
                         >
                           去注册
-                        </button>
+                        </Button>
                       </div>
                     </div>
 
-                    <button
+                    <Button
                       type="submit"
-                      className="lgn-primary flex items-center justify-center gap-2"
+                      className="mt-[18px] h-10 w-full rounded-lg text-sm"
                       disabled={loading || !username || !password}
-                      style={{
-                        width: "100%",
-                        height: 48,
-                        marginTop: 22,
-                        border: "none",
-                        borderRadius: 12,
-                        background: BTN_BG,
-                        color: "#fff",
-                        fontSize: 15,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        boxShadow:
-                          "0 12px 24px -8px oklch(0.488 0.243 264.376 / 0.55)",
-                      }}
                     >
                       {loading && (
-                        <IconLoader2 size={16} className="animate-spin" />
+                        <IconLoader2 className="size-4 animate-spin" />
                       )}
                       {loading ? "登录中..." : "登录"}
-                    </button>
+                    </Button>
                   </form>
 
                   {error && (
-                    <p
-                      style={{
-                        marginTop: 10,
-                        fontSize: 12.5,
-                        color: "oklch(0.577 0.245 27.325)",
-                      }}
-                    >
+                    <p className="mt-2.5 text-[12.5px] text-destructive">
                       {error}
                     </p>
                   )}
 
-                  {/* 分割线 */}
-                  <div
-                    className="flex items-center"
-                    style={{ gap: 12, margin: "24px 0 16px" }}
-                  >
-                    <div
-                      style={{ flex: 1, height: 1, background: "#ECEEF5" }}
-                    />
-                    <span style={{ fontSize: 12, color: "#A8AEC2" }}>
+                  {/* 其他登录方式 */}
+                  <div className="my-5 flex items-center gap-3">
+                    <div className="h-px flex-1 bg-border" />
+                    <span className="text-xs text-muted-foreground">
                       其他登录方式
                     </span>
-                    <div
-                      style={{ flex: 1, height: 1, background: "#ECEEF5" }}
-                    />
+                    <div className="h-px flex-1 bg-border" />
                   </div>
 
                   <div className="flex justify-center">
-                    <button
+                    <Button
                       type="button"
-                      onClick={handleFeishuLogin}
-                      disabled={loading}
+                      variant="outline"
+                      size="icon"
                       title="飞书登录"
-                      className="lgn-icon-btn flex items-center justify-center"
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: "50%",
-                        border: "1px solid #E4E7F0",
-                        background: "#F7F8FC",
-                        cursor: loading ? "not-allowed" : "pointer",
-                        opacity: loading ? 0.5 : 1,
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "#fff"
-                        e.currentTarget.style.borderColor = PRIMARY
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "#F7F8FC"
-                        e.currentTarget.style.borderColor = "#E4E7F0"
-                      }}
+                      className="size-9 rounded-full"
+                      disabled={loading}
+                      onClick={handleFeishuLogin}
                     >
-                      <img src={feishuIcon} alt="飞书" width={20} height={20} />
-                    </button>
+                      <img
+                        src={feishuIcon}
+                        alt="飞书"
+                        className="size-[19px]"
+                      />
+                    </Button>
                   </div>
 
-                  <div
-                    style={{
-                      textAlign: "center",
-                      fontSize: 11.5,
-                      color: "#B4B9C7",
-                      marginTop: 20,
-                    }}
-                  >
+                  <div className="mt-auto pt-6 text-center text-[11px] text-muted-foreground/60">
                     上海博般技术数据有限公司
                   </div>
                 </motion.div>
@@ -732,6 +458,37 @@ function LoginPage() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/* 子视图(通信设置 / 修改密码)统一外壳:紧凑品牌 + 标题 */
+function SubViewFrame({
+  copy,
+  children,
+}: {
+  copy: { title: string; subtitle: string }
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 pt-1.5 pb-4">
+        <img
+          src={logoImage}
+          alt="数字员工"
+          className="h-[22px] w-auto object-contain"
+        />
+        <span className="text-[15px] font-bold tracking-[0.04em] text-foreground">
+          数字员工
+        </span>
+      </div>
+      <div className="mb-4">
+        <div className="text-lg font-bold text-foreground">{copy.title}</div>
+        <div className="mt-1 text-[12.5px] text-muted-foreground">
+          {copy.subtitle}
+        </div>
+      </div>
+      {children}
     </div>
   )
 }

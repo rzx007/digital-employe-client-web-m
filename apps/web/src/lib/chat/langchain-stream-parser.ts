@@ -6,7 +6,7 @@
  *
  * 与 UI 的衔接：
  * - `message-classifier` 将 parts 分为 thinking / tool-group / final-response 等
- * - `mergeRoutineToolGroups` 合并相邻 routine 工具行
+ * - `mergeConsecutiveToolGroups` 合并相邻工具行（不分类型）
  * - `collapseWriteTodosBlocks` 将同条消息内多次 `write_todos` 收成单块 `todo-plan`
  * - `ToolDetailPanel` + `ToolOutputViewport` 展示 stdout / CodeHighlight（StickToBottom + 虚拟化）
  *
@@ -1417,7 +1417,7 @@ function hasAnyToolDelta(chunk: AIMessageChunk): boolean {
  *   UIMessageChunk[]
  *        --> useChat 组装 UIMessage.parts (tool-* / text)
  *        --> classifyMessageParts
- *              --> mergeRoutineToolGroups (shell_execute / grep / ls … 紧凑组)
+ *              --> mergeConsecutiveToolGroups (相邻工具不分类型合并成紧凑组)
  *              --> collapseWriteTodosBlocks (多次 write_todos -> 单块 todo-plan)
  *        --> RenderClassifiedBlocks
  *              --> TodoPlanBlock      (任务规划，原位更新 + 可选 sticky)
