@@ -82,3 +82,58 @@ class ExaBackend:
                 return resp.status_code == 200
         except Exception:
             return False
+
+
+_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+
+def _default_scrape_client_factory() -> httpx.AsyncClient:
+    return create_http_client(timeout_connect=10.0, timeout_read=10.0)
+
+
+class DomesticBackend:
+    name = "domestic"
+
+    def __init__(self, client_factory: ClientFactory | None = None):
+        self._client_factory = client_factory or _default_scrape_client_factory
+
+    async def _fetch(self, client: httpx.AsyncClient, url: str, params: dict) -> str:
+        resp = await client.get(
+            url, params=params, headers={"User-Agent": _UA}, follow_redirects=True
+        )
+        resp.raise_for_status()
+        return resp.text
+
+    async def search(self, query: str, num_results: int) -> SearchOutcome:
+        async with self._client_factory() as client:
+            results: list[SearchResult] = []
+            try:
+                html = await self._fetch(
+                    client, "https://cn.bing.com/search", {"q": query}
+                )
+                results = parse_bing_html(html, num_results)
+            except Exception:
+                results = []
+            if not results:
+                try:
+                    html = await self._fetch(
+                        client, "https://www.sogou.com/web", {"query": query}
+                    )
+                    results = parse_sogou_html(html, num_results)
+                except Exception:
+                    results = []
+        if not results:
+            raise ValueError("国内后端无结果（必应/搜狗均空或被拦）")
+        return SearchOutcome(backend=self.name, text=None, results=results)
+
+    async def healthcheck(self) -> bool:
+        try:
+            async with self._client_factory() as client:
+                resp = await client.get(
+                    "https://cn.bing.com/search",
+                    params={"q": "ping"},
+                    headers={"User-Agent": _UA},
+                )
+                return resp.status_code == 200
+        except Exception:
+            return False
