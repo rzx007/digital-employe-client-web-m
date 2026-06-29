@@ -88,6 +88,15 @@ Proma 基于 shadcn/ui + Tailwind **v3**（令牌存裸 HSL 通道，靠 `tailwi
 预览卡结构（一个小组件 `SkinPreviewCard`）：在卡片内用一个 `data-theme=<id>` + 对应 `.light/.dark` 的隔离作用域（局部容器写属性，而非全局 html），渲染一小段假 UI——左侧细侧栏条 + 右侧 1-2 张卡 + 一个主色按钮 + 几行占位文字，全部吃该皮肤令牌。下方放皮肤中文名 + 选中打勾。
 
 > 注意：`data-theme` 选择器现写在 `:root[...]` 上（全局）。为了让预览卡能在**局部**渲染任意皮肤，皮肤令牌块需**同时**支持局部作用域选择器。方案：皮肤令牌块选择器写成 `[data-theme="x"]`（去掉 `:root` 前缀也能命中 html，且能命中预览卡的局部容器）。但去掉 `:root` 会降低特异性到 (0,1,0)，与 `.dark` 平手 → 平手时后写者赢。**确保皮肤块在 CSS 中位于 `.dark` 之后**即可稳定取胜；或保留 `:root[data-theme=x]` 给全局、另写一份 `[data-theme=x]`（不带 :root）给预览容器。**采用前者**（统一 `[data-theme=x]`，靠源码顺序保证在 `.dark`/`.light` 之后），更简洁。该顺序约束在 CSS 里加注释固化。
+>
+> 因要删的旧块里有 `:root[data-brand-theme="green"].dark`（特异性 (0,3,0)），实现时**必须确认 green/teal 两组块连同其 `.dark` 变体彻底删干净**，否则会有 ≥(0,2,0) 的残留规则反压过新的 (0,1,0) 皮肤块。
+
+**预览卡的 `dark:` 变体陷阱（必须遵守的约束）**：CSS 变量的局部作用域是对称的（`[data-theme]` 写在局部容器，`--background` 等令牌在局部正确解析），但 `dark:` 工具类**不对称**——它编译成 `&:is(.dark *)`，只要**任意祖先**有 `.dark` 就命中，且局部 `.light` 类**无法"反注销"**一个祖先的 `.dark`。后果：
+
+- 暗皮肤预览卡渲染在全局亮色 app 里 → OK（局部 `.dark` 引入了所需祖先）。
+- **亮皮肤预览卡渲染在全局暗色 app 里 → 卡内任何 `dark:` 工具类会误触发**（全局 `<html>.dark` 仍满足 `:is(.dark *)`，局部 `.light` 压不掉）。
+
+**约束**：`SkinPreviewCard` 的迷你 UI **只用语义令牌工具类**（`bg-background`/`bg-card`/`text-foreground`/`bg-primary`…），**禁止任何 `dark:` 变体**。这样两个方向都正确。手测矩阵需含"亮皮肤卡 @ 全局暗"与"暗皮肤卡 @ 全局亮"两格。
 
 ### 4. 状态层与 plumbing 改造
 
@@ -108,13 +117,14 @@ export function clearSkin(): void
   - 选皮肤：`applySkin` 直接 set `.light/.dark` 为皮肤基调（覆盖 ThemeProvider 当前态，但不改 ThemeProvider 存的 `theme` 值）。
   - 选基础模式（浅/深/系统）：先 `clearSkin()` 再让 ThemeProvider 应用模式。
   - 二者通过同一套广播/storage 事件保持多窗口一致。
+- **system 模式监听不能踩掉皮肤基调**：ThemeProvider 的 `applyTheme` 在 `prefers-color-scheme` 变化时会 `classList.remove("light","dark")` 再按 system 重设。若此时正挂着皮肤，会把皮肤强制的 `.light/.dark` 抹掉。约束：皮肤激活时（`getStoredSkin()` 非空），ThemeProvider 的 system 监听**跳过 class 重写**（皮肤基调优先）；或皮肤应用顺序保证在系统监听回调之后再 reassert。实现期二选一并加注释固化。
 - **首屏防 FOUC**：`main.tsx` 把 `applyBrandTheme(getStoredBrandTheme(brand.defaultTheme))` 换成 `applySkin(getStoredSkin(brand.defaultTheme))`——首屏即决定皮肤。
 
 ### 5. 白标 `defaultTheme` 向后兼容（关键）
 
 - `apps/web/branding/guowang/brand.json` 的 `"defaultTheme": "green"` → 改为 `"defaultTheme": "guowang-green"`（国网包开机即进国网绿皮肤）。
 - `getStoredSkin(fallback)` 的 fallback 接收 `brand.defaultTheme`：用户没选过皮肤时回退到品牌包指定皮肤。
-- 旧值兼容：若 localStorage 里残留旧 `brand-theme` 值（`green`/`teal`/`default`）或 brand.json 仍写 `green`，做一次性映射：`green → guowang-green`、`teal → 无皮肤（青蓝已删，回靛蓝默认）`、`default → 无皮肤`。映射放在 `getStoredSkin` 里。
+- 旧值兼容：若 localStorage 里残留旧 `brand-theme` 值（`green`/`teal`/`default`）或 brand.json 仍写 `green`，做一次性映射：`green → guowang-green`、`teal → 无皮肤（青蓝已删，回靛蓝默认）`、`default → 无皮肤`。映射放在 `getStoredSkin` 里。映射命中后**把新值写入 `appearance-skin` 并删除旧 `brand-theme` key**，避免旧 key 永久残留。
 - 同步更新文档：`docs/field-deployment-manual.md`、`apps/web/branding/README.md` 里 `defaultTheme` 的取值说明（从"`default`/`green`/`teal`"改为皮肤 id 列表）。
 
 ### 6. 硬编码背景修正
