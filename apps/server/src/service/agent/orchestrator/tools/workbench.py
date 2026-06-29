@@ -53,8 +53,13 @@ def add_workbench_widget(
       task_execution_stats(今日成功/失败/进行中/成功率,配 kpi)、
       employee_overview(在职员工/近7天新增,配 kpi)、
       plan_progress(编排计划 待确认/进行中/已完成/已取消,配 kpi)、
-      skill_usage(技能总数/内置/工作区,配 kpi)。
+      skill_usage(技能总数/内置/工作区,配 kpi)、
+      workspace_file(读工作空间内 JSON 文件当数据,配任意 type)。
       绑定示例: data_source={"metricId":"task_execution_stats","refreshSec":30}。
+      workspace_file 用法: data_source={"metricId":"workspace_file",
+        "params":{"path":"wc-today.json"},"refreshSec":600}——path 相对工作空间根(可子目录),
+        文件内容须是该 widget type 的 data 形状(如 table→{columns,rows});适合"定时任务写
+        文件→看板自动刷"的场景,widget 只建一次、数据与展示解耦。
 
     内联 data 必须严格按对应 type 的形状(否则前端渲染为空):
       kpi:      {"items": [{"label": "本月销售", "value": 1234, "unit": "¥",
