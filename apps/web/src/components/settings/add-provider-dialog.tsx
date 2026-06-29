@@ -1,5 +1,5 @@
 import * as React from "react"
-import { IconChevronRight, IconPlus } from "@tabler/icons-react"
+import { IconChevronRight, IconPlus, IconX } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -41,15 +41,52 @@ function PasswordInput({
   )
 }
 
+export function slugifyProviderId(source: string): string {
+  const slug = source
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  if (!slug) return "provider"
+  // 后端要求小写字母开头
+  return /^[a-z]/.test(slug) ? slug : `p-${slug}`
+}
+
+export function uniqueProviderId(source: string, taken: string[]): string {
+  const base = slugifyProviderId(source)
+  const set = new Set(taken.map((t) => t.toLowerCase()))
+  if (!set.has(base)) return base
+  let i = 2
+  while (set.has(`${base}-${i}`)) i += 1
+  return `${base}-${i}`
+}
+
+export function hostFromUrl(url: string): string {
+  try {
+    return new URL(url.trim()).host
+  } catch {
+    return ""
+  }
+}
+
+export function splitModelIds(raw: string): string[] {
+  return raw
+    .split(/[\n,，]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 export function AddProviderDialog({
   open,
   onOpenChange,
   availableCatalogIds,
+  existingProviderIds = [],
   onAdded,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   availableCatalogIds: string[]
+  existingProviderIds?: string[]
   onAdded: (registry: LlmRegistry) => void
 }) {
   const [step, setStep] = React.useState<Step>("pick")
@@ -57,7 +94,6 @@ export function AddProviderDialog({
   const [selectedCatalogId, setSelectedCatalogId] = React.useState("")
   const [apiKey, setApiKey] = React.useState("")
   const [models, setModels] = React.useState<RegistryModelInput[]>([])
-  const [customId, setCustomId] = React.useState("")
   const [customName, setCustomName] = React.useState("")
   const [customUrl, setCustomUrl] = React.useState("")
   const [customApiKey, setCustomApiKey] = React.useState("")
@@ -70,7 +106,6 @@ export function AddProviderDialog({
       setSelectedCatalogId("")
       setApiKey("")
       setModels([])
-      setCustomId("")
       setCustomName("")
       setCustomUrl("")
       setCustomApiKey("")
@@ -175,26 +210,30 @@ export function AddProviderDialog({
   }
 
   const handleSubmitCustom = async () => {
-    if (!customId.trim() || !customName.trim() || !customUrl.trim()) {
-      toast.error("请填写供应商 ID、名称与 API 地址")
+    if (!customUrl.trim()) {
+      toast.error("请填写 API 地址")
       return
     }
     const normalized = models
-      .map((m) => ({
-        id: m.id.trim(),
-        display_name: m.display_name?.trim() || null,
-      }))
+      .map((m) => ({ id: m.id.trim() }))
       .filter((m) => m.id)
     if (normalized.length === 0) {
       toast.error("至少需要一个模型")
       return
     }
+    const host = hostFromUrl(customUrl)
+    const displayName = customName.trim() || host || "自定义供应商"
+    const providerId = uniqueProviderId(
+      customName.trim() || host || "provider",
+      // "custom" 是后端保留 ID，纳入去重避免派生出无法提交的 ID
+      [...existingProviderIds, "custom"]
+    )
     setSubmitting(true)
     try {
       const next = await addLlmProvider({
         source: "custom",
-        provider_id: customId.trim().toLowerCase(),
-        display_name: customName.trim(),
+        provider_id: providerId,
+        display_name: displayName,
         base_url: customUrl.trim(),
         api_key: customApiKey.trim(),
         models: normalized,
@@ -218,6 +257,32 @@ export function AddProviderDialog({
     setModels((prev) =>
       prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
     )
+  }
+
+  const handleModelPaste = (
+    e: React.ClipboardEvent<HTMLInputElement>,
+    index: number
+  ) => {
+    const text = e.clipboardData.getData("text")
+    const ids = splitModelIds(text)
+    // 单个 token 走默认粘贴
+    if (ids.length <= 1) return
+    e.preventDefault()
+    setModels((prev) => {
+      const next = [...prev]
+      // 第一个填入当前行，其余追加
+      next[index] = { ...next[index], id: ids[0] }
+      for (const id of ids.slice(1)) next.push({ id })
+      // 去重（按 trim 后的 id），保留首次出现，丢弃空 id
+      const seen = new Set<string>()
+      return next.filter((m) => {
+        const mid = m.id.trim()
+        if (!mid) return true
+        if (seen.has(mid)) return false
+        seen.add(mid)
+        return true
+      })
+    })
   }
 
   return (
@@ -273,7 +338,7 @@ export function AddProviderDialog({
                 type="button"
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-muted/60"
                 onClick={() => {
-                  setModels([{ id: "", display_name: "" }])
+                  setModels([{ id: "" }])
                   setStep("custom")
                 }}
               >
@@ -329,24 +394,6 @@ export function AddProviderDialog({
 
           {step === "custom" && (
             <div className="flex flex-col gap-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <Label>供应商 ID</Label>
-                  <Input
-                    className="font-mono text-sm"
-                    placeholder="my-provider"
-                    value={customId}
-                    onChange={(e) => setCustomId(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label>显示名称</Label>
-                  <Input
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                  />
-                </div>
-              </div>
               <div className="flex flex-col gap-2">
                 <Label>API 地址</Label>
                 <Input
@@ -364,54 +411,57 @@ export function AddProviderDialog({
                 />
               </div>
               <div className="flex flex-col gap-2">
+                <Label>显示名称（可选）</Label>
+                <Input
+                  placeholder="留空则用域名"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
-                  <Label>模型列表</Label>
+                  <Label>模型</Label>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2"
-                    onClick={() =>
-                      setModels((prev) => [...prev, { id: "", display_name: "" }])
-                    }
+                    onClick={() => setModels((prev) => [...prev, { id: "" }])}
                   >
                     <IconPlus className="size-3.5" />
-                    添加
+                    添加模型
                   </Button>
                 </div>
-                <div className="space-y-2 rounded-lg border bg-muted/20 p-2">
+                <div className="flex flex-col gap-2">
                   {models.map((model, index) => (
-                    <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <div key={index} className="flex items-center gap-2">
                       <Input
                         className="font-mono text-sm"
                         placeholder="model-id"
                         value={model.id}
+                        onPaste={(e) => handleModelPaste(e, index)}
                         onChange={(e) =>
                           updateModelRow(index, "id", e.target.value)
-                        }
-                      />
-                      <Input
-                        placeholder="显示名称"
-                        value={model.display_name ?? ""}
-                        onChange={(e) =>
-                          updateModelRow(index, "display_name", e.target.value)
                         }
                       />
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground"
+                        size="icon"
+                        className="size-9 shrink-0 text-muted-foreground"
                         disabled={models.length <= 1}
                         onClick={() =>
                           setModels((prev) => prev.filter((_, i) => i !== index))
                         }
                       >
-                        移除
+                        <IconX className="size-4" />
                       </Button>
                     </div>
                   ))}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  可一次粘贴多个，用逗号或换行分隔
+                </p>
               </div>
             </div>
           )}
