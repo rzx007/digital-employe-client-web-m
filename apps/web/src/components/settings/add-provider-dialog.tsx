@@ -1,5 +1,5 @@
 import * as React from "react"
-import { IconChevronRight, IconPlus } from "@tabler/icons-react"
+import { IconChevronRight, IconPlus, IconX } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -257,6 +257,32 @@ export function AddProviderDialog({
     )
   }
 
+  const handleModelPaste = (
+    e: React.ClipboardEvent<HTMLInputElement>,
+    index: number
+  ) => {
+    const text = e.clipboardData.getData("text")
+    const ids = splitModelIds(text)
+    // 单个 token 走默认粘贴
+    if (ids.length <= 1) return
+    e.preventDefault()
+    setModels((prev) => {
+      const next = [...prev]
+      // 第一个填入当前行，其余追加
+      next[index] = { ...next[index], id: ids[0] }
+      for (const id of ids.slice(1)) next.push({ id })
+      // 去重（按 trim 后的 id），保留首次出现，丢弃空 id
+      const seen = new Set<string>()
+      return next.filter((m) => {
+        const mid = m.id.trim()
+        if (!mid) return true
+        if (seen.has(mid)) return false
+        seen.add(mid)
+        return true
+      })
+    })
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
@@ -366,24 +392,6 @@ export function AddProviderDialog({
 
           {step === "custom" && (
             <div className="flex flex-col gap-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <Label>供应商 ID</Label>
-                  <Input
-                    className="font-mono text-sm"
-                    placeholder="my-provider"
-                    value={customId}
-                    onChange={(e) => setCustomId(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label>显示名称</Label>
-                  <Input
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                  />
-                </div>
-              </div>
               <div className="flex flex-col gap-2">
                 <Label>API 地址</Label>
                 <Input
@@ -401,54 +409,57 @@ export function AddProviderDialog({
                 />
               </div>
               <div className="flex flex-col gap-2">
+                <Label>显示名称（可选）</Label>
+                <Input
+                  placeholder="留空则用域名"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
-                  <Label>模型列表</Label>
+                  <Label>模型</Label>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2"
-                    onClick={() =>
-                      setModels((prev) => [...prev, { id: "", display_name: "" }])
-                    }
+                    onClick={() => setModels((prev) => [...prev, { id: "" }])}
                   >
                     <IconPlus className="size-3.5" />
-                    添加
+                    添加模型
                   </Button>
                 </div>
-                <div className="space-y-2 rounded-lg border bg-muted/20 p-2">
+                <div className="flex flex-col gap-2">
                   {models.map((model, index) => (
-                    <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <div key={index} className="flex items-center gap-2">
                       <Input
                         className="font-mono text-sm"
                         placeholder="model-id"
                         value={model.id}
+                        onPaste={(e) => handleModelPaste(e, index)}
                         onChange={(e) =>
                           updateModelRow(index, "id", e.target.value)
-                        }
-                      />
-                      <Input
-                        placeholder="显示名称"
-                        value={model.display_name ?? ""}
-                        onChange={(e) =>
-                          updateModelRow(index, "display_name", e.target.value)
                         }
                       />
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground"
+                        size="icon"
+                        className="size-9 shrink-0 text-muted-foreground"
                         disabled={models.length <= 1}
                         onClick={() =>
                           setModels((prev) => prev.filter((_, i) => i !== index))
                         }
                       >
-                        移除
+                        <IconX className="size-4" />
                       </Button>
                     </div>
                   ))}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  可一次粘贴多个，用逗号或换行分隔
+                </p>
               </div>
             </div>
           )}
