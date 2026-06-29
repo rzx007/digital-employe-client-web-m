@@ -13,14 +13,18 @@ from src.service.agent.web_search.service import WebSearchService
 
 def _build_service() -> WebSearchService:
     cfg = load_web_search_config()
+    order = list(cfg.backends)
+    if cfg.searxng_endpoint and "searxng" not in order:
+        order.append("searxng")
     backends: dict = {}
-    for name in cfg.backends:
+    for name in order:
         if name == "exa":
             backends["exa"] = ExaBackend(endpoint=cfg.exa_endpoint)
         elif name == "domestic":
             backends["domestic"] = DomesticBackend()
         elif name == "searxng" and cfg.searxng_endpoint:
             backends["searxng"] = SearxngBackend(endpoint=cfg.searxng_endpoint)
+    cfg.backends = order
     return WebSearchService(cfg, backends=backends)
 
 
@@ -39,6 +43,8 @@ def create_web_search_tool():
             num_results: 期望结果条数（默认 8）
             fetch_content: 是否抓取前几条正文（默认 True；只要链接/摘要可设 False 更快）
         """
-        return await service.search(query, fetch_content=fetch_content)
+        return await service.search(
+            query, fetch_content=fetch_content, num_results=num_results
+        )
 
     return web_search

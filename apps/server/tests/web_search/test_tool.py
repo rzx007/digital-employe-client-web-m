@@ -10,7 +10,7 @@ def test_create_returns_langchain_tool():
 async def test_tool_invoke_runs_service(monkeypatch):
     import src.service.agent.web_search.tool as toolmod
 
-    async def fake_search(self, query, fetch_content=True):
+    async def fake_search(self, query, fetch_content=True, num_results=None):
         return f"FAKE::{query}::{fetch_content}"
 
     monkeypatch.setattr(toolmod.WebSearchService, "search", fake_search)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import logging
 from typing import Callable, Protocol
 
 import httpx
@@ -12,6 +12,8 @@ from src.service.agent.web_search.parsing import (
     parse_sogou_html,
 )
 from src.utils.http_client import create_http_client
+
+logger = logging.getLogger(__name__)
 
 ClientFactory = Callable[[], httpx.AsyncClient]
 
@@ -72,6 +74,7 @@ class ExaBackend:
         return SearchOutcome(backend=self.name, text=text, results=None)
 
     async def healthcheck(self) -> bool:
+        # health = 可达性探测（仅状态码），不代表结果质量；只用于 __main__ 自检，不接热路径
         try:
             async with self._client_factory() as client:
                 resp = await client.post(
@@ -112,7 +115,8 @@ class DomesticBackend:
                     client, "https://cn.bing.com/search", {"q": query}
                 )
                 results = parse_bing_html(html, num_results)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("DomesticBackend 必应失败: %s", exc)
                 results = []
             if not results:
                 try:
@@ -120,7 +124,8 @@ class DomesticBackend:
                         client, "https://www.sogou.com/web", {"query": query}
                     )
                     results = parse_sogou_html(html, num_results)
-                except Exception:
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("DomesticBackend 搜狗失败: %s", exc)
                     results = []
         if not results:
             raise ValueError("国内后端无结果（必应/搜狗均空或被拦）")

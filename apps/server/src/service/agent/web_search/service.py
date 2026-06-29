@@ -51,7 +51,10 @@ class WebSearchService:
     def _mark_unhealthy(self, name: str) -> None:
         self._unhealthy[name] = time.monotonic() + self._cfg.health_ttl
 
-    async def search(self, query: str, fetch_content: bool = True) -> str:
+    async def search(
+        self, query: str, fetch_content: bool = True, num_results: int | None = None
+    ) -> str:
+        n = num_results if (num_results and num_results > 0) else self._cfg.num_results
         tried: list[str] = []
         for name in self._cfg.backends:
             backend = self._backends.get(name)
@@ -59,7 +62,7 @@ class WebSearchService:
                 continue
             tried.append(name)
             try:
-                outcome = await backend.search(query, self._cfg.num_results)
+                outcome = await backend.search(query, n)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("web_search 后端 %s 失败: %s", name, exc)
                 self._mark_unhealthy(name)

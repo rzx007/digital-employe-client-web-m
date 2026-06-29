@@ -76,3 +76,24 @@ async def test_unhealthy_backend_skipped_within_ttl():
     await svc.search("q", fetch_content=False)  # exa 失败 → 标记不健康
     await svc.search("q2", fetch_content=False)  # 第二次应跳过 exa
     assert exa.calls == 1  # 未被再次调用
+
+
+@pytest.mark.asyncio
+async def test_num_results_override_passed_to_backend():
+    seen = {}
+
+    class _RecordingBackend:
+        name = "exa"
+
+        async def search(self, query, num_results):
+            seen["n"] = num_results
+            return SearchOutcome("exa", text="ok")
+
+        async def healthcheck(self):
+            return True
+
+    svc = WebSearchService(_cfg(["exa"]), backends={"exa": _RecordingBackend()})
+    await svc.search("q", fetch_content=False, num_results=20)
+    assert seen["n"] == 20
+    await svc.search("q", fetch_content=False)  # default → cfg.num_results (8)
+    assert seen["n"] == 8
