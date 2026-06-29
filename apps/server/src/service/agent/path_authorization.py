@@ -220,6 +220,12 @@ _UNIX_ABS_RE = re.compile(
     # 负后向断言：前面不是盘符字母+冒号（避免把 C:/foo 中的 /foo 单独抽出）
     r"""(?<![A-Za-z]:)/[^\s"'<>|]+""",
 )
+# URL（scheme://...）：抽路径前先整段剥掉——URL 是网络读、绝非本地写。
+# 否则 https:// 里的 ``s:`` 会被 _WIN_DRIVE_RE 误当盘符 ``s:\``、//host/path
+# 被 _UNIX_ABS_RE 误当绝对路径，导致 curl/wget/pip 等安装命令被误拦。
+_URL_RE = re.compile(
+    r"""\b[A-Za-z][A-Za-z0-9+.\-]*://[^\s"'<>|]+""",
+)
 
 _ALL_PATTERNS = [_WIN_DRIVE_RE, _UNC_RE, _ENV_VAR_RE, _TILDE_RE, _UNIX_ABS_RE]
 
@@ -245,6 +251,11 @@ def extract_command_paths(command: str) -> list[str]:
     已知限制：若 Windows 盘符路径含正斜杠（如 C:/foo），同一字符串中的子路径
     （/foo）可能同时被 Unix 正则抽取，后处理阶段会过滤掉此类子串。
     """
+    # 第零阶段：把 URL（http(s)/ftp/git+ssh/file...）整段抹成等长空格——URL 是网络
+    # 读取目标、不是本地写路径；不剥掉则 https:// 的 s: 会被当盘符、//host 被当绝对路径。
+    # 用等长空格替换以保持后续 span 位置对齐。
+    command = _URL_RE.sub(lambda m: " " * len(m.group(0)), command)
+
     # 第一阶段：用各模式收集原始候选 token（连同在命令字符串中的位置）
     # 非 Unix 模式优先抽取（盘符、UNC、环境变量、~），Unix 模式最后
     non_unix_patterns = [_WIN_DRIVE_RE, _UNC_RE, _ENV_VAR_RE, _TILDE_RE]

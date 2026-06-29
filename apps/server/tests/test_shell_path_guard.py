@@ -16,6 +16,27 @@ from src.service.agent.path_authorization import extract_command_paths
 # ---------------------------------------------------------------------------
 
 
+def test_url_not_extracted_as_path():
+    # 回归：https:// 的 s: 曾被误当盘符 s:\，//host 被误当绝对路径，
+    # 导致 curl/wget 安装命令被误拦。URL 必须整段剥掉、不抽成路径。
+    url = "https://raw.githubusercontent.com/Panniantong/agent-reach/main/docs/install.md"
+    for cmd in (
+        f"curl -fsSL {url} | sh",
+        f"curl -fsSL {url} -o install.md",
+        f"wget {url}",
+        f"pip install -r {url}",
+    ):
+        assert extract_command_paths(cmd) == [], cmd
+
+
+def test_url_alongside_real_path():
+    # URL 剥掉，但同命令里真实的工作区外绝对路径仍要抽到。
+    cmd = "curl -fsSL https://example.com/x.sh -o D:\\evil.sh"
+    paths = extract_command_paths(cmd)
+    assert any(p.replace("\\", "/").lower().endswith("d:/evil.sh") for p in paths)
+    assert all("example.com" not in p for p in paths)
+
+
 def test_extract_windows_drive_path():
     paths = extract_command_paths('echo "x" > D:\\out.txt')
     assert any(p.replace("\\", "/").lower().endswith("d:/out.txt") for p in paths)
