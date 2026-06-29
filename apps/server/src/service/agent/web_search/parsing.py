@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import html as _html
 import json
+import re
 
 
 def _extract_text_from_jsonrpc(obj: dict) -> str:
@@ -52,3 +54,116 @@ def parse_exa_sse(raw: str) -> str:
             if text:
                 return text
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+
+
+def _strip_tags(fragment: str) -> str:
+    """Strip HTML tags and HTML-entity-decode, returning clean text."""
+    fragment = _COMMENT_RE.sub("", fragment)
+    return _html.unescape(_TAG_RE.sub("", fragment)).strip()
+
+
+# ---------------------------------------------------------------------------
+# 必应 cn.bing.com HTML parser
+#
+# Real structure (captured 2026-06-29, cn.bing.com/search?q=2026世界杯):
+#   container : <li class="b_algo" ...>...</li>
+#   title+url : <h2 class="..."><a ... href="URL">TITLE_HTML</a></h2>
+#   snippet   : <p class="b_lineclamp2 ...">SNIPPET</p>
+# ---------------------------------------------------------------------------
+
+# Each organic result lives inside <li class="b_algo" ...>
+_BING_BLOCK_RE = re.compile(
+    r'<li\s+class="b_algo"[^>]*>.*?</li\s*>', re.S
+)
+
+# Title link is the first <a href="http..."> inside an <h2> tag
+_BING_TITLE_RE = re.compile(
+    r'<h2[^>]*>.*?<a[^>]+href="(https?://[^"]+)"[^>]*>(.*?)</a>', re.S
+)
+
+# Snippet is in a <p class="b_lineclamp..."> paragraph
+_BING_SNIPPET_RE = re.compile(
+    r'<p[^>]+class="b_lineclamp[^"]*"[^>]*>(.*?)</p>', re.S
+)
+
+
+def parse_bing_html(html: str, num_results: int) -> "list[SearchResult]":
+    """Parse cn.bing.com SERP HTML and return up to *num_results* SearchResult."""
+    from src.service.agent.web_search.models import SearchResult
+
+    out: list[SearchResult] = []
+    for block in _BING_BLOCK_RE.findall(html or ""):
+        m = _BING_TITLE_RE.search(block)
+        if not m:
+            continue
+        url = _html.unescape(m.group(1))
+        title = _strip_tags(m.group(2))
+        if not title:
+            continue
+        sm = _BING_SNIPPET_RE.search(block)
+        snippet = _strip_tags(sm.group(1)) if sm else ""
+        out.append(SearchResult(title=title, url=url, snippet=snippet))
+        if len(out) >= num_results:
+            break
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 搜狗 sogou.com HTML parser
+#
+# Real structure (captured 2026-06-29, www.sogou.com/web?query=2026世界杯):
+#   container : <div class="vrwrap" id="sogou_vr_30000000_wrap_N">
+#   title+url : <h3 class="vr-title"><!--awbgN--><a ... href="/link?url=ENC">TITLE</a></h3>
+#               (first result may use absolute URL, rest use /link?url= redirect)
+#   snippet   : <div class="fz-mid space-txt base-ellipsis clamp2"
+#                    id="cacheresult_summary_N">SNIPPET</div>
+# ---------------------------------------------------------------------------
+
+# Only match the standard organic result blocks (id pattern sogou_vr_30000000_wrap_N)
+_SOGOU_BLOCK_RE = re.compile(
+    r'<div\s+class="vrwrap"\s+id="sogou_vr_30000000_wrap_\d+"[^>]*>.*?(?=<div\s+class="vrwrap"|$)',
+    re.S,
+)
+
+# h3 class="vr-title" — title link (href may be absolute or /link?url=...)
+_SOGOU_TITLE_RE = re.compile(
+    r'<h3[^>]+class="vr-title[^"]*"[^>]*>.*?<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>',
+    re.S,
+)
+
+# Snippet: div with id "cacheresult_summary_*"
+_SOGOU_SNIPPET_RE = re.compile(
+    r'<div[^>]+id="cacheresult_summary_\d+"[^>]*>(.*?)</div>', re.S
+)
+
+
+def parse_sogou_html(html: str, num_results: int) -> "list[SearchResult]":
+    """Parse sogou.com SERP HTML and return up to *num_results* SearchResult."""
+    from src.service.agent.web_search.models import SearchResult
+
+    out: list[SearchResult] = []
+    for block in _SOGOU_BLOCK_RE.findall(html or ""):
+        m = _SOGOU_TITLE_RE.search(block)
+        if not m:
+            continue
+        url = _html.unescape(m.group(1))
+        # Relative /link?url= redirect → make absolute
+        if url.startswith("/"):
+            url = "https://www.sogou.com" + url
+        title = _strip_tags(m.group(2))
+        if not title:
+            continue
+        sm = _SOGOU_SNIPPET_RE.search(block)
+        snippet = _strip_tags(sm.group(1)) if sm else ""
+        out.append(SearchResult(title=title, url=url, snippet=snippet))
+        if len(out) >= num_results:
+            break
+    return out
