@@ -26,35 +26,108 @@ def _middleware() -> ConversationSummarizationMiddleware:
     )
 
 
-def test_should_summarize_force_checkpoint() -> None:
+def test_force_compact_user_requested_is_unconditional() -> None:
+    # Explicit "start over / new topic" intent compacts even on a tiny context.
     mw = _middleware()
     with patch.object(
         mw,
         "_read_run_configurable",
-        return_value={"force_context_compact": True, "context_compact_reason": "topic_change"},
+        return_value={
+            "force_context_compact": True,
+            "context_compact_reason": "user_requested",
+        },
     ):
         assert mw._should_summarize([], 1000) is True
 
 
-def test_should_summarize_api_usage_over_threshold() -> None:
+def test_force_compact_checkpoint_skipped_when_context_small() -> None:
+    # delegation_completed / topic_change checkpoints fire often (orchestrator
+    # marks one after every finished sub-task). On a small context, honoring it
+    # would churn the cache and spam summaries — gate it below 0.5*threshold.
     mw = _middleware()
-    settings = SimpleNamespace(
+    with patch.object(
+        mw,
+        "_read_run_configurable",
+        return_value={
+            "force_context_compact": True,
+            "context_compact_reason": "delegation_completed",
+        },
+    ), patch(
+        "src.service.conversation_summarization.get_settings",
+        return_value=_settings(),
+    ), patch.object(
+        ConversationSummarizationMiddleware.__bases__[0],
+        "_should_summarize",
+        return_value=False,
+    ):
+        # threshold=75_000, floor=37_500; 1_000 is well below -> not forced.
+        assert mw._should_summarize([], 1_000) is False
+
+
+def test_force_compact_checkpoint_honored_when_context_large() -> None:
+    mw = _middleware()
+    with patch.object(
+        mw,
+        "_read_run_configurable",
+        return_value={
+            "force_context_compact": True,
+            "context_compact_reason": "delegation_completed",
+        },
+    ), patch(
+        "src.service.conversation_summarization.get_settings",
+        return_value=_settings(),
+    ):
+        # 60_000 >= floor 37_500 -> checkpoint compaction proceeds.
+        assert mw._should_summarize([], 60_000) is True
+
+
+def _settings() -> SimpleNamespace:
+    return SimpleNamespace(
         model_max_input_tokens=100_000,
         summarization_trigger_fraction=0.75,
     )
+
+
+def test_should_summarize_api_usage_corroborated_by_live_size() -> None:
+    # threshold=75_000, pre_trigger=69_000. API report AND current approximate
+    # are both above the trigger band -> context genuinely large, compress.
+    mw = _middleware()
     with patch.object(
         mw,
         "_read_run_configurable",
         return_value={"last_reported_input_tokens": 80_000},
     ), patch(
         "src.service.conversation_summarization.get_settings",
-        return_value=settings,
+        return_value=_settings(),
     ), patch.object(
         ConversationSummarizationMiddleware.__bases__[0],
         "_should_summarize",
         return_value=False,
     ):
-        assert mw._should_summarize([], 1000) is True
+        assert mw._should_summarize([], 80_000) is True
+
+
+def test_should_summarize_stale_peak_not_forced_when_context_small() -> None:
+    # Regression for the repeated-compression loop: last_reported is the previous
+    # turn's stored PEAK and can stay >= threshold even right after a compaction
+    # (large orchestrator system prompt). With the live context now tiny
+    # (total_tokens=1_000), we must NOT re-summarize on the stale peak alone —
+    # otherwise every subsequent turn re-compresses forever.
+    mw = _middleware()
+    with patch.object(
+        mw,
+        "_read_run_configurable",
+        return_value={"last_reported_input_tokens": 80_000},
+    ), patch(
+        "src.service.conversation_summarization.get_settings",
+        return_value=_settings(),
+    ), patch.object(
+        ConversationSummarizationMiddleware.__bases__[0],
+        "_should_summarize",
+        return_value=False,
+    ) as parent:
+        assert mw._should_summarize([HumanMessage(content="hi")], 1_000) is False
+        parent.assert_called_once()
 
 
 def test_should_summarize_delegates_when_under_threshold() -> None:
