@@ -65,6 +65,7 @@ from src.service.agent.orchestrator.tools.tasks import (
 from src.service.agent.orchestrator.tools.workbench import (
     add_workbench_widget,
     update_workbench_widget,
+    list_workbench_widgets,
 )
 
 __all__ = [
@@ -102,6 +103,7 @@ __all__ = [
     # workbench
     "add_workbench_widget",
     "update_workbench_widget",
+    "list_workbench_widgets",
     # shared helpers
     "parse_orchestration_task_list",
     "resolve_conv_id",

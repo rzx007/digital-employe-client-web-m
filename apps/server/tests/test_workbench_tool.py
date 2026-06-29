@@ -33,6 +33,25 @@ def test_update_widget_impl_not_found(db_session):
     assert "错误" in out
 
 
+def test_add_impl_upsert_by_key(db_session):
+    msg1 = _add_widget_impl(
+        db_session, "u1", {"type": "kpi", "title": "榜", "data": {"items": []}}, key="k1"
+    )
+    assert "已添加" in msg1
+    msg2 = _add_widget_impl(
+        db_session, "u1", {"type": "kpi", "title": "榜2", "data": {"items": []}}, key="k1"
+    )
+    assert "已更新" in msg2  # 同 key → upsert
+
+
+def test_list_widgets_impl(db_session):
+    from src.service.agent.orchestrator.tools.workbench import _list_widgets_impl
+
+    _add_widget_impl(db_session, "u1", {"type": "kpi", "title": "销量", "data": {"items": []}})
+    out = _list_widgets_impl(db_session, "u1")
+    assert "销量" in out and "id=wd-" in out
+
+
 def test_notify_pushes_workbench_changed(monkeypatch):
     """总管加 widget 后必须推 workbench_changed 事件,否则前端不会即时刷新。"""
     pushed: list = []

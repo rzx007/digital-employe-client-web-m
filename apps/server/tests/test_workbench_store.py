@@ -45,3 +45,27 @@ def test_update_widget_not_found(db_session):
     import pytest
     with pytest.raises(ValueError):
         ws.update_widget(db_session, "u1", "wd-nope", {"title": "x"})
+
+
+def test_upsert_widget_by_key(db_session):
+    w1, created1 = ws.upsert_widget(
+        db_session, "u1",
+        {"type": "kpi", "title": "火力榜", "data": {"items": [{"label": "德国", "value": 10}]}},
+        key="wc-fire",
+    )
+    assert created1 is True
+    w2, created2 = ws.upsert_widget(
+        db_session, "u1",
+        {"type": "kpi", "title": "火力榜", "data": {"items": [{"label": "德国", "value": 11}]}},
+        key="wc-fire",
+    )
+    assert created2 is False and w2.id == w1.id  # 同 key 原地更新,不新建
+    cfg = ws.load_config(db_session, "u1")
+    assert len(cfg.dashboard.widgets) == 1  # 没重复建卡
+    assert cfg.dashboard.widgets[0].data["items"][0]["value"] == 11
+
+
+def test_list_widgets(db_session):
+    ws.append_widget(db_session, "u1", {"type": "kpi", "title": "A", "data": {"items": []}})
+    items = ws.list_widgets(db_session, "u1")
+    assert len(items) == 1 and items[0].title == "A"

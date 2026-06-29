@@ -15,13 +15,32 @@ from src.service.agent.orchestrator.runtime import get_user_id, get_workspace_id
 logger = logging.getLogger(__name__)
 
 
-def _add_widget_impl(db: Session, user_id: str, spec: dict[str, Any]) -> str:
-    """内联实现，便于测试直接注入 db session。"""
+def _add_widget_impl(
+    db: Session, user_id: str, spec: dict[str, Any], key: str | None = None
+) -> str:
+    """内联实现，便于测试直接注入 db session。有 key 且已存在 → upsert 原地更新。"""
     try:
-        widget = ws.append_widget(db, user_id, spec)
+        widget, created = ws.upsert_widget(db, user_id, spec, key)
     except Exception as e:
         return f"错误：{e}"
-    return f"已添加 widget「{widget.title}」(id={widget.id}) 到工作台。"
+    verb = "已添加" if created else "已更新"
+    return f"{verb} widget「{widget.title}」(id={widget.id}) 到工作台。"
+
+
+def _list_widgets_impl(db: Session, user_id: str) -> str:
+    """内联实现:列出当前 dashboard 的 widget。"""
+    widgets = ws.list_widgets(db, user_id)
+    if not widgets:
+        return "工作台暂无 widget。"
+    lines = []
+    for w in widgets:
+        src = (
+            f"绑定指标={w.dataSource.metricId}" if w.dataSource else "内联数据"
+        )
+        lines.append(
+            f"- id={w.id} key={w.key or '-'} type={w.type} 「{w.title}」 {src}"
+        )
+    return "当前工作台 widget:\n" + "\n".join(lines)
 
 
 def _update_widget_impl(
@@ -54,8 +73,13 @@ def add_workbench_widget(
     data_source: dict | None = None,
     subtitle: str | None = None,
     options: dict | None = None,
+    key: str | None = None,
 ) -> str:
     """向当前用户的工作台看板添加一个统计块(widget)。
+
+    key(可选):稳定业务键。给了 key 后是 upsert——同 key 已存在则原地更新,否则新建。
+      定时任务/反复刷新场景强烈建议带固定 key(如 "wc-firepower"),即幂等、不重复建卡、
+      不用记自动生成的 id。
 
     type 取值: kpi|line|bar|area|pie|table|progress|list|gauge|sparkline|radar|scatter。
     data 与 data_source 至少给一个：data 为内联快照；data_source={"metricId": "...","params":{...}} 绑定实时指标。
@@ -111,12 +135,26 @@ def add_workbench_widget(
 
     db = get_session_local()()
     try:
-        msg = _add_widget_impl(db, user_id, spec)
+        msg = _add_widget_impl(db, user_id, spec, key)
     finally:
         db.close()
-    if msg.startswith("已添加"):
+    if not msg.startswith("错误"):
         _notify_workbench_changed()
     return msg
+
+
+@tool
+def list_workbench_widgets() -> str:
+    """列出当前用户工作台看板上的所有 widget(id、key、type、标题、数据来源)。
+    用于反查某个 widget 的 id/key 以便 update_workbench_widget,或确认是否已存在避免重复创建。"""
+    user_id = get_user_id()
+    if not user_id:
+        return "错误：无法获取当前用户 ID，请确认会话上下文已初始化。"
+    db = get_session_local()()
+    try:
+        return _list_widgets_impl(db, user_id)
+    finally:
+        db.close()
 
 
 @tool
