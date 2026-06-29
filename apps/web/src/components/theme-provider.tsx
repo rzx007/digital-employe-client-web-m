@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
-import { applyBrandTheme, getStoredBrandTheme } from "@/lib/brand/brand-theme"
+import { applySkin, getStoredSkin, hasActiveSkin } from "@/lib/theme/skins"
 import { subscribeElectron } from "@/lib/electron/host"
 import { broadcastAppearanceChanged } from "@/lib/theme/broadcast-appearance"
 
@@ -107,6 +107,9 @@ export function ThemeProvider({
 
   const applyTheme = React.useCallback(
     (nextTheme: Theme) => {
+      if (hasActiveSkin()) {
+        return
+      }
       const root = document.documentElement
       const resolvedTheme =
         nextTheme === "system" ? getSystemTheme() : nextTheme
@@ -122,6 +125,19 @@ export function ThemeProvider({
       }
     },
     [disableTransitionOnChange]
+  )
+
+  const reapplyAppearance = React.useCallback(
+    (mode: Theme) => {
+      const skin = getStoredSkin()
+      if (skin) {
+        applySkin(skin, { broadcast: false })
+      } else {
+        document.documentElement.removeAttribute("data-theme")
+        applyTheme(mode)
+      }
+    },
+    [applyTheme]
   )
 
   React.useEffect(() => {
@@ -161,6 +177,10 @@ export function ThemeProvider({
         return
       }
 
+      if (hasActiveSkin()) {
+        return
+      }
+
       setThemeState((currentTheme) => {
         const nextTheme =
           currentTheme === "dark"
@@ -188,15 +208,12 @@ export function ThemeProvider({
     return subscribeElectron((api) =>
       api.onThemeChanged(() => {
         const storedTheme = localStorage.getItem(storageKey)
-        if (isTheme(storedTheme)) {
-          setThemeState(storedTheme)
-        } else {
-          setThemeState(defaultTheme)
-        }
-        applyBrandTheme(getStoredBrandTheme(), { broadcast: false })
+        const resolvedMode = isTheme(storedTheme) ? storedTheme : defaultTheme
+        setThemeState(resolvedMode)
+        reapplyAppearance(resolvedMode)
       })
     )
-  }, [defaultTheme, storageKey])
+  }, [defaultTheme, storageKey, reapplyAppearance])
 
   React.useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
@@ -208,14 +225,11 @@ export function ThemeProvider({
         return
       }
 
-      if (isTheme(event.newValue)) {
-        setThemeState(event.newValue)
-        applyBrandTheme(getStoredBrandTheme(), { broadcast: false })
-        return
-      }
-
-      setThemeState(defaultTheme)
-      applyBrandTheme(getStoredBrandTheme(), { broadcast: false })
+      const resolvedMode = isTheme(event.newValue)
+        ? event.newValue
+        : defaultTheme
+      setThemeState(resolvedMode)
+      reapplyAppearance(resolvedMode)
     }
 
     window.addEventListener("storage", handleStorageChange)
@@ -223,7 +237,7 @@ export function ThemeProvider({
     return () => {
       window.removeEventListener("storage", handleStorageChange)
     }
-  }, [defaultTheme, storageKey])
+  }, [defaultTheme, storageKey, reapplyAppearance])
 
   const value = React.useMemo(
     () => ({
