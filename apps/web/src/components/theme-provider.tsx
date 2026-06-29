@@ -133,6 +133,8 @@ export function ThemeProvider({
       if (skin) {
         applySkin(skin, { broadcast: false })
       } else {
+        // 直接移属性而非走 clearSkin()：此处只需回基础模式，不能写存储/广播，
+        // 否则跨窗口重应用会触发广播回环。勿合并成 clearSkin()。
         document.documentElement.removeAttribute("data-theme")
         applyTheme(mode)
       }
