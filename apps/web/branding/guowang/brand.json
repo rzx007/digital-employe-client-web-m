@@ -5,5 +5,5 @@
   "companyName": "国家电网",
   "copyright": "© {year} 国家电网. All rights reserved.",
   "logos": { "app": "logo.png", "login": "logo.png", "splash": "logo.png" },
-  "defaultTheme": "green"
+  "defaultTheme": "guowang-green"
 }

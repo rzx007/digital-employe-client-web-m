@@ -204,10 +204,10 @@ sudo bash ~/BobanStaff-Installer/deploy.sh --cleanup
      "companyName": "国家电网",
      "copyright": "© {year} 国家电网. All rights reserved.",
      "logos": { "app": "logo.png", "login": "logo.png", "splash": "logo.png" },
-     "defaultTheme": "green"
+     "defaultTheme": "guowang-green"
    }
    ```
-   - `defaultTheme` 可选：首次启动的默认主题色（`default` 靛蓝 / `green` 国网绿 / `teal` 青蓝）。
+   - `defaultTheme` 可选：首次启动的默认特殊风格皮肤 id。可选值见 `apps/web/src/lib/theme/skins.ts` 的 `SKINS`（如 `guowang-green` 国网绿、`ocean-dark` 远山暮霭…）。留空则用靛蓝默认（浅色/深色/跟随系统）。
      用户之后仍可在 **设置 → 通用 → 主题色** 自行切换。
 3. 正常跑 `sudo bash deploy.sh`（装完数字员工后会自动应用品牌）。
 
