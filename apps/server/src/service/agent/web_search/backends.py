@@ -137,3 +137,46 @@ class DomesticBackend:
                 return resp.status_code == 200
         except Exception:
             return False
+
+
+class SearxngBackend:
+    name = "searxng"
+
+    def __init__(self, endpoint: str, client_factory: ClientFactory | None = None):
+        self.endpoint = endpoint
+        self._client_factory = client_factory or _default_scrape_client_factory
+
+    async def search(self, query: str, num_results: int) -> SearchOutcome:
+        async with self._client_factory() as client:
+            resp = await client.get(
+                self.endpoint,
+                params={"q": query, "format": "json"},
+                headers={"User-Agent": _UA},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        items = data.get("results") if isinstance(data, dict) else None
+        results: list[SearchResult] = []
+        for it in (items or [])[:num_results]:
+            if not isinstance(it, dict):
+                continue
+            url = str(it.get("url") or "")
+            title = str(it.get("title") or "")
+            if not url or not title:
+                continue
+            results.append(
+                SearchResult(title=title, url=url, snippet=str(it.get("content") or ""))
+            )
+        if not results:
+            raise ValueError("SearXNG 无结果")
+        return SearchOutcome(backend=self.name, text=None, results=results)
+
+    async def healthcheck(self) -> bool:
+        try:
+            async with self._client_factory() as client:
+                resp = await client.get(
+                    self.endpoint, params={"q": "ping", "format": "json"}
+                )
+                return resp.status_code == 200
+        except Exception:
+            return False
