@@ -30,3 +30,25 @@ def append_widget(db: Session, user_id: str, spec: dict[str, Any]):
     cfg.dashboard.widgets.append(widget)
     save_config(db, user_id, cfg)
     return widget
+
+
+def update_widget(db: Session, user_id: str, widget_id: str, patch: dict[str, Any]):
+    """按 id 原地更新一个 widget,只改 patch 里给的字段。
+    id/order 保持不变;合并后整体过 validate_widget_spec 重新校验。未找到则抛 ValueError。"""
+    cfg = load_config(db, user_id)
+    widgets = cfg.dashboard.widgets
+    idx = next((i for i, w in enumerate(widgets) if w.id == widget_id), None)
+    if idx is None:
+        raise ValueError(f"未找到 widget: {widget_id}")
+    current = widgets[idx]
+    merged = current.model_dump()
+    for key, val in patch.items():
+        if val is not None:
+            merged[key] = val
+    merged["id"] = widget_id  # id 不可被 patch 改
+    validated = validate_widget_spec(merged, metric_whitelist=metric_ids())
+    validated.id = widget_id
+    validated.order = current.order  # 保持原有顺序
+    widgets[idx] = validated
+    save_config(db, user_id, cfg)
+    return validated

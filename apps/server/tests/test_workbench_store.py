@@ -28,3 +28,20 @@ def test_append_widget_rejects_bad_type(db_session):
     import pytest
     with pytest.raises(ValueError):
         ws.append_widget(db_session, "u1", {"type": "__nope__", "title": "x", "data": {"a": 1}})
+
+
+def test_update_widget(db_session):
+    w = ws.append_widget(db_session, "u1", {"type": "kpi", "title": "旧", "data": {"items": []}})
+    updated = ws.update_widget(
+        db_session, "u1", w.id, {"title": "新", "data": {"items": [{"label": "a", "value": 1}]}}
+    )
+    assert updated.id == w.id and updated.title == "新"
+    cfg = ws.load_config(db_session, "u1")
+    assert cfg.dashboard.widgets[0].title == "新"
+    assert cfg.dashboard.widgets[0].data == {"items": [{"label": "a", "value": 1}]}
+
+
+def test_update_widget_not_found(db_session):
+    import pytest
+    with pytest.raises(ValueError):
+        ws.update_widget(db_session, "u1", "wd-nope", {"title": "x"})

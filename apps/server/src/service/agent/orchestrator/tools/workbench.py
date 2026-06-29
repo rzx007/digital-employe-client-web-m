@@ -24,6 +24,17 @@ def _add_widget_impl(db: Session, user_id: str, spec: dict[str, Any]) -> str:
     return f"已添加 widget「{widget.title}」(id={widget.id}) 到工作台。"
 
 
+def _update_widget_impl(
+    db: Session, user_id: str, widget_id: str, patch: dict[str, Any]
+) -> str:
+    """内联实现，便于测试直接注入 db session。"""
+    try:
+        widget = ws.update_widget(db, user_id, widget_id, patch)
+    except Exception as e:
+        return f"错误：{e}"
+    return f"已更新 widget「{widget.title}」(id={widget.id})。"
+
+
 def _notify_workbench_changed() -> None:
     """推 workbench_changed 事件,让前端工作台即时 invalidate 重新拉配置。
     后端工具写库后前端无从感知,不推事件则新 widget 要刷新页面才出现。"""
@@ -104,5 +115,48 @@ def add_workbench_widget(
     finally:
         db.close()
     if msg.startswith("已添加"):
+        _notify_workbench_changed()
+    return msg
+
+
+@tool
+def update_workbench_widget(
+    widget_id: str,
+    type: str | None = None,
+    title: str | None = None,
+    data: dict | None = None,
+    data_source: dict | None = None,
+    subtitle: str | None = None,
+    options: dict | None = None,
+) -> str:
+    """更新工作台上已存在的 widget(按 id 原地改,不新建)。
+
+    只更新传入的字段;widget_id 来自 add_workbench_widget 的返回(形如 wd-xxxx)。
+    用途:改标题/换类型/更新内联 data/改 data_source 绑定。
+    data 与 data_source 的形状要求同 add_workbench_widget。"""
+    patch: dict[str, Any] = {}
+    if type is not None:
+        patch["type"] = type
+    if title is not None:
+        patch["title"] = title
+    if subtitle is not None:
+        patch["subtitle"] = subtitle
+    if data is not None:
+        patch["data"] = data
+    if data_source is not None:
+        patch["dataSource"] = data_source
+    if options is not None:
+        patch["options"] = options
+
+    user_id = get_user_id()
+    if not user_id:
+        return "错误：无法获取当前用户 ID，请确认会话上下文已初始化。"
+
+    db = get_session_local()()
+    try:
+        msg = _update_widget_impl(db, user_id, widget_id, patch)
+    finally:
+        db.close()
+    if msg.startswith("已更新"):
         _notify_workbench_changed()
     return msg

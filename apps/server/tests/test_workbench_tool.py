@@ -13,6 +13,26 @@ def test_add_widget_impl_bad_type(db_session):
     assert "错误" in msg
 
 
+def test_update_widget_impl(db_session):
+    import re
+
+    from src.service.agent.orchestrator.tools.workbench import _update_widget_impl
+
+    msg = _add_widget_impl(
+        db_session, "u1", {"type": "kpi", "title": "旧", "data": {"items": []}}
+    )
+    wid = re.search(r"id=(wd-\w+)", msg).group(1)
+    out = _update_widget_impl(db_session, "u1", wid, {"title": "新"})
+    assert "已更新" in out
+
+
+def test_update_widget_impl_not_found(db_session):
+    from src.service.agent.orchestrator.tools.workbench import _update_widget_impl
+
+    out = _update_widget_impl(db_session, "u1", "wd-nope", {"title": "x"})
+    assert "错误" in out
+
+
 def test_notify_pushes_workbench_changed(monkeypatch):
     """总管加 widget 后必须推 workbench_changed 事件,否则前端不会即时刷新。"""
     pushed: list = []
