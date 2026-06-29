@@ -23,11 +23,17 @@ describe("skins", () => {
     root().classList.remove("light", "dark")
   })
 
-  it("含国网绿与 7 套移植皮肤", () => {
+  it("含国网绿明暗两套与 7 套移植皮肤", () => {
     const ids = SKINS.map((s) => s.id)
     expect(ids).toContain("guowang-green")
+    expect(ids).toContain("guowang-green-dark")
     expect(ids).toContain("ocean-dark")
-    expect(SKINS).toHaveLength(8)
+    expect(SKINS).toHaveLength(9)
+  })
+
+  it("国网绿·夜为暗色基调", () => {
+    const dark = SKINS.find((s) => s.id === "guowang-green-dark")
+    expect(dark?.basis).toBe("dark")
   })
 
   it("applySkin 写 data-theme + localStorage + 暗色基调", () => {

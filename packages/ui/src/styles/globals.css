@@ -183,6 +183,35 @@
   --sidebar-ring: oklch(0.55 0.13 155);
 }
 
+[data-theme="guowang-green-dark"] {
+  --background: oklch(0.18 0.013 155);
+  --foreground: oklch(0.92 0.01 155);
+  --card: oklch(0.21 0.016 155);
+  --card-foreground: oklch(0.92 0.01 155);
+  --popover: oklch(0.21 0.016 155);
+  --popover-foreground: oklch(0.92 0.01 155);
+  --primary: oklch(0.62 0.13 155);
+  --primary-foreground: oklch(0.98 0.02 155);
+  --secondary: oklch(0.25 0.014 155);
+  --secondary-foreground: oklch(0.92 0.01 155);
+  --muted: oklch(0.25 0.012 155);
+  --muted-foreground: oklch(0.68 0.015 155);
+  --accent: oklch(0.3 0.03 155);
+  --accent-foreground: oklch(0.85 0.05 155);
+  --destructive: oklch(0.62 0.2 25);
+  --border: oklch(0.3 0.013 155);
+  --input: oklch(0.27 0.013 155);
+  --ring: oklch(0.62 0.13 155);
+  --sidebar: oklch(0.16 0.013 155);
+  --sidebar-foreground: oklch(0.92 0.01 155);
+  --sidebar-primary: oklch(0.66 0.13 155);
+  --sidebar-primary-foreground: oklch(0.98 0.02 155);
+  --sidebar-accent: oklch(0.3 0.03 155);
+  --sidebar-accent-foreground: oklch(0.85 0.05 155);
+  --sidebar-border: oklch(0.3 0.013 155);
+  --sidebar-ring: oklch(0.62 0.13 155);
+}
+
 [data-theme="slate-light"] {
   --background: hsl(40 6% 88%);
   --foreground: hsl(40 8% 18%);

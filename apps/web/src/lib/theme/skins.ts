@@ -16,6 +16,7 @@ const LEGACY_BRAND_KEY = "brand-theme"
 /** 内置特殊风格皮肤。无皮肤时走 globals.css 的 :root / .dark 靛蓝默认。 */
 export const SKINS: SkinOption[] = [
   { id: "guowang-green", name: "国网绿", basis: "light" },
+  { id: "guowang-green-dark", name: "国网绿·夜", basis: "dark" },
   { id: "slate-light", name: "云朵舞者", basis: "light" },
   { id: "ocean-light", name: "晴空碧海", basis: "light" },
   { id: "forest-light", name: "森息晨光", basis: "light" },
