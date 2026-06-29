@@ -167,3 +167,24 @@ def parse_sogou_html(html: str, num_results: int) -> "list[SearchResult]":
         if len(out) >= num_results:
             break
     return out
+
+
+# ---------------------------------------------------------------------------
+# HTML → 正文 抽取
+# ---------------------------------------------------------------------------
+
+_SCRIPT_STYLE_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>", re.S | re.I)
+_WS_RE = re.compile(r"\s+")
+
+
+def html_to_text(html: str, max_chars: int) -> str:
+    """Strip all tags/scripts/styles from *html*, collapse whitespace, and
+    truncate to *max_chars* characters.  Returns plain text."""
+    if not html:
+        return ""
+    cleaned = _SCRIPT_STYLE_RE.sub(" ", html)
+    cleaned = _TAG_RE.sub(" ", cleaned)
+    text = _WS_RE.sub(" ", _html.unescape(cleaned)).strip()
+    if max_chars > 0 and len(text) > max_chars:
+        text = text[:max_chars]
+    return text
