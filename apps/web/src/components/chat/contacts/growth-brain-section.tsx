@@ -19,6 +19,10 @@ import {
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useEmployeeGrowthBrain } from "@/hooks/use-employee-growth"
 
+/** 成长履历中长列表（学习日志、技能修订）共用最大高度与滚动 */
+const GROWTH_TIMELINE_LIST_CLASS =
+  "max-h-64 space-y-2 overflow-y-auto overscroll-y-contain pr-0.5"
+
 export function GrowthBrainSection({
   employeeId,
 }: {
@@ -316,7 +320,7 @@ export function GrowthBrainSection({
             <CardTitle>学习日志</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className={GROWTH_TIMELINE_LIST_CLASS}>
               {brain.journal_entries.map((e, i) => (
                 <div
                   key={`${e.ts}-${i}`}
@@ -343,7 +347,7 @@ export function GrowthBrainSection({
             <CardTitle>技能修订记录</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className={GROWTH_TIMELINE_LIST_CLASS}>
               {brain.recent_skill_edits!.map((e, i) => (
                 <div
                   key={`${e.ts}-${i}`}

@@ -112,7 +112,10 @@ export function ChangePasswordForm({
       >
         {/* 旧密码 */}
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="oldPwd" className="text-sm font-bold">
+          <Label
+            htmlFor="oldPwd"
+            className="text-[13px] font-semibold text-foreground"
+          >
             旧密码
           </Label>
           <div className="relative">
@@ -122,7 +125,7 @@ export function ChangePasswordForm({
               placeholder="请输入旧密码"
               value={oldPwd}
               onChange={(e) => setOldPwd(e.target.value)}
-              className="rounded-xs pr-8"
+              className="h-10 rounded-lg pr-10 text-sm"
               disabled={submitting}
               autoFocus
             />
@@ -146,7 +149,10 @@ export function ChangePasswordForm({
 
         {/* 新密码 */}
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="newPwd" className="text-sm font-bold">
+          <Label
+            htmlFor="newPwd"
+            className="text-[13px] font-semibold text-foreground"
+          >
             新密码
           </Label>
           <div className="relative">
@@ -156,7 +162,7 @@ export function ChangePasswordForm({
               placeholder="8-15位，包含至少三种字符类型"
               value={newPwd}
               onChange={(e) => setNewPwd(e.target.value)}
-              className="rounded-xs pr-8"
+              className="h-10 rounded-lg pr-10 text-sm"
               disabled={submitting}
             />
             <button
@@ -179,7 +185,10 @@ export function ChangePasswordForm({
 
         {/* 确认新密码 */}
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="confirmPwd" className="text-sm font-bold">
+          <Label
+            htmlFor="confirmPwd"
+            className="text-[13px] font-semibold text-foreground"
+          >
             确认新密码
           </Label>
           <div className="relative">
@@ -189,7 +198,7 @@ export function ChangePasswordForm({
               placeholder="请再次输入新密码"
               value={confirmPwd}
               onChange={(e) => setConfirmPwd(e.target.value)}
-              className="rounded-xs pr-8"
+              className="h-10 rounded-lg pr-10 text-sm"
               disabled={submitting}
             />
             <button

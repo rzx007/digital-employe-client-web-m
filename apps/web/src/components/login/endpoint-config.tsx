@@ -6,6 +6,8 @@ import {
   IconShieldX,
 } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   Select,
@@ -103,9 +105,11 @@ export function EndpointConfig({
       >
         <form onSubmit={handleValidate} className="space-y-4">
           <div>
-            <label className="lgn-label">协议</label>
+            <Label className="mb-2 text-[13px] font-semibold text-foreground">
+              协议
+            </Label>
             <Select value={protocol} onValueChange={setProtocol}>
-              <SelectTrigger className="h-10 w-full rounded-[9px] border-[#E4E7F0] bg-white px-[13px] text-[13.5px] text-[#2A2E3C]">
+              <SelectTrigger className="!h-10 w-full rounded-lg text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -116,14 +120,14 @@ export function EndpointConfig({
           </div>
 
           <div>
-            <label className="lgn-label">
+            <Label className="mb-2 text-[13px] font-semibold text-foreground">
               通讯地址
-              <em className="ml-1 text-xs font-normal text-[#9298AB]">
+              <em className="ml-1 text-xs font-normal text-muted-foreground">
                 (ip或域名)
               </em>
-            </label>
-            <input
-              className="lgn-field"
+            </Label>
+            <Input
+              className="h-10 rounded-lg text-sm"
               placeholder="请输入IP地址"
               value={ip}
               onChange={(e) => setIp(e.target.value)}
@@ -131,9 +135,11 @@ export function EndpointConfig({
           </div>
 
           <div>
-            <label className="lgn-label">端口</label>
-            <input
-              className="lgn-field"
+            <Label className="mb-2 text-[13px] font-semibold text-foreground">
+              端口
+            </Label>
+            <Input
+              className="h-10 rounded-lg text-sm"
               type="number"
               placeholder="请输入端口"
               value={port}

@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react"
 import { decryptPwd } from "@/lib/password-sm"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
+import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
+import { Checkbox } from "@workspace/ui/components/checkbox"
+import { cn } from "@workspace/ui/lib/utils"
 import {
   IconEye,
   IconEyeOff,
@@ -30,29 +35,9 @@ export const Route = createFileRoute("/login")({
 
 type LoginView = "login" | "endpoint" | "changePassword"
 
-/* 强调色全部走全局 --primary token,跟随主题变更 */
-const PRIMARY = "var(--primary)"
-
-/* 表单/按钮样式集中在 .lgn- 类里,endpoint-config 等子表单复用同一套 */
-const SCOPED_CSS = `
-.lgn-field{width:100%;height:40px;border:1px solid #E4E7F0;background:#fff;border-radius:9px;padding:0 13px;font-size:13.5px;color:#2A2E3C;outline:none;transition:border-color .15s ease,box-shadow .15s ease}
-.lgn-field::placeholder{color:#A8AEC2}
-.lgn-field:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent)}
-.lgn-field:disabled{opacity:.6;cursor:not-allowed}
-.lgn-label{display:block;font-size:13px;font-weight:600;color:#5A6072;margin-bottom:8px}
-.lgn-primary{transition:background .15s ease,transform .1s ease,opacity .12s ease}
-.lgn-primary:hover:not(:disabled){background:color-mix(in srgb, var(--primary) 88%, #000)}
-.lgn-primary:active:not(:disabled){transform:translateY(0.5px)}
-.lgn-primary:disabled{opacity:.5;cursor:not-allowed}
-.lgn-tile{transition:border-color .15s ease,background .15s ease}
-.lgn-tile:hover:not(:disabled){border-color:var(--primary);background:#F7F8FC}
-.lgn-ghost{transition:background .15s ease,color .15s ease}
-.lgn-ghost:hover{background:#F1F2F7;color:#5A6072}
-@media (prefers-reduced-motion: reduce){
-  .lgn-primary{transition:background .15s ease}
-  .lgn-primary:active:not(:disabled){transform:none}
-}
-`
+/* 登录窗内表单字段统一尺寸(基于 @workspace/ui 组件的 className 覆写) */
+const FIELD_CLASS = "h-10 rounded-lg text-sm"
+const LABEL_CLASS = "mb-2 text-[13px] font-semibold text-foreground"
 
 const SUBVIEW_COPY: Record<
   Exclude<LoginView, "login">,
@@ -212,95 +197,70 @@ function LoginPage() {
 
   return (
     <div
-      className={
+      className={cn(
+        "relative flex w-screen overflow-hidden",
         inElectron
-          ? "relative flex h-screen w-screen items-stretch justify-center overflow-hidden"
-          : "relative flex min-h-screen w-screen items-center justify-center overflow-hidden px-4 py-10"
-      }
-      style={{
-        background: inElectron
-          ? "#FFFFFF"
-          : "radial-gradient(120% 80% at 50% -10%, #EEF1FB 0%, rgba(238,241,251,0) 60%), #F6F7FB",
-        ...dragStyle(inElectron),
-      }}
+          ? "h-screen flex-col bg-background"
+          : "min-h-screen items-center justify-center bg-muted/40 px-4 py-10"
+      )}
+      style={dragStyle(inElectron)}
     >
-      <style>{SCOPED_CSS}</style>
-
       <div
-        className="flex w-full flex-col"
-        style={{
-          background: "#FFFFFF",
-          fontFamily:
-            "'Raleway Variable', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif",
-          ...(inElectron
-            ? { height: "100%" }
-            : {
-                maxWidth: 360,
-                borderRadius: 16,
-                border: "0.5px solid #E9ECF3",
-                boxShadow: "0 20px 50px -24px rgba(40,52,120,0.22)",
-              }),
-          ...noDrag,
-        }}
+        className={cn(
+          "flex w-full flex-col",
+          inElectron
+            ? "h-full bg-background"
+            : "max-w-[360px] rounded-2xl border border-border bg-card shadow-sm"
+        )}
+        style={noDrag}
       >
-        {/* 顶栏:窗口控制(Electron 专属),同时作为拖拽手柄 */}
+        {/* 顶栏:窗口控制(Electron 专属) + 拖拽手柄 */}
         <div
-          className="flex shrink-0 items-center justify-between"
-          style={{ height: 44, padding: "0 12px", ...dragStyle(inElectron) }}
+          className="flex h-11 shrink-0 items-center justify-between px-3"
+          style={dragStyle(inElectron)}
         >
           {inElectron ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               title="通信设置"
+              className="size-8 text-muted-foreground"
+              style={noDrag}
               onClick={() =>
                 setCurrentView(
                   currentView === "endpoint" ? "login" : "endpoint"
                 )
               }
-              className="lgn-ghost flex items-center justify-center"
-              style={{
-                width: 30,
-                height: 30,
-                border: "none",
-                borderRadius: 8,
-                background: "transparent",
-                color: "#9298AB",
-                cursor: "pointer",
-                ...noDrag,
-              }}
             >
-              <IconSettings size={18} />
-            </button>
+              <IconSettings className="size-[18px]" />
+            </Button>
           ) : (
             <span />
           )}
 
           {inElectron && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               title="关闭"
+              className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              style={noDrag}
               onClick={() => void withElectronApi((api) => api.quitApp())}
-              className="lgn-ghost flex items-center justify-center"
-              style={{
-                width: 30,
-                height: 30,
-                border: "none",
-                borderRadius: 8,
-                background: "transparent",
-                color: "#9298AB",
-                cursor: "pointer",
-                ...noDrag,
-              }}
             >
-              <IconX size={18} />
-            </button>
+              <IconX className="size-[18px]" />
+            </Button>
           )}
         </div>
 
         {/* 主体 */}
         <div
-          className="flex flex-1 flex-col"
-          style={{ padding: "4px 28px 24px", overflowY: "auto", ...noDrag }}
+          className={cn(
+            "flex flex-1 flex-col px-7 pb-6",
+            inElectron && "overflow-y-auto"
+          )}
+          style={noDrag}
         >
           {currentView === "endpoint" ? (
             <SubViewFrame copy={SUBVIEW_COPY.endpoint}>
@@ -339,73 +299,36 @@ function LoginPage() {
                 >
                   {/* 品牌 —— 突出 logo 与名称 */}
                   <div
-                    className="flex flex-col items-center"
-                    style={{
-                      paddingTop: 14,
-                      paddingBottom: 24,
-                      ...dragStyle(inElectron),
-                    }}
+                    className="flex flex-col items-center pt-3.5 pb-6"
+                    style={dragStyle(inElectron)}
                   >
                     <img
                       src={logoImage}
                       alt="数字员工"
-                      style={{
-                        height: 58,
-                        width: "auto",
-                        objectFit: "contain",
-                      }}
+                      className="h-[58px] w-auto object-contain"
                     />
-                    <div
-                      style={{
-                        marginTop: 16,
-                        fontSize: 24,
-                        fontWeight: 700,
-                        letterSpacing: "0.06em",
-                        color: "#1E2233",
-                      }}
-                    >
+                    <div className="mt-4 text-2xl font-bold tracking-[0.06em] text-foreground">
                       数字员工
                     </div>
-                    <div
-                      style={{
-                        marginTop: 6,
-                        fontSize: 11.5,
-                        letterSpacing: "0.34em",
-                        textTransform: "uppercase",
-                        color: "#B4B9C7",
-                      }}
-                    >
-                      boban staff
+                    <div className="mt-1.5 text-[11.5px] tracking-[0.34em] text-muted-foreground/70 uppercase">
+                      Digital Employee
                     </div>
                   </div>
 
                   {registerSuccessHint && (
-                    <div
-                      className="mb-3 flex items-center gap-2"
-                      style={{
-                        borderRadius: 10,
-                        border: "1px solid rgba(16,185,129,0.28)",
-                        background: "rgba(16,185,129,0.08)",
-                        padding: "8px 12px",
-                        fontSize: 12,
-                        color: "#047857",
-                      }}
-                    >
-                      <span
-                        className="inline-block shrink-0 rounded-full"
-                        style={{ width: 6, height: 6, background: "#10b981" }}
-                      />
+                    <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-200/70 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-400">
+                      <span className="inline-block size-1.5 shrink-0 rounded-full bg-emerald-500" />
                       注册成功，请登录
                     </div>
                   )}
 
                   <form onSubmit={handleSubmit}>
-                    <label htmlFor="username" className="lgn-label">
+                    <Label htmlFor="username" className={LABEL_CLASS}>
                       账号
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="username"
-                      className="lgn-field"
+                      className={FIELD_CLASS}
                       type="text"
                       placeholder="请输入你的用户名"
                       value={username}
@@ -415,204 +338,118 @@ function LoginPage() {
                       autoFocus
                     />
 
-                    <label
+                    <Label
                       htmlFor="password"
-                      className="lgn-label"
-                      style={{ marginTop: 16 }}
+                      className={cn(LABEL_CLASS, "mt-4")}
                     >
                       密码
-                    </label>
-                    <div style={{ position: "relative" }}>
-                      <input
+                    </Label>
+                    <div className="relative">
+                      <Input
                         id="password"
-                        className="lgn-field"
+                        className={cn(FIELD_CLASS, "pr-10")}
                         type={showPassword ? "text" : "password"}
                         placeholder="初始密码 Aa123456"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         autoComplete="current-password"
                         disabled={loading}
-                        style={{ paddingRight: 42 }}
                       />
-                      <button
+                      <Button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
+                        variant="ghost"
+                        size="icon"
                         tabIndex={-1}
                         disabled={loading}
                         title={showPassword ? "隐藏密码" : "显示密码"}
-                        className="flex items-center justify-center"
-                        style={{
-                          position: "absolute",
-                          right: 6,
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          width: 34,
-                          height: 34,
-                          border: "none",
-                          background: "transparent",
-                          color: "#8A8F9E",
-                          cursor: "pointer",
-                        }}
+                        className="absolute top-1/2 right-1 size-8 -translate-y-1/2 text-muted-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
                       >
                         {showPassword ? (
-                          <IconEyeOff size={18} />
+                          <IconEyeOff className="size-[18px]" />
                         ) : (
-                          <IconEye size={18} />
+                          <IconEye className="size-[18px]" />
                         )}
-                      </button>
+                      </Button>
                     </div>
 
-                    <div
-                      className="flex items-center justify-between"
-                      style={{ marginTop: 14 }}
-                    >
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={rememberMe}
-                        onClick={() => setRememberMe(!rememberMe)}
-                        disabled={loading}
-                        className="flex items-center gap-2 select-none"
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          padding: 0,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span
-                          className="flex items-center justify-center"
-                          style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: 5,
-                            border: `1.5px solid ${rememberMe ? PRIMARY : "#CFD3E0"}`,
-                            background: rememberMe ? PRIMARY : "#fff",
-                            transition: "all .12s",
-                          }}
+                    <div className="mt-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="remember"
+                          checked={rememberMe}
+                          onCheckedChange={(checked) =>
+                            setRememberMe(checked === true)
+                          }
+                          disabled={loading}
+                        />
+                        <Label
+                          htmlFor="remember"
+                          className="cursor-pointer text-[13px] font-normal text-muted-foreground"
                         >
-                          {rememberMe && (
-                            <svg
-                              width="10"
-                              height="10"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="#fff"
-                              strokeWidth="3.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M4 12.5l5 5L20 6" />
-                            </svg>
-                          )}
-                        </span>
-                        <span style={{ fontSize: 13, color: "#5A6072" }}>
                           记住密码
-                        </span>
-                      </button>
+                        </Label>
+                      </div>
 
-                      <div style={{ fontSize: 13, color: "#9298AB" }}>
+                      <div className="flex items-center text-[13px] text-muted-foreground">
                         还没有账号？
-                        <button
+                        <Button
                           type="button"
+                          variant="link"
+                          className="h-auto p-0 text-[13px] font-semibold"
                           onClick={handleOpenRegister}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            padding: 0,
-                            marginLeft: 2,
-                            color: PRIMARY,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
                         >
                           去注册
-                        </button>
+                        </Button>
                       </div>
                     </div>
 
-                    <button
+                    <Button
                       type="submit"
-                      className="lgn-primary flex items-center justify-center gap-2"
+                      className="mt-[18px] h-10 w-full rounded-lg text-sm"
                       disabled={loading || !username || !password}
-                      style={{
-                        width: "100%",
-                        height: 42,
-                        marginTop: 18,
-                        border: "none",
-                        borderRadius: 9,
-                        background: PRIMARY,
-                        color: "var(--primary-foreground)",
-                        fontSize: 14.5,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
                     >
                       {loading && (
-                        <IconLoader2 size={16} className="animate-spin" />
+                        <IconLoader2 className="size-4 animate-spin" />
                       )}
                       {loading ? "登录中..." : "登录"}
-                    </button>
+                    </Button>
                   </form>
 
                   {error && (
-                    <p
-                      style={{
-                        marginTop: 10,
-                        fontSize: 12.5,
-                        color: "oklch(0.577 0.245 27.325)",
-                      }}
-                    >
+                    <p className="mt-2.5 text-[12.5px] text-destructive">
                       {error}
                     </p>
                   )}
 
                   {/* 其他登录方式 */}
-                  <div
-                    className="flex items-center"
-                    style={{ gap: 12, margin: "22px 0 14px" }}
-                  >
-                    <div
-                      style={{ flex: 1, height: 1, background: "#ECEEF5" }}
-                    />
-                    <span style={{ fontSize: 12, color: "#A8AEC2" }}>
+                  <div className="my-5 flex items-center gap-3">
+                    <div className="h-px flex-1 bg-border" />
+                    <span className="text-xs text-muted-foreground">
                       其他登录方式
                     </span>
-                    <div
-                      style={{ flex: 1, height: 1, background: "#ECEEF5" }}
-                    />
+                    <div className="h-px flex-1 bg-border" />
                   </div>
 
                   <div className="flex justify-center">
-                    <button
+                    <Button
                       type="button"
-                      onClick={handleFeishuLogin}
-                      disabled={loading}
+                      variant="outline"
+                      size="icon"
                       title="飞书登录"
-                      className="lgn-tile flex items-center justify-center"
-                      style={{
-                        width: 38,
-                        height: 38,
-                        borderRadius: "50%",
-                        border: "1px solid #E4E7F0",
-                        background: "#fff",
-                        cursor: loading ? "not-allowed" : "pointer",
-                        opacity: loading ? 0.5 : 1,
-                      }}
+                      className="size-9 rounded-full"
+                      disabled={loading}
+                      onClick={handleFeishuLogin}
                     >
-                      <img src={feishuIcon} alt="飞书" width={19} height={19} />
-                    </button>
+                      <img
+                        src={feishuIcon}
+                        alt="飞书"
+                        className="size-[19px]"
+                      />
+                    </Button>
                   </div>
 
-                  <div
-                    style={{
-                      textAlign: "center",
-                      fontSize: 11.5,
-                      color: "#B4B9C7",
-                      marginTop: "auto",
-                      paddingTop: 24,
-                    }}
-                  >
+                  <div className="mt-auto pt-6 text-center text-[11px] text-muted-foreground/60">
                     上海博般技术数据有限公司
                   </div>
                 </motion.div>
@@ -635,31 +472,19 @@ function SubViewFrame({
 }) {
   return (
     <div>
-      <div
-        className="flex items-center gap-2"
-        style={{ paddingTop: 6, paddingBottom: 18 }}
-      >
+      <div className="flex items-center gap-2 pt-1.5 pb-4">
         <img
           src={logoImage}
           alt="数字员工"
-          style={{ height: 22, width: "auto", objectFit: "contain" }}
+          className="h-[22px] w-auto object-contain"
         />
-        <span
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            letterSpacing: "0.04em",
-            color: "#1E2233",
-          }}
-        >
+        <span className="text-[15px] font-bold tracking-[0.04em] text-foreground">
           数字员工
         </span>
       </div>
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: "#1E2233" }}>
-          {copy.title}
-        </div>
-        <div style={{ fontSize: 12.5, color: "#9298AB", marginTop: 4 }}>
+      <div className="mb-4">
+        <div className="text-lg font-bold text-foreground">{copy.title}</div>
+        <div className="mt-1 text-[12.5px] text-muted-foreground">
           {copy.subtitle}
         </div>
       </div>
