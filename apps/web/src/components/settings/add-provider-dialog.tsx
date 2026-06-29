@@ -225,7 +225,8 @@ export function AddProviderDialog({
     const displayName = customName.trim() || host || "自定义供应商"
     const providerId = uniqueProviderId(
       customName.trim() || host || "provider",
-      existingProviderIds
+      // "custom" 是后端保留 ID，纳入去重避免派生出无法提交的 ID
+      [...existingProviderIds, "custom"]
     )
     setSubmitting(true)
     try {
