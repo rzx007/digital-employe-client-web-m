@@ -210,8 +210,8 @@ if reason is not None:
 
 ### 9.2 shell 改为纳入 — 启发式路径拦截（推翻 §1/§2 原"shell 不纳入"）
 **动因**：复测发现总管很自然地用 `shell_execute`（`echo "x" > "%USERPROFILE%\Desktop\test.md"`）落盘，绕过只覆盖 `write_file/edit_file` 的守卫。用户决策：shell 也纳入。**实现**（启发式，接受"可能漏拦混淆路径/误拦部分读"的取舍）：
-- `path_authorization.extract_command_paths(command)`：正则抽取命令里的绝对路径（Windows 盘符 / UNC / `%VAR%` / `~` / Unix 绝对），`expandvars`/`expanduser` 展开。
-- `path_authorization.guard_external_shell(...)`：对每个抽出的路径复用 `guard_external_write` 判定，任一越界未授权即挡回。
+- `path_authorization.extract_write_target_paths(command)`：**只抽"写上下文"的绝对路径**（见 §9.8 收窄）——① 重定向目标（`>` `>>` `1>` `2>` `&>` `>&`）；② 写/删命令（cp/mv/rm/mkdir/del/copy/move/New-Item/Out-File/Set-Content… 子命令首 token）的绝对路径参数。先剥 URL、跳过 list 变量（`%PATH%`）。
+- `path_authorization.guard_external_shell(...)`：对每个写目标路径复用 `guard_external_write` 判定，任一越界未授权即挡回。
 - `write_guard_registry.run_shell_guard(command, conversation_id)`：桥（查注册表→`sqlite_db_session`→`guard_external_shell`），fail-open。
 - 接入点：`skill_shell_backend` 的 `execute`/`aexecute`，**与硬底线 `_hardline_refusal` 同层**（硬底线之后、`_prepare_shell_command` 之前，扫原始命令）。conv_id 取自 `self._env["CONVERSATION_ID"]`；`_coerce_conv_id` 容错防崩。
 - 覆盖面：employee 与 orchestrator 共用同一 backend，一改两覆盖。（commits `7653fac4` / `1f0a360f` / `403c76c3`）
@@ -239,3 +239,6 @@ if reason is not None:
 - 三态模式硬生效：ask 弹卡、auto 静默放行、deny 硬拒绝（不可覆盖）。
 - 仍不变：工作区内写、读工作区外不受影响；后台子任务（`enable_hitl=False`）整体放行（§1 已知限制）。
 - **维护提醒**：新增 HITL 工具须同时登记 **4 处**清单——后端 `hitl_interrupt_on.HITL_INTERRUPT_ON` + `hitl_pending_parts.HITL_TOOL_NAMES`，前端 `hitl/constants.ts` 的 `HITL_TOOL_NAMES` + `HITL_TOOL_TYPES`。本特性的多个 bug 均源于漏登记其一。
+
+### 9.8 shell 守卫收窄到"写上下文"（消除安装命令误拦）
+**动因**：复测安装 Agent Reach（`curl https://.../install.md`、`set PATH=C:\...\Scripts;%PATH% && python -m agent_reach install`）连续被误拦。根因：原 `extract_command_paths` **扫命令里所有绝对路径**太宽——`https://` 的 `s:` 被当盘符、`%PATH%` 展开成整个系统 PATH、读取命令的路径参数全误报。**用户决策**：收窄到写上下文。**实现** `extract_write_target_paths`：仅抽 ① 重定向目标（`>`/`>>`/`1>`/`2>`/`&>`/`>&`）、② 写/删命令集（cp mv rm mkdir tee dd ln touch install rmdir / copy move del erase md rd rmdir xcopy robocopy ren rename / out-file set-content add-content new-item remove-item copy-item move-item rename-item …）子命令的绝对路径参数；先剥 URL（`_URL_RE`），路径正则字符类排除 `;,`，展开后含 `os.pathsep`/多盘符的 list 变量丢弃。**保住** `echo > 桌面\x`（重定向，原动机案例）和 `del D:\x`（删除）；**不再**误拦 curl/wget/pip/`set PATH`/读取命令。**已知漏拦**（保守取舍）：`sudo rm`/`env rm`/变量名调用写命令/间接管道 `| Out-File` 等冷门写法。（commit `463d074d`）

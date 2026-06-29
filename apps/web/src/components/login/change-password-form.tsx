@@ -106,18 +106,6 @@ export function ChangePasswordForm({
           : undefined
       }
     >
-      <h3
-        className={cn(
-          "font-bold",
-          isElectron ? "mb-4 text-lg" : "mb-8 text-2xl"
-        )}
-      >
-        修改密码
-      </h3>
-      <p className="mb-4 text-sm text-muted-foreground">
-        您的密码已过期，请修改密码后继续
-      </p>
-
       <form
         onSubmit={handleSubmit}
         className={cn("flex flex-col", isElectron ? "gap-4" : "gap-5")}

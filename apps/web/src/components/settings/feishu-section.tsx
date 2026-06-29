@@ -60,8 +60,8 @@ export function FeishuSection() {
   React.useEffect(() => {
     void Promise.all([
       getConfigKv("FEISHU_CHANNEL_ENABLED"),
-      getConfigKv("FEISHU_APP_ID"),
-      getConfigKv("FEISHU_APP_SECRET"),
+      getConfigKv("FEISHU_CHANNEL_APP_ID"),
+      getConfigKv("FEISHU_CHANNEL_APP_SECRET"),
       getConfigKv("FEISHU_WHITELIST_OPEN_IDS"),
     ])
       .then(([enabledKv, appIdKv, appSecretKv, whitelistKv]) => {
@@ -85,8 +85,8 @@ export function FeishuSection() {
     try {
       await setManyConfigKv([
         { key: "FEISHU_CHANNEL_ENABLED", value: enabled ? "1" : "0" },
-        { key: "FEISHU_APP_ID", value: appId },
-        { key: "FEISHU_APP_SECRET", value: appSecret },
+        { key: "FEISHU_CHANNEL_APP_ID", value: appId },
+        { key: "FEISHU_CHANNEL_APP_SECRET", value: appSecret },
         { key: "FEISHU_WHITELIST_OPEN_IDS", value: whitelist },
       ])
       toast.success("已保存")

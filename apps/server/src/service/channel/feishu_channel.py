@@ -111,6 +111,9 @@ class FeishuChannel(Channel):
     def start(self):
         import threading
 
+        if self._thread is not None and self._thread.is_alive():
+            logger.warning("FeishuChannel ws 线程已在运行，跳过重复 start")
+            return
         self._stopped = False
         self._thread = threading.Thread(
             target=self._run_ws, name="feishu-ws", daemon=True
