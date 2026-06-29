@@ -645,7 +645,7 @@ const reapplyAppearance = React.useCallback(
   [applyTheme]
 )
 ```
-在 `onThemeChanged` 与 `storage` 两处 `setThemeState(...)` 后调用 `reapplyAppearance(resolvedMode)`，删掉旧的 `applyBrandTheme(...)` 调用。
+在 `onThemeChanged` 与 `storage` 两处 `setThemeState(...)` 后调用 `reapplyAppearance(...)`，删掉旧的 `applyBrandTheme(...)` 调用。两处传入的 mode 实参必须与该处 `setThemeState` 用的值一致——即 `isTheme(storedValue) ? storedValue : defaultTheme`（`onThemeChanged` 里 `storedValue` 是 `localStorage.getItem(storageKey)`，`storage` 里是 `event.newValue`）。
 
 - [ ] **Step 4: `d` 快捷键在皮肤激活时不切换**
 
