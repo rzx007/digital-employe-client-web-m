@@ -21,7 +21,11 @@ import {
 } from "@workspace/ui/components/dialog"
 import { cn } from "@workspace/ui/lib/utils"
 import { getConfigKv, setManyConfigKv } from "@/api/config-kv"
-import { fetchQrcode, pollQrcodeStatus } from "@/api/feishu-channel"
+import {
+  fetchQrcode,
+  pollQrcodeStatus,
+  testChannelCredentials,
+} from "@/api/feishu-channel"
 import { appendOpenId } from "@/lib/feishu-whitelist"
 
 const POLL_INTERVAL_MS = 2000
@@ -41,6 +45,7 @@ export function FeishuSection() {
   const [appSecret, setAppSecret] = React.useState("")
   const [whitelist, setWhitelist] = React.useState("")
   const [saving, setSaving] = React.useState(false)
+  const [testing, setTesting] = React.useState(false)
 
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [qrImg, setQrImg] = React.useState("")
@@ -94,6 +99,26 @@ export function FeishuSection() {
       toast.error("保存失败")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleTest = async () => {
+    if (!appId.trim() || !appSecret.trim()) {
+      toast.error("请先填写 App ID 和 App Secret")
+      return
+    }
+    setTesting(true)
+    try {
+      const { ok, message } = await testChannelCredentials(appId, appSecret)
+      if (ok) {
+        toast.success(message)
+      } else {
+        toast.error(message)
+      }
+    } catch {
+      toast.error("测试连接失败")
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -226,6 +251,13 @@ export function FeishuSection() {
         <div className="flex items-center gap-2 border-t pt-4">
           <Button onClick={() => void handleSave()} disabled={saving}>
             保存
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void handleTest()}
+            disabled={testing}
+          >
+            {testing ? "测试中..." : "测试连接"}
           </Button>
           <Button variant="outline" onClick={() => void openQrcodeDialog()}>
             获取飞书二维码

@@ -34,3 +34,24 @@ export async function pollQrcodeStatus(
   )
   return res.data
 }
+
+export interface TestResp {
+  ok: boolean
+  message: string
+}
+
+export async function testChannelCredentials(
+  appId: string,
+  appSecret: string,
+  channel = "feishu"
+): Promise<TestResp> {
+  const res = await request<ApiResponse<TestResp>>(
+    `/channels/${channel}/test`,
+    {
+      method: "POST",
+      body: { app_id: appId, app_secret: appSecret },
+      retry: 0,
+    }
+  )
+  return res.data
+}
