@@ -149,6 +149,35 @@
 }
 
 
+/* ─── 品牌主题色预设（data-brand-theme 切换；明/暗各一套；default 走上面根变量） ─── */
+:root[data-brand-theme="green"] {
+  --primary: oklch(0.55 0.13 155);
+  --primary-foreground: oklch(0.98 0.02 155);
+  --sidebar-primary: oklch(0.55 0.13 155);
+  --sidebar-primary-foreground: oklch(0.98 0.02 155);
+  --ring: oklch(0.55 0.13 155);
+}
+:root[data-brand-theme="green"].dark {
+  --primary: oklch(0.62 0.12 155);
+  --primary-foreground: oklch(0.98 0.02 155);
+  --sidebar-primary: oklch(0.66 0.13 155);
+  --sidebar-primary-foreground: oklch(0.98 0.02 155);
+}
+:root[data-brand-theme="teal"] {
+  --primary: oklch(0.6 0.12 200);
+  --primary-foreground: oklch(0.98 0.02 200);
+  --sidebar-primary: oklch(0.6 0.12 200);
+  --sidebar-primary-foreground: oklch(0.98 0.02 200);
+  --ring: oklch(0.6 0.12 200);
+}
+:root[data-brand-theme="teal"].dark {
+  --primary: oklch(0.68 0.11 200);
+  --primary-foreground: oklch(0.98 0.02 200);
+  --sidebar-primary: oklch(0.7 0.12 200);
+  --sidebar-primary-foreground: oklch(0.98 0.02 200);
+}
+
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

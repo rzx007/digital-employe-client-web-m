@@ -90,36 +90,60 @@ class ConversationSummarizationMiddleware(SummarizationMiddleware):
         reason = configurable.get("context_compact_reason")
 
         if configurable.get("force_context_compact"):
+            # 用户显式要求（换话题/重开/meta）无条件尊重——这是"清空重来"语义。
+            # 但自动检查点（delegation_completed / topic_change 启发式）很频繁：总管
+            # 每派完一个子任务就标记一次 pending compact，若无条件压，会在略大于 keep
+            # 窗口的上下文上反复压缩、抖缓存、刷屏「上下文总结」。故自动检查点要求当前
+            # 真实体量达到最低门槛（0.5×阈值，与 deepagents compact 工具的 eligibility
+            # 一致）才强压；不到门槛就放行，落到下面按真实大小判定。
+            if reason == "user_requested":
+                logger.info(
+                    "summarization checkpoint: force compact reason=%s thread=%s",
+                    reason,
+                    configurable.get("thread_id"),
+                )
+                return True
+            settings = get_settings()
+            floor = int(resolve_summarization_token_threshold(settings) * 0.5)
+            if total_tokens >= floor:
+                logger.info(
+                    "summarization checkpoint: force compact reason=%s "
+                    "total=%s floor=%s thread=%s",
+                    reason,
+                    total_tokens,
+                    floor,
+                    configurable.get("thread_id"),
+                )
+                return True
             logger.info(
-                "summarization checkpoint: force compact reason=%s thread=%s",
+                "summarization checkpoint: force compact reason=%s skipped, "
+                "context small (total=%s < floor=%s) thread=%s",
                 reason,
+                total_tokens,
+                floor,
                 configurable.get("thread_id"),
             )
-            return True
 
         last_reported = configurable.get("last_reported_input_tokens")
         if isinstance(last_reported, int) and last_reported > 0:
             settings = get_settings()
             threshold = resolve_summarization_token_threshold(settings)
-            if last_reported >= threshold:
+            # API 报告的上一轮 input 用来触发压缩，但**必须有"当前真实体量"佐证**。
+            # last_reported 是上一轮落库的峰值（stream_registry._extract_peak_usage_from_buffer），
+            # 压缩后它仍可能 >= 阈值（尤其总管：系统提示词+工具基线本身就大），若仅凭这个
+            # 陈旧峰值就 return True，会把刚压过、现已很小的上下文一轮一轮反复再压（死循环）。
+            # 故要求当前近似 total_tokens 也进入触发带，确认上下文确实还很大才压；否则交给
+            # 下面的 super()._should_summarize 按真实大小判定。
+            pre_trigger = int(threshold * 0.92)
+            if total_tokens >= pre_trigger and last_reported >= pre_trigger:
                 logger.info(
-                    "summarization: API usage %s >= threshold %s, triggering compact",
+                    "summarization: API-corroborated compact "
+                    "(reported=%s approx=%s threshold=%s)",
                     last_reported,
+                    total_tokens,
                     threshold,
                 )
                 return True
-            # Calibrate approximate counter when API says we're close
-            pre_trigger = int(threshold * 0.92)
-            if last_reported >= pre_trigger and total_tokens >= pre_trigger:
-                if super()._should_summarize(messages, total_tokens):
-                    logger.info(
-                        "summarization: API-calibrated compact "
-                        "(reported=%s approx=%s threshold=%s)",
-                        last_reported,
-                        total_tokens,
-                        threshold,
-                    )
-                    return True
 
         return super()._should_summarize(messages, total_tokens)
 

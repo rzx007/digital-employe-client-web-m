@@ -16,14 +16,14 @@ scp -r boban@10.172.246.220:/home/boban/BobanStaff-Installer boban@<目标机>:/
 
 | 包 | 适用 | 内容 |
 |----|------|------|
-| **核心包** `BobanStaff-Core-<版本>.zip`（~360M） | 只装数字员工、**不要本地模型** | 数字员工 deb + hanhai-cli + 输入法 + deploy.sh |
+| **核心包** `BobanStaff-Core-<版本>.zip`（~270M） | 只装数字员工、**不要本地模型** | hanhai-cli + 输入法 + deploy.sh + headroom 镜像（选装）。**不含数字员工 deb** |
 | **模型包** `BobanStaff-Model.zip`（~27G） | 需要本地模型（配合核心包一起） | 模型 gguf + llama.cpp 镜像 |
 
-- **只用数字员工**：只下核心包，解压即用。
+- **只用数字员工**：下核心包 + 按"准备 第 2 步"下载数字员工 deb，解压即用。
 - **要本地模型**：核心包 + 模型包都下，**解压到同一个 `BobanStaff-Installer/` 目录**。
 
-> 安装介质里的素材（deploy.sh / 输入法 / 模型）不常变；**数字员工 deb 经常更新**，
-> 务必按下面"准备 第 2 步"换成最新版，别用介质里自带的旧 deb。
+> **核心包不含数字员工 deb**（deb 体积大、版本更新频繁，独立分发）。务必按下面"准备 第 2 步"
+> 从飞书下载最新 Linux/arm64 deb 放进 `packages/`，否则数字员工装不上。
 
 ## 准备
 
@@ -48,9 +48,11 @@ scp -r boban@10.172.246.220:/home/boban/BobanStaff-Installer boban@<目标机>:/
 BobanStaff-Installer/
 ├── deploy.sh                  ← 安装脚本（在这里运行）
 ├── packages/
-│   ├── DigitalEmployee-Offline-Linux-arm64-<版本>.deb   数字员工
+│   ├── BobanStaff-Offline-Linux-arm64-<版本>.deb        数字员工（← 准备第2步从飞书下载放入；核心包不自带）
 │   └── hanhai-cli-linux-arm64.tar.gz                    瀚海 CLI
 ├── ime/                       中文输入法离线包
+├── images/
+│   └── headroom-arm64.tar     压缩网关镜像（选装，默认不启用）
 └── runtime/
     └── docker-compose.yml     模型服务编排模板（仅模板，无模型文件）
 ```
@@ -71,7 +73,7 @@ BobanStaff-Installer/
 
 **激活相关文件放哪**：
 - 第 2 步拿到的 `license.code` → 放在**与 deploy.sh 同一层**（即 `BobanStaff-Installer/license.code`）。
-- 激活成功后系统自动生成 `~/.digital-employee/data/activation.json`（不用手动管）。
+- 激活成功后系统自动生成 `~/.boban-staff-next/data/activation.json`（不用手动管）。
 
 > 介质里若看到 `*.bak` / `*.debbak` 等备份文件，忽略即可，不影响安装。
 
@@ -200,11 +202,21 @@ sudo bash ~/BobanStaff-Installer/deploy.sh --cleanup
 
 > 把方括号替换成实际联系人后再发给现场人员。
 
-版本 v2.0（对齐 license.code 激活 + 拆包）
+版本 v2.1（核心包不含 deb 单独下载 / headroom 压缩网关选装 / 数据目录 `.boban-staff-next`）
 
 ---
 
 ## 附录：现场常见环境问题
+
+### 压缩网关 headroom（选装，默认关）
+
+核心包带了 `images/headroom-arm64.tar`，但**默认不启用**。如需启用（数据型任务可省 ~20% token，
+对话类无收益）：
+```bash
+sudo WITH_HEADROOM=1 bash deploy.sh
+```
+启用后数字员工经网关透明压缩转发，**应用端点仍是 `:12345`、无需改任何应用配置**（网关接管 12345、
+模型让到 12399）。不加该环境变量则数字员工直连模型，等同不装。离线机器只从上面那个 tar 载入，不联网拉取。
 
 ### VPN（headscale / tailscale）
 ```bash

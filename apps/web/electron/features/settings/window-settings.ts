@@ -1,6 +1,7 @@
 import { getWindowManager } from "../../core/services/window-registry"
 import { buildHashRouteUrl } from "../../core/runtime-paths"
 import { pinBrowserWindowTitle } from "../../main/pin-window-title"
+import { getResolvedBrand } from "../branding/brand-config"
 
 const SETTINGS_TABS = new Set([
   "account",
@@ -29,6 +30,7 @@ export function createSettingsWindow(options?: { tab?: string }): void {
     return
   }
 
+  const settingsTitle = `${getResolvedBrand().windowTitle} - 设置`
   const win = wm.createWindow({
     id: "settings",
     route,
@@ -36,11 +38,11 @@ export function createSettingsWindow(options?: { tab?: string }): void {
       width: 800,
       height: 600,
       resizable: false,
-      title: "数字员工 - 设置",
+      title: settingsTitle,
     },
   })
 
-  pinBrowserWindowTitle(win, "数字员工 - 设置")
+  pinBrowserWindowTitle(win, settingsTitle)
 }
 
 export function closeSettingsWindow(): void {

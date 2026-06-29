@@ -19,6 +19,11 @@ import { getConfigKv, setConfigKv } from "@/api/config-kv"
 import { fetchRuntimeConfig } from "@/api/system"
 import { useTheme } from "@/components/theme-provider"
 import { ThemeCard } from "./theme-card"
+import {
+  applyBrandTheme,
+  getStoredBrandTheme,
+  BRAND_THEMES,
+} from "@/lib/brand/brand-theme"
 import { isElectron, withElectronApi } from "@/lib/electron/host"
 
 const AGENT_MAX_CONCURRENT_CAP = 8
@@ -55,6 +60,11 @@ function clampSubagentMaxParallel(value: number): number {
 export function GeneralSettings() {
   const queryClient = useQueryClient()
   const { theme, setTheme } = useTheme()
+  const [brandTheme, setBrandTheme] = React.useState(getStoredBrandTheme)
+  const handleBrandTheme = (id: string) => {
+    applyBrandTheme(id)
+    setBrandTheme(id)
+  }
   const [autoLaunch, setAutoLaunch] = React.useState(false)
   const [autoUpdate, setAutoUpdate] = React.useState(true)
   const [notifications, setNotifications] = React.useState(true)
@@ -348,6 +358,34 @@ export function GeneralSettings() {
               active={theme === "system"}
               onClick={() => setTheme("system")}
             />
+          </div>
+
+          <div className="mt-4 border-t pt-4">
+            <p className="mb-3 text-sm font-medium">主题色</p>
+            <div className="grid grid-cols-3 gap-3">
+              {BRAND_THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => handleBrandTheme(t.id)}
+                  className={
+                    "flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors hover:bg-accent/50 " +
+                    (brandTheme === t.id
+                      ? "border-primary bg-primary/5"
+                      : "border-transparent")
+                  }
+                >
+                  <span
+                    className="size-8 rounded-full"
+                    style={{ background: t.swatch }}
+                  />
+                  <span className="text-sm font-medium">{t.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t.description}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>

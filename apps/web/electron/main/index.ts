@@ -11,7 +11,8 @@ import { getBrowserController } from "../features/browser/window-controller"
 import { startBrowserHttpBridge } from "../features/browser/browser-http-bridge"
 import { resolveBrowserConfirmation } from "../features/browser/browser-confirmation"
 import { IpcChannels } from "../shared/ipc-channels"
-import { APP_DISPLAY_NAME } from "./app-product"
+import { getAppDisplayName } from "./app-product"
+import { getResolvedBrand } from "../features/branding/brand-config"
 import { initMainLogger, rootLogger as logger } from "../core/logger"
 import { bootstrapApp } from "../core/bootstrap"
 
@@ -63,7 +64,7 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 if (process.platform === "darwin") {
-  app.setName(APP_DISPLAY_NAME)
+  app.setName(getAppDisplayName())
 }
 
 app.on("browser-window-created", (_event, browserWindow) => {
@@ -79,7 +80,7 @@ let win: BrowserWindow | null = null
 
 function getMainWindowOptions(): Electron.BrowserWindowConstructorOptions {
   const base: Electron.BrowserWindowConstructorOptions = {
-    title: APP_DISPLAY_NAME,
+    title: getResolvedBrand().windowTitle,
     icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
     webPreferences: {
       preload: paths.preloadPath,
