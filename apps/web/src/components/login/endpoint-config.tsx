@@ -6,8 +6,6 @@ import {
   IconShieldX,
 } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { Label } from "@workspace/ui/components/label"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   Select,
@@ -103,11 +101,11 @@ export function EndpointConfig({
           isElectron ? "mt-5 w-[95%]" : "max-w-md"
         )}
       >
-        <form onSubmit={handleValidate} className="space-y-5">
-          <div className="flex flex-col gap-1.5">
-            <Label className="mb-4 text-sm font-bold">协议</Label>
+        <form onSubmit={handleValidate} className="space-y-4">
+          <div>
+            <label className="lgn-label">协议</label>
             <Select value={protocol} onValueChange={setProtocol}>
-              <SelectTrigger className="rounded-xs">
+              <SelectTrigger className="h-10 w-full rounded-[9px] border-[#E4E7F0] bg-white px-[13px] text-[13.5px] text-[#2A2E3C]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -117,31 +115,33 @@ export function EndpointConfig({
             </Select>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label className="mb-4 text-sm font-bold">
+          <div>
+            <label className="lgn-label">
               通讯地址
-              <em className="ml-1 text-xs font-light">(ip或域名)</em>
-            </Label>
-            <Input
+              <em className="ml-1 text-xs font-normal text-[#9298AB]">
+                (ip或域名)
+              </em>
+            </label>
+            <input
+              className="lgn-field"
               placeholder="请输入IP地址"
               value={ip}
               onChange={(e) => setIp(e.target.value)}
-              className="rounded-xs"
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label className="mb-4 text-sm font-bold">端口</Label>
-            <Input
+          <div>
+            <label className="lgn-label">端口</label>
+            <input
+              className="lgn-field"
               type="number"
               placeholder="请输入端口"
               value={port}
               onChange={(e) => setPort(Number(e.target.value))}
-              className="rounded-xs"
             />
           </div>
 
-          <div className="flex w-full justify-end gap-2">
+          <div className="flex w-full justify-end gap-2 pt-1">
             {status === "success" || validated ? (
               <Button variant="outline" onClick={handleSave}>
                 <IconShieldCheck className="mr-1 size-5 text-green-500" />

@@ -9,7 +9,7 @@ import {
   IconX,
 } from "@tabler/icons-react"
 import { motion, AnimatePresence } from "motion/react"
-import logoImage from "@/assets/logo1.png"
+import logoImage from "@/assets/logo.png"
 import feishuIcon from "@/assets/feishu.svg"
 import { useAuthStore } from "@/stores/auth-store"
 import type { LoginUser } from "@/api/types"
@@ -30,31 +30,34 @@ export const Route = createFileRoute("/login")({
 
 type LoginView = "login" | "endpoint" | "changePassword"
 
-/* 方案A · 浅色精致版 —— 品牌靛蓝取自全局 --primary token */
-const PRIMARY = "oklch(0.488 0.243 264.376)"
-const HERO_BG =
-  "linear-gradient(135deg, oklch(0.488 0.243 264.376) 0%, oklch(0.52 0.225 264) 55%, oklch(0.57 0.2 264) 100%)"
-const BTN_BG =
-  "linear-gradient(135deg, oklch(0.488 0.243 264.376), oklch(0.55 0.215 264))"
+/* 强调色全部走全局 --primary token,跟随主题变更 */
+const PRIMARY = "var(--primary)"
 
-/* 输入框聚焦 / 占位符 + 主按钮微交互。作用域以 .lgn- 前缀隔离,不污染全局。 */
+/* 表单/按钮样式集中在 .lgn- 类里,endpoint-config 等子表单复用同一套 */
 const SCOPED_CSS = `
+.lgn-field{width:100%;height:40px;border:1px solid #E4E7F0;background:#fff;border-radius:9px;padding:0 13px;font-size:13.5px;color:#2A2E3C;outline:none;transition:border-color .15s ease,box-shadow .15s ease}
 .lgn-field::placeholder{color:#A8AEC2}
-.lgn-field:focus{border-color:${PRIMARY};background:#fff;box-shadow:0 0 0 3px oklch(0.488 0.243 264.376 / 0.14)}
+.lgn-field:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent)}
 .lgn-field:disabled{opacity:.6;cursor:not-allowed}
-.lgn-primary{transition:transform .12s ease,box-shadow .12s ease,opacity .12s ease}
-.lgn-primary:hover:not(:disabled){transform:translateY(-1px)}
-.lgn-primary:active:not(:disabled){transform:translateY(0)}
-.lgn-primary:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
-.lgn-icon-btn{transition:background .15s ease,border-color .15s ease}
+.lgn-label{display:block;font-size:13px;font-weight:600;color:#5A6072;margin-bottom:8px}
+.lgn-primary{transition:background .15s ease,transform .1s ease,opacity .12s ease}
+.lgn-primary:hover:not(:disabled){background:color-mix(in srgb, var(--primary) 88%, #000)}
+.lgn-primary:active:not(:disabled){transform:translateY(0.5px)}
+.lgn-primary:disabled{opacity:.5;cursor:not-allowed}
+.lgn-tile{transition:border-color .15s ease,background .15s ease}
+.lgn-tile:hover:not(:disabled){border-color:var(--primary);background:#F7F8FC}
+.lgn-ghost{transition:background .15s ease,color .15s ease}
+.lgn-ghost:hover{background:#F1F2F7;color:#5A6072}
 @media (prefers-reduced-motion: reduce){
-  .lgn-primary{transition:none}
-  .lgn-primary:hover:not(:disabled){transform:none}
+  .lgn-primary{transition:background .15s ease}
+  .lgn-primary:active:not(:disabled){transform:none}
 }
 `
 
-const HERO_COPY: Record<LoginView, { title: string; subtitle: string }> = {
-  login: { title: "欢迎回来", subtitle: "登录以继续使用数字员工" },
+const SUBVIEW_COPY: Record<
+  Exclude<LoginView, "login">,
+  { title: string; subtitle: string }
+> = {
   endpoint: { title: "通信设置", subtitle: "配置后端服务通讯地址" },
   changePassword: { title: "修改密码", subtitle: "密码已过期，请设置新密码" },
 }
@@ -207,242 +210,178 @@ function LoginPage() {
     return () => window.removeEventListener("message", handler)
   }, [])
 
-  const hero = HERO_COPY[currentView]
-
   return (
     <div
       className={
         inElectron
-          ? "relative flex h-screen w-screen flex-col overflow-hidden"
+          ? "relative flex h-screen w-screen items-stretch justify-center overflow-hidden"
           : "relative flex min-h-screen w-screen items-center justify-center overflow-hidden px-4 py-10"
       }
       style={{
         background: inElectron
           ? "#FFFFFF"
-          : "radial-gradient(120% 80% at 50% -10%, #E9EEFC 0%, rgba(233,238,252,0) 60%), linear-gradient(180deg, #F4F6FD 0%, #FBFCFE 100%)",
+          : "radial-gradient(120% 80% at 50% -10%, #EEF1FB 0%, rgba(238,241,251,0) 60%), #F6F7FB",
         ...dragStyle(inElectron),
       }}
     >
       <style>{SCOPED_CSS}</style>
 
       <div
-        className="flex w-full flex-col overflow-hidden"
+        className="flex w-full flex-col"
         style={{
           background: "#FFFFFF",
           fontFamily:
             "'Raleway Variable', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif",
           ...(inElectron
-            ? { height: "100%", borderRadius: 0, boxShadow: "none" }
+            ? { height: "100%" }
             : {
-              maxWidth: 360,
-              borderRadius: 18,
-              boxShadow: "0 24px 60px -20px rgba(40,52,120,0.28)",
-            }),
+                maxWidth: 360,
+                borderRadius: 16,
+                border: "0.5px solid #E9ECF3",
+                boxShadow: "0 20px 50px -24px rgba(40,52,120,0.22)",
+              }),
           ...noDrag,
         }}
       >
-        {/* ── Hero ── */}
+        {/* 顶栏:窗口控制(Electron 专属),同时作为拖拽手柄 */}
         <div
-          className="relative shrink-0 overflow-hidden"
-          style={{
-            padding: "18px 24px 22px",
-            background: HERO_BG,
-            ...dragStyle(inElectron),
-          }}
+          className="flex shrink-0 items-center justify-between"
+          style={{ height: 44, padding: "0 12px", ...dragStyle(inElectron) }}
         >
-          {/* 品牌微光装饰(替换方案A的条纹占位,贴合"克制专业") */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute"
-            style={{
-              right: -34,
-              top: -30,
-              width: 168,
-              height: 168,
-              borderRadius: 28,
-              transform: "rotate(8deg)",
-              background:
-                "radial-gradient(120% 120% at 30% 20%, rgba(255,255,255,0.22), rgba(255,255,255,0) 62%)",
-              border: "1px solid rgba(255,255,255,0.12)",
-            }}
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute"
-            style={{
-              right: 18,
-              top: 22,
-              opacity: 0.5,
-              transform: "rotate(8deg)",
-            }}
-          >
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M2 14c3.5-6 6.5-6 10 0s6.5 6 10 0"
-                stroke="rgba(255,255,255,0.55)"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-              <path
-                d="M2 9c3.5-6 6.5-6 10 0s6.5 6 10 0"
-                stroke="rgba(255,255,255,0.28)"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
-
-          {/* 顶栏:logo + 标题 + 窗口控制 */}
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div
-                className="flex items-center justify-center"
-
-              >
-                <img
-                  src={logoImage}
-                  alt="数字员工"
-                  style={{ width: 20, height: 20, objectFit: "contain" }}
-                />
-              </div>
-              <span
-                style={{
-                  color: "#fff",
-                  fontWeight: 600,
-                  fontSize: 16,
-                  letterSpacing: "0.02em",
-                }}
-              >
-                数字员工
-              </span>
-            </div>
-
-            {inElectron && (
-              <div className="flex items-center gap-1.5" style={noDrag}>
-                <button
-                  type="button"
-                  title="通信设置"
-                  onClick={() =>
-                    setCurrentView(
-                      currentView === "endpoint" ? "login" : "endpoint"
-                    )
-                  }
-                  className="lgn-icon-btn flex items-center justify-center"
-                  style={{
-                    width: 28,
-                    height: 28,
-                    border: "none",
-                    borderRadius: 8,
-                    background: "rgba(255,255,255,0.16)",
-                    color: "#fff",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) =>
-                  (e.currentTarget.style.background =
-                    "rgba(255,255,255,0.28)")
-                  }
-                  onMouseLeave={(e) =>
-                  (e.currentTarget.style.background =
-                    "rgba(255,255,255,0.16)")
-                  }
-                >
-                  <IconSettings size={15} />
-                </button>
-                <button
-                  type="button"
-                  title="关闭"
-                  onClick={() => void withElectronApi((api) => api.quitApp())}
-                  className="lgn-icon-btn flex items-center justify-center"
-                  style={{
-                    width: 28,
-                    height: 28,
-                    border: "none",
-                    borderRadius: 8,
-                    background: "rgba(255,255,255,0.16)",
-                    color: "#fff",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) =>
-                  (e.currentTarget.style.background =
-                    "rgba(255,255,255,0.28)")
-                  }
-                  onMouseLeave={(e) =>
-                  (e.currentTarget.style.background =
-                    "rgba(255,255,255,0.16)")
-                  }
-                >
-                  <IconX size={15} />
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* 标题区(随视图变化) */}
-          <div className="relative" style={{ marginTop: 22 }}>
-            <div
+          {inElectron ? (
+            <button
+              type="button"
+              title="通信设置"
+              onClick={() =>
+                setCurrentView(
+                  currentView === "endpoint" ? "login" : "endpoint"
+                )
+              }
+              className="lgn-ghost flex items-center justify-center"
               style={{
-                color: "#fff",
-                fontSize: 24,
-                fontWeight: 700,
-                letterSpacing: "0.01em",
+                width: 30,
+                height: 30,
+                border: "none",
+                borderRadius: 8,
+                background: "transparent",
+                color: "#9298AB",
+                cursor: "pointer",
+                ...noDrag,
               }}
             >
-              {hero.title}
-            </div>
-            <div
+              <IconSettings size={18} />
+            </button>
+          ) : (
+            <span />
+          )}
+
+          {inElectron && (
+            <button
+              type="button"
+              title="关闭"
+              onClick={() => void withElectronApi((api) => api.quitApp())}
+              className="lgn-ghost flex items-center justify-center"
               style={{
-                color: "rgba(255,255,255,0.82)",
-                fontSize: 12.5,
-                marginTop: 4,
+                width: 30,
+                height: 30,
+                border: "none",
+                borderRadius: 8,
+                background: "transparent",
+                color: "#9298AB",
+                cursor: "pointer",
+                ...noDrag,
               }}
             >
-              {hero.subtitle}
-            </div>
-          </div>
+              <IconX size={18} />
+            </button>
+          )}
         </div>
 
-        {/* ── Body ── */}
+        {/* 主体 */}
         <div
-          style={{
-            padding: 24,
-            ...(inElectron ? { flex: 1, overflowY: "auto" } : {}),
-            ...noDrag,
-          }}
+          className="flex flex-1 flex-col"
+          style={{ padding: "4px 28px 24px", overflowY: "auto", ...noDrag }}
         >
           {currentView === "endpoint" ? (
-            <EndpointConfig
-              key="endpoint"
-              isElectron={inElectron}
-              onCancel={() => setCurrentView("login")}
-              onSaved={handleEndpointSaved}
-            />
+            <SubViewFrame copy={SUBVIEW_COPY.endpoint}>
+              <EndpointConfig
+                isElectron={inElectron}
+                onCancel={() => setCurrentView("login")}
+                onSaved={handleEndpointSaved}
+              />
+            </SubViewFrame>
           ) : (
             <AnimatePresence mode="wait" initial={false}>
               {currentView === "changePassword" ? (
                 <motion.div
                   key="changePassword"
-                  initial={{ x: 240, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -240, opacity: 0 }}
-                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
                 >
-                  <ChangePasswordForm
-                    isElectron={inElectron}
-                    onSuccess={handleChangePasswordSuccess}
-                    onCancel={handleChangePasswordCancel}
-                  />
+                  <SubViewFrame copy={SUBVIEW_COPY.changePassword}>
+                    <ChangePasswordForm
+                      isElectron={inElectron}
+                      onSuccess={handleChangePasswordSuccess}
+                      onCancel={handleChangePasswordCancel}
+                    />
+                  </SubViewFrame>
                 </motion.div>
               ) : (
                 <motion.div
                   key="login"
-                  initial={{ x: 240, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -240, opacity: 0 }}
-                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  className="flex flex-1 flex-col"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
                 >
+                  {/* 品牌 —— 突出 logo 与名称 */}
+                  <div
+                    className="flex flex-col items-center"
+                    style={{
+                      paddingTop: 14,
+                      paddingBottom: 24,
+                      ...dragStyle(inElectron),
+                    }}
+                  >
+                    <img
+                      src={logoImage}
+                      alt="数字员工"
+                      style={{
+                        height: 58,
+                        width: "auto",
+                        objectFit: "contain",
+                      }}
+                    />
+                    <div
+                      style={{
+                        marginTop: 16,
+                        fontSize: 24,
+                        fontWeight: 700,
+                        letterSpacing: "0.06em",
+                        color: "#1E2233",
+                      }}
+                    >
+                      数字员工
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontSize: 11.5,
+                        letterSpacing: "0.34em",
+                        textTransform: "uppercase",
+                        color: "#B4B9C7",
+                      }}
+                    >
+                      boban staff
+                    </div>
+                  </div>
+
                   {registerSuccessHint && (
                     <div
-                      className="mb-4 flex items-center gap-2"
+                      className="mb-3 flex items-center gap-2"
                       style={{
                         borderRadius: 10,
                         border: "1px solid rgba(16,185,129,0.28)",
@@ -454,27 +393,14 @@ function LoginPage() {
                     >
                       <span
                         className="inline-block shrink-0 rounded-full"
-                        style={{
-                          width: 6,
-                          height: 6,
-                          background: "#10b981",
-                        }}
+                        style={{ width: 6, height: 6, background: "#10b981" }}
                       />
                       注册成功，请登录
                     </div>
                   )}
 
                   <form onSubmit={handleSubmit}>
-                    <label
-                      htmlFor="username"
-                      style={{
-                        display: "block",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "#5A6072",
-                        marginBottom: 8,
-                      }}
-                    >
+                    <label htmlFor="username" className="lgn-label">
                       账号
                     </label>
                     <input
@@ -487,29 +413,12 @@ function LoginPage() {
                       autoComplete="username"
                       disabled={loading}
                       autoFocus
-                      style={{
-                        width: "100%",
-                        height: 46,
-                        border: "1px solid #E4E7F0",
-                        background: "#F7F8FC",
-                        borderRadius: 11,
-                        padding: "0 14px",
-                        fontSize: 14,
-                        color: "#2A2E3C",
-                        outline: "none",
-                        transition: "all .15s",
-                      }}
                     />
 
                     <label
                       htmlFor="password"
-                      style={{
-                        display: "block",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "#5A6072",
-                        margin: "18px 0 8px",
-                      }}
+                      className="lgn-label"
+                      style={{ marginTop: 16 }}
                     >
                       密码
                     </label>
@@ -523,18 +432,7 @@ function LoginPage() {
                         onChange={(e) => setPassword(e.target.value)}
                         autoComplete="current-password"
                         disabled={loading}
-                        style={{
-                          width: "100%",
-                          height: 46,
-                          border: "1px solid #E4E7F0",
-                          background: "#F7F8FC",
-                          borderRadius: 11,
-                          padding: "0 44px 0 14px",
-                          fontSize: 14,
-                          color: "#2A2E3C",
-                          outline: "none",
-                          transition: "all .15s",
-                        }}
+                        style={{ paddingRight: 42 }}
                       />
                       <button
                         type="button"
@@ -566,7 +464,7 @@ function LoginPage() {
 
                     <div
                       className="flex items-center justify-between"
-                      style={{ marginTop: 16 }}
+                      style={{ marginTop: 14 }}
                     >
                       <button
                         type="button"
@@ -585,8 +483,8 @@ function LoginPage() {
                         <span
                           className="flex items-center justify-center"
                           style={{
-                            width: 17,
-                            height: 17,
+                            width: 16,
+                            height: 16,
                             borderRadius: 5,
                             border: `1.5px solid ${rememberMe ? PRIMARY : "#CFD3E0"}`,
                             background: rememberMe ? PRIMARY : "#fff",
@@ -595,12 +493,12 @@ function LoginPage() {
                         >
                           {rememberMe && (
                             <svg
-                              width="11"
-                              height="11"
+                              width="10"
+                              height="10"
                               viewBox="0 0 24 24"
                               fill="none"
                               stroke="#fff"
-                              strokeWidth="3.2"
+                              strokeWidth="3.4"
                               strokeLinecap="round"
                               strokeLinejoin="round"
                             >
@@ -639,17 +537,15 @@ function LoginPage() {
                       disabled={loading || !username || !password}
                       style={{
                         width: "100%",
-                        height: 48,
-                        marginTop: 22,
+                        height: 42,
+                        marginTop: 18,
                         border: "none",
-                        borderRadius: 12,
-                        background: BTN_BG,
-                        color: "#fff",
-                        fontSize: 15,
+                        borderRadius: 9,
+                        background: PRIMARY,
+                        color: "var(--primary-foreground)",
+                        fontSize: 14.5,
                         fontWeight: 600,
                         cursor: "pointer",
-                        boxShadow:
-                          "0 12px 24px -8px oklch(0.488 0.243 264.376 / 0.55)",
                       }}
                     >
                       {loading && (
@@ -671,10 +567,10 @@ function LoginPage() {
                     </p>
                   )}
 
-                  {/* 分割线 */}
+                  {/* 其他登录方式 */}
                   <div
                     className="flex items-center"
-                    style={{ gap: 12, margin: "24px 0 16px" }}
+                    style={{ gap: 12, margin: "22px 0 14px" }}
                   >
                     <div
                       style={{ flex: 1, height: 1, background: "#ECEEF5" }}
@@ -693,26 +589,18 @@ function LoginPage() {
                       onClick={handleFeishuLogin}
                       disabled={loading}
                       title="飞书登录"
-                      className="lgn-icon-btn flex items-center justify-center"
+                      className="lgn-tile flex items-center justify-center"
                       style={{
-                        width: 42,
-                        height: 42,
+                        width: 38,
+                        height: 38,
                         borderRadius: "50%",
                         border: "1px solid #E4E7F0",
-                        background: "#F7F8FC",
+                        background: "#fff",
                         cursor: loading ? "not-allowed" : "pointer",
                         opacity: loading ? 0.5 : 1,
                       }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "#fff"
-                        e.currentTarget.style.borderColor = PRIMARY
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "#F7F8FC"
-                        e.currentTarget.style.borderColor = "#E4E7F0"
-                      }}
                     >
-                      <img src={feishuIcon} alt="飞书" width={20} height={20} />
+                      <img src={feishuIcon} alt="飞书" width={19} height={19} />
                     </button>
                   </div>
 
@@ -721,7 +609,8 @@ function LoginPage() {
                       textAlign: "center",
                       fontSize: 11.5,
                       color: "#B4B9C7",
-                      marginTop: 20,
+                      marginTop: "auto",
+                      paddingTop: 24,
                     }}
                   >
                     上海博般技术数据有限公司
@@ -732,6 +621,49 @@ function LoginPage() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/* 子视图(通信设置 / 修改密码)统一外壳:紧凑品牌 + 标题 */
+function SubViewFrame({
+  copy,
+  children,
+}: {
+  copy: { title: string; subtitle: string }
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <div
+        className="flex items-center gap-2"
+        style={{ paddingTop: 6, paddingBottom: 18 }}
+      >
+        <img
+          src={logoImage}
+          alt="数字员工"
+          style={{ height: 22, width: "auto", objectFit: "contain" }}
+        />
+        <span
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            letterSpacing: "0.04em",
+            color: "#1E2233",
+          }}
+        >
+          数字员工
+        </span>
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: "#1E2233" }}>
+          {copy.title}
+        </div>
+        <div style={{ fontSize: 12.5, color: "#9298AB", marginTop: 4 }}>
+          {copy.subtitle}
+        </div>
+      </div>
+      {children}
     </div>
   )
 }
