@@ -18,7 +18,7 @@ export function ChannelsSettings() {
 
   return (
     <div className="flex gap-6">
-      <nav className="flex w-40 flex-col gap-1 border-r pr-3">
+      <nav className="flex w-30 shrink-0 flex-col gap-1 border-r pr-3">
         {CHANNELS.map((channel) => (
           <button
             key={channel.key}
@@ -34,7 +34,7 @@ export function ChannelsSettings() {
             <img
               src={channel.icon}
               alt={channel.label}
-              className="size-5 rounded"
+              className="size-7 rounded"
             />
             <span className="flex-1 text-left">{channel.label}</span>
             <span className="size-1.5 rounded-full bg-emerald-500" />
@@ -42,7 +42,7 @@ export function ChannelsSettings() {
         ))}
       </nav>
 
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         {selected === "feishu" && <FeishuSection />}
       </div>
     </div>

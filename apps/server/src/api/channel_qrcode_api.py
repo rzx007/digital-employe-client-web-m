@@ -1,11 +1,9 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 
 from src.core.deps import require_capability
 from src.models.response import ResponseBase
-from src.service.channel.cred_test import CHANNEL_CRED_TESTERS
 from src.service.channel.qrcode_auth import QRCODE_AUTH_HANDLERS, generate_qrcode_image
 
 router = APIRouter(
@@ -48,19 +46,3 @@ async def get_channel_qrcode_status(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"轮询状态失败：{exc}") from exc
     return ResponseBase(data={"status": result.status, "credentials": result.credentials})
-
-
-class _TestCredsBody(BaseModel):
-    app_id: str
-    app_secret: str
-
-
-@router.post("/channels/{channel}/test", summary="测试渠道凭证")
-async def test_channel_credentials(
-    channel: str, body: _TestCredsBody,
-) -> ResponseBase[dict[str, Any]]:
-    tester = CHANNEL_CRED_TESTERS.get(channel)
-    if tester is None:
-        raise HTTPException(status_code=404, detail=f"未知渠道：{channel}")
-    ok, message = await tester(body.app_id, body.app_secret)
-    return ResponseBase(data={"ok": ok, "message": message})
