@@ -89,6 +89,9 @@ def add_workbench_widget(
       employee_overview(在职员工/近7天新增,配 kpi)、
       plan_progress(编排计划 待确认/进行中/已完成/已取消,配 kpi)、
       skill_usage(技能总数/内置/工作区,配 kpi)、
+      task_execution_trend(近7天执行趋势 成功/失败,配 line 或 area)、
+      task_status_distribution(近7天任务状态分布,配 pie)、
+      plan_status_distribution(编排计划状态分布,配 pie)、
       workspace_file(读工作空间内 JSON 文件当数据,配任意 type)。
       绑定示例: data_source={"metricId":"task_execution_stats","refreshSec":30}。
       workspace_file 用法: data_source={"metricId":"workspace_file",

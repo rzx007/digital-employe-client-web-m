@@ -216,6 +216,63 @@ async def _skill_usage(db: Session, params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _task_execution_trend(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """Trend widget: 近7天执行趋势(line/area 形状)。"""
+    ws = _ws(params)
+    start = _day_start(cst_now()) - timedelta(days=6)  # 含今天共7天
+    raw = db.execute(
+        select(func.date(TaskExecutionLog.started_at), TaskExecutionLog.run_status, func.count())
+        .where(TaskExecutionLog.workspace_id == ws, TaskExecutionLog.started_at >= start)
+        .group_by(func.date(TaskExecutionLog.started_at), TaskExecutionLog.run_status)
+    ).all()
+    agg: dict[str, dict[str, int]] = {}
+    for d, st, n in raw:
+        agg.setdefault(str(d), {})[st] = int(n)
+    rows = []
+    for i in range(7):
+        day = start + timedelta(days=i)
+        b = agg.get(day.strftime("%Y-%m-%d"), {})
+        rows.append({"date": day.strftime("%m-%d"), "success": b.get("success", 0), "failed": b.get("failed", 0)})
+    return {
+        "xKey": "date",
+        "series": [{"key": "success", "label": "成功"}, {"key": "failed", "label": "失败"}],
+        "rows": rows,
+    }
+
+
+async def _task_status_distribution(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """Pie widget: 近7天任务状态分布。"""
+    ws = _ws(params)
+    start = _day_start(cst_now()) - timedelta(days=6)
+    raw = db.execute(
+        select(TaskExecutionLog.run_status, func.count())
+        .where(TaskExecutionLog.workspace_id == ws, TaskExecutionLog.started_at >= start)
+        .group_by(TaskExecutionLog.run_status)
+    ).all()
+    LABELS = {
+        "success": "成功",
+        "failed": "失败",
+        "running": "进行中",
+        "queued": "排队",
+        "timeout": "超时",
+        "cancelled": "已取消",
+        "pending": "待执行",
+    }
+    return {"items": [{"name": LABELS.get(st, st), "value": int(n)} for st, n in raw]}
+
+
+async def _plan_status_distribution(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """Pie widget: 编排计划状态分布。"""
+    ws = _ws(params)
+    raw = db.execute(
+        select(OrchestrationPlan.status, func.count())
+        .where(OrchestrationPlan.workspace_id == ws)
+        .group_by(OrchestrationPlan.status)
+    ).all()
+    LABELS = {"pending": "待确认", "running": "进行中", "completed": "已完成", "cancelled": "已取消"}
+    return {"items": [{"name": LABELS.get(st, st), "value": int(n)} for st, n in raw]}
+
+
 async def _workspace_file(db: Session, params: dict[str, Any]) -> dict[str, Any]:
     """读工作空间内的 JSON 文件当 widget 数据(定时任务写文件 → 看板按 refreshSec 自动刷)。
 
@@ -269,6 +326,9 @@ _REGISTRY: dict[str, Callable[[Session, dict[str, Any]], Awaitable[dict[str, Any
     "plan_progress": _plan_progress,
     "skill_usage": _skill_usage,
     "workspace_file": _workspace_file,
+    "task_execution_trend": _task_execution_trend,
+    "task_status_distribution": _task_status_distribution,
+    "plan_status_distribution": _plan_status_distribution,
 }
 
 
