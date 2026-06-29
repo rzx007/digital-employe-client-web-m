@@ -174,28 +174,30 @@ export function FeishuSection() {
   }
 
   return (
-    <Card className="w-full">
+    <Card className="min-w-0 w-full max-w-full overflow-hidden">
       <CardHeader>
         <CardTitle>飞书</CardTitle>
         <CardDescription>
           配置飞书机器人凭证与白名单，启用后可通过飞书与数字员工对话
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
+      <CardContent className="flex min-w-0 flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="feishu-app-id">App ID</Label>
           <Input
             id="feishu-app-id"
+            className="min-w-0"
             value={appId}
             placeholder="cli_xxxxxxxx"
             onChange={(e) => setAppId(e.target.value)}
           />
         </div>
 
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="feishu-app-secret">App Secret</Label>
           <Input
             id="feishu-app-secret"
+            className="min-w-0"
             type="password"
             value={appSecret}
             placeholder="••••••••"
@@ -203,10 +205,11 @@ export function FeishuSection() {
           />
         </div>
 
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="feishu-whitelist">白名单 Open ID（逗号分隔）</Label>
           <Textarea
             id="feishu-whitelist"
+            className="field-sizing-fixed max-h-36 min-h-20 overflow-y-auto break-all"
             value={whitelist}
             placeholder="ou_xxx,ou_yyy"
             onChange={(e) => setWhitelist(e.target.value)}

@@ -17,7 +17,7 @@ export function ChannelsSettings() {
   const [selected, setSelected] = React.useState<string>("feishu")
 
   return (
-    <div className="flex gap-6">
+    <div className="flex min-w-0 w-full gap-6 overflow-hidden">
       <nav className="flex w-30 shrink-0 flex-col gap-1 border-r pr-3">
         {CHANNELS.map((channel) => (
           <button
