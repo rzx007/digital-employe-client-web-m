@@ -196,7 +196,7 @@ export function ScheduleCalendar({
       </div>
 
       {/* 表头与格子用同一套固定列宽模板(每列 1.5rem),逐列 1:1 对齐,不随面板宽度浮动 */}
-      <div className="mx-auto mb-1 grid w-fit grid-cols-[repeat(7,1.8rem)] gap-1">
+      <div className="mx-auto mb-1 grid w-fit grid-cols-[repeat(7,1.8rem)] justify-items-center gap-1">
         {WEEKDAY_LABELS.map((label) => (
           <div
             key={label}
@@ -207,7 +207,7 @@ export function ScheduleCalendar({
         ))}
       </div>
 
-      <div className="mx-auto grid w-fit grid-cols-[repeat(7,1.8rem)] gap-1">
+      <div className="mx-auto grid w-fit grid-cols-[repeat(7,1.8rem)] justify-items-center gap-1">
         {cells.map((day, i) => {
           if (day == null) {
             return <div key={`empty-${i}`} className="size-6.5" />
