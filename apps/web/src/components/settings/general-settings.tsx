@@ -19,11 +19,8 @@ import { getConfigKv, setConfigKv } from "@/api/config-kv"
 import { fetchRuntimeConfig } from "@/api/system"
 import { useTheme } from "@/components/theme-provider"
 import { ThemeCard } from "./theme-card"
-import {
-  applyBrandTheme,
-  getStoredBrandTheme,
-  BRAND_THEMES,
-} from "@/lib/brand/brand-theme"
+import { applySkin, clearSkin, getStoredSkin, SKINS } from "@/lib/theme/skins"
+import { SkinPreviewCard } from "./skin-preview-card"
 import { isElectron, subscribeElectron, withElectronApi } from "@/lib/electron/host"
 
 const AGENT_MAX_CONCURRENT_CAP = 8
@@ -60,16 +57,23 @@ function clampSubagentMaxParallel(value: number): number {
 export function GeneralSettings() {
   const queryClient = useQueryClient()
   const { theme, setTheme } = useTheme()
-  const [brandTheme, setBrandTheme] = React.useState(getStoredBrandTheme)
-  const handleBrandTheme = (id: string) => {
-    applyBrandTheme(id)
-    setBrandTheme(id)
+  const [skin, setSkinState] = React.useState(getStoredSkin)
+
+  const handleSkin = (id: string) => {
+    applySkin(id)
+    setSkinState(id)
+  }
+
+  const handleBaseMode = (mode: "light" | "dark" | "system") => {
+    clearSkin()
+    setSkinState("")
+    setTheme(mode)
   }
 
   React.useEffect(() => {
     return subscribeElectron((api) =>
       api.onThemeChanged(() => {
-        setBrandTheme(getStoredBrandTheme())
+        setSkinState(getStoredSkin())
       })
     )
   }, [])
@@ -350,49 +354,35 @@ export function GeneralSettings() {
               label="浅色"
               icon={IconSun}
               description="明亮的浅色背景"
-              active={theme === "light"}
-              onClick={() => setTheme("light")}
+              active={!skin && theme === "light"}
+              onClick={() => handleBaseMode("light")}
             />
             <ThemeCard
               label="深色"
               icon={IconMoon}
               description="暗色调护眼模式"
-              active={theme === "dark"}
-              onClick={() => setTheme("dark")}
+              active={!skin && theme === "dark"}
+              onClick={() => handleBaseMode("dark")}
             />
             <ThemeCard
               label="跟随系统"
               icon={IconDeviceDesktop}
               description="自动适配系统主题"
-              active={theme === "system"}
-              onClick={() => setTheme("system")}
+              active={!skin && theme === "system"}
+              onClick={() => handleBaseMode("system")}
             />
           </div>
 
           <div className="mt-4 border-t pt-4">
-            <p className="mb-3 text-sm font-medium">主题色</p>
-            <div className="grid grid-cols-3 gap-3">
-              {BRAND_THEMES.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => handleBrandTheme(t.id)}
-                  className={
-                    "flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors hover:bg-accent/50 " +
-                    (brandTheme === t.id
-                      ? "border-primary bg-primary/5"
-                      : "border-transparent")
-                  }
-                >
-                  <span
-                    className="size-8 rounded-full"
-                    style={{ background: t.swatch }}
-                  />
-                  <span className="text-sm font-medium">{t.label}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {t.description}
-                  </span>
-                </button>
+            <p className="mb-3 text-sm font-medium">特殊风格</p>
+            <div className="grid grid-cols-4 gap-3">
+              {SKINS.map((s) => (
+                <SkinPreviewCard
+                  key={s.id}
+                  skin={s}
+                  active={skin === s.id}
+                  onSelect={() => handleSkin(s.id)}
+                />
               ))}
             </div>
           </div>

@@ -17,8 +17,8 @@
 - 皮肤激活时，ThemeProvider 的基础模式 class 写入（含 system 监听）必须让位给皮肤基调。
 
 **命令参考：**
-- 单测：`pnpm --filter web test:unit <文件>`
-- Lint：`pnpm --filter web lint`
+- 单测：`pnpm --filter boban-staff test:unit <文件>`（或 `cd apps/web && pnpm test:unit <文件>`；注意 `apps/web` 的包名是 `boban-staff`，`--filter web` 匹配不到）
+- Lint：`pnpm --filter boban-staff lint`
 - 类型：`npx tsc -b`（注意：`apps/web` 的 `pnpm typecheck` 实质空操作，且 `tsc -b` 有大量历史基线报错；只需确认**新增/改动文件不引入新错误**）
 
 ---

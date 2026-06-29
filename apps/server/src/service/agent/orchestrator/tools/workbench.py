@@ -15,13 +15,43 @@ from src.service.agent.orchestrator.runtime import get_user_id, get_workspace_id
 logger = logging.getLogger(__name__)
 
 
-def _add_widget_impl(db: Session, user_id: str, spec: dict[str, Any]) -> str:
-    """内联实现，便于测试直接注入 db session。"""
+def _add_widget_impl(
+    db: Session, user_id: str, spec: dict[str, Any], key: str | None = None
+) -> str:
+    """内联实现，便于测试直接注入 db session。有 key 且已存在 → upsert 原地更新。"""
     try:
-        widget = ws.append_widget(db, user_id, spec)
+        widget, created = ws.upsert_widget(db, user_id, spec, key)
     except Exception as e:
         return f"错误：{e}"
-    return f"已添加 widget「{widget.title}」(id={widget.id}) 到工作台。"
+    verb = "已添加" if created else "已更新"
+    return f"{verb} widget「{widget.title}」(id={widget.id}) 到工作台。"
+
+
+def _list_widgets_impl(db: Session, user_id: str) -> str:
+    """内联实现:列出当前 dashboard 的 widget。"""
+    widgets = ws.list_widgets(db, user_id)
+    if not widgets:
+        return "工作台暂无 widget。"
+    lines = []
+    for w in widgets:
+        src = (
+            f"绑定指标={w.dataSource.metricId}" if w.dataSource else "内联数据"
+        )
+        lines.append(
+            f"- id={w.id} key={w.key or '-'} type={w.type} 「{w.title}」 {src}"
+        )
+    return "当前工作台 widget:\n" + "\n".join(lines)
+
+
+def _update_widget_impl(
+    db: Session, user_id: str, widget_id: str, patch: dict[str, Any]
+) -> str:
+    """内联实现，便于测试直接注入 db session。"""
+    try:
+        widget = ws.update_widget(db, user_id, widget_id, patch)
+    except Exception as e:
+        return f"错误：{e}"
+    return f"已更新 widget「{widget.title}」(id={widget.id})。"
 
 
 def _notify_workbench_changed() -> None:
@@ -43,8 +73,13 @@ def add_workbench_widget(
     data_source: dict | None = None,
     subtitle: str | None = None,
     options: dict | None = None,
+    key: str | None = None,
 ) -> str:
     """向当前用户的工作台看板添加一个统计块(widget)。
+
+    key(可选):稳定业务键。给了 key 后是 upsert——同 key 已存在则原地更新,否则新建。
+      定时任务/反复刷新场景强烈建议带固定 key(如 "wc-firepower"),即幂等、不重复建卡、
+      不用记自动生成的 id。
 
     type 取值: kpi|line|bar|area|pie|table|progress|list|gauge|sparkline|radar|scatter。
     data 与 data_source 至少给一个：data 为内联快照；data_source={"metricId": "...","params":{...}} 绑定实时指标。
@@ -53,8 +88,16 @@ def add_workbench_widget(
       task_execution_stats(今日成功/失败/进行中/成功率,配 kpi)、
       employee_overview(在职员工/近7天新增,配 kpi)、
       plan_progress(编排计划 待确认/进行中/已完成/已取消,配 kpi)、
-      skill_usage(技能总数/内置/工作区,配 kpi)。
+      skill_usage(技能总数/内置/工作区,配 kpi)、
+      task_execution_trend(近7天执行趋势 成功/失败,配 line 或 area)、
+      task_status_distribution(近7天任务状态分布,配 pie)、
+      plan_status_distribution(编排计划状态分布,配 pie)、
+      workspace_file(读工作空间内 JSON 文件当数据,配任意 type)。
       绑定示例: data_source={"metricId":"task_execution_stats","refreshSec":30}。
+      workspace_file 用法: data_source={"metricId":"workspace_file",
+        "params":{"path":"wc-today.json"},"refreshSec":600}——path 相对工作空间根(可子目录),
+        文件内容须是该 widget type 的 data 形状(如 table→{columns,rows});适合"定时任务写
+        文件→看板自动刷"的场景,widget 只建一次、数据与展示解耦。
 
     内联 data 必须严格按对应 type 的形状(否则前端渲染为空):
       kpi:      {"items": [{"label": "本月销售", "value": 1234, "unit": "¥",
@@ -95,9 +138,66 @@ def add_workbench_widget(
 
     db = get_session_local()()
     try:
-        msg = _add_widget_impl(db, user_id, spec)
+        msg = _add_widget_impl(db, user_id, spec, key)
     finally:
         db.close()
-    if msg.startswith("已添加"):
+    if not msg.startswith("错误"):
+        _notify_workbench_changed()
+    return msg
+
+
+@tool
+def list_workbench_widgets() -> str:
+    """列出当前用户工作台看板上的所有 widget(id、key、type、标题、数据来源)。
+    用于反查某个 widget 的 id/key 以便 update_workbench_widget,或确认是否已存在避免重复创建。"""
+    user_id = get_user_id()
+    if not user_id:
+        return "错误：无法获取当前用户 ID，请确认会话上下文已初始化。"
+    db = get_session_local()()
+    try:
+        return _list_widgets_impl(db, user_id)
+    finally:
+        db.close()
+
+
+@tool
+def update_workbench_widget(
+    widget_id: str,
+    type: str | None = None,
+    title: str | None = None,
+    data: dict | None = None,
+    data_source: dict | None = None,
+    subtitle: str | None = None,
+    options: dict | None = None,
+) -> str:
+    """更新工作台上已存在的 widget(按 id 原地改,不新建)。
+
+    只更新传入的字段;widget_id 来自 add_workbench_widget 的返回(形如 wd-xxxx)。
+    用途:改标题/换类型/更新内联 data/改 data_source 绑定。
+    data 与 data_source 的形状要求同 add_workbench_widget。"""
+    patch: dict[str, Any] = {}
+    if type is not None:
+        patch["type"] = type
+    if title is not None:
+        patch["title"] = title
+    if subtitle is not None:
+        patch["subtitle"] = subtitle
+    if data is not None:
+        patch["data"] = data
+    if data_source is not None:
+        patch["dataSource"] = data_source
+    if options is not None:
+        patch["options"] = options
+
+    user_id = get_user_id()
+    if not user_id:
+        return "错误：无法获取当前用户 ID，请确认会话上下文已初始化。"
+
+    db = get_session_local()()
+    try:
+        msg = _update_widget_impl(db, user_id, widget_id, patch)
+    finally:
+        db.close()
+    if msg.startswith("已更新"):
         _notify_workbench_changed()
     return msg

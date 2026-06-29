@@ -1,8 +1,6 @@
 import {
-  LineChart,
   AreaChart,
   BarChart,
-  Line,
   Area,
   Bar,
   CartesianGrid,
@@ -52,20 +50,9 @@ export function ChartWidget({
   )
 
   const renderSeries = () => {
-    if (type === "line") {
-      return series.map((s) => (
-        <Line
-          key={s.key}
-          type="monotone"
-          dataKey={s.key}
-          stroke={`var(--color-${s.key})`}
-          strokeWidth={2}
-          dot={false}
-          activeDot={{ r: 3 }}
-        />
-      ))
-    }
-    if (type === "area") {
+    // line 与 area 都用 Area 渲染:line 走更淡的线下渐变(体积感但不抢眼),area 渐变更实
+    if (type === "line" || type === "area") {
+      const gid = type === "line" ? "line" : "fill"
       return series.map((s) => (
         <Area
           key={s.key}
@@ -73,8 +60,9 @@ export function ChartWidget({
           dataKey={s.key}
           stroke={`var(--color-${s.key})`}
           strokeWidth={2}
-          fill={`url(#fill-${widget.id}-${s.key})`}
+          fill={`url(#${gid}-${widget.id}-${s.key})`}
           dot={false}
+          activeDot={{ r: 3 }}
         />
       ))
     }
@@ -90,7 +78,7 @@ export function ChartWidget({
   }
 
   const ChartComponent =
-    type === "line" ? LineChart : type === "area" ? AreaChart : BarChart
+    type === "line" || type === "area" ? AreaChart : BarChart
 
   return (
     <WidgetCard
@@ -126,6 +114,29 @@ export function ChartWidget({
                         offset="100%"
                         stopColor={`var(--color-${s.key})`}
                         stopOpacity={0.02}
+                      />
+                    </linearGradient>
+                  ))
+                : null}
+              {type === "line"
+                ? series.map((s) => (
+                    <linearGradient
+                      key={s.key}
+                      id={`line-${widget.id}-${s.key}`}
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor={`var(--color-${s.key})`}
+                        stopOpacity={0.18}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor={`var(--color-${s.key})`}
+                        stopOpacity={0}
                       />
                     </linearGradient>
                   ))

@@ -10,8 +10,10 @@ Return shapes match the frontend widget contract:
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from sqlalchemy import func, select
@@ -21,10 +23,14 @@ from src.core.cst import cst_now
 from src.models.employee import Employee
 from src.models.orchestration_plan import OrchestrationPlan
 from src.models.task_execution_log import TaskExecutionLog
+from src.models.workspace import Workspace
 from src.service.performance_balance_service import PerformanceBalanceService
 from src.service.task_service import TaskService
 
 logger = logging.getLogger(__name__)
+
+# workspace_file 读取上限,防误读超大文件拖垮轮询
+_MAX_FILE_BYTES = 5 * 1024 * 1024
 
 
 def _ws(params: dict[str, Any]) -> int:
@@ -210,6 +216,103 @@ async def _skill_usage(db: Session, params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _task_execution_trend(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """Trend widget: 近7天执行趋势(line/area 形状)。"""
+    ws = _ws(params)
+    start = _day_start(cst_now()) - timedelta(days=6)  # 含今天共7天
+    raw = db.execute(
+        select(func.date(TaskExecutionLog.started_at), TaskExecutionLog.run_status, func.count())
+        .where(TaskExecutionLog.workspace_id == ws, TaskExecutionLog.started_at >= start)
+        .group_by(func.date(TaskExecutionLog.started_at), TaskExecutionLog.run_status)
+    ).all()
+    agg: dict[str, dict[str, int]] = {}
+    for d, st, n in raw:
+        agg.setdefault(str(d), {})[st] = int(n)
+    rows = []
+    for i in range(7):
+        day = start + timedelta(days=i)
+        b = agg.get(day.strftime("%Y-%m-%d"), {})
+        rows.append({"date": day.strftime("%m-%d"), "success": b.get("success", 0), "failed": b.get("failed", 0)})
+    return {
+        "xKey": "date",
+        "series": [{"key": "success", "label": "成功"}, {"key": "failed", "label": "失败"}],
+        "rows": rows,
+    }
+
+
+async def _task_status_distribution(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """Pie widget: 近7天任务状态分布。"""
+    ws = _ws(params)
+    start = _day_start(cst_now()) - timedelta(days=6)
+    raw = db.execute(
+        select(TaskExecutionLog.run_status, func.count())
+        .where(TaskExecutionLog.workspace_id == ws, TaskExecutionLog.started_at >= start)
+        .group_by(TaskExecutionLog.run_status)
+    ).all()
+    LABELS = {
+        "success": "成功",
+        "failed": "失败",
+        "running": "进行中",
+        "queued": "排队",
+        "timeout": "超时",
+        "cancelled": "已取消",
+        "pending": "待执行",
+    }
+    return {"items": [{"name": LABELS.get(st, st), "value": int(n)} for st, n in raw]}
+
+
+async def _plan_status_distribution(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """Pie widget: 编排计划状态分布。"""
+    ws = _ws(params)
+    raw = db.execute(
+        select(OrchestrationPlan.status, func.count())
+        .where(OrchestrationPlan.workspace_id == ws)
+        .group_by(OrchestrationPlan.status)
+    ).all()
+    LABELS = {"pending": "待确认", "running": "进行中", "completed": "已完成", "cancelled": "已取消"}
+    return {"items": [{"name": LABELS.get(st, st), "value": int(n)} for st, n in raw]}
+
+
+async def _workspace_file(db: Session, params: dict[str, Any]) -> dict[str, Any]:
+    """读工作空间内的 JSON 文件当 widget 数据(定时任务写文件 → 看板按 refreshSec 自动刷)。
+
+    - ``params.path``:相对工作空间根目录的路径(允许子目录如 ``artifacts/wc-today.json``),
+      限制在工作空间目录内(防 ``..`` 越权),只允许 ``.json``。
+    - 文件内容须为 JSON 对象,形状匹配所绑定的 widget type(如 table→{columns,rows}、
+      kpi→{items});顶层是数组则按 ``{"items": [...]}`` 兜底包一层。
+    - 文件缺失 / 解析失败 → 返回 ``{}``(widget 显示空态),不抛 500,适配实时轮询。
+    """
+    ws_id = _ws(params)
+    rel = str(params.get("path") or "").strip().replace("\\", "/")
+    if not rel:
+        raise ValueError("workspace_file 需要 params.path")
+    ws = db.get(Workspace, ws_id)
+    if ws is None or not ws.root_path:
+        return {}
+    base = Path(ws.root_path).resolve()
+    target = (base / rel).resolve()
+    if not target.is_relative_to(base):
+        raise ValueError("path 越出工作空间目录")
+    if target.suffix.lower() != ".json":
+        raise ValueError("workspace_file 只支持 .json 文件")
+    if not target.is_file():
+        logger.debug("workspace_file 文件不存在: %s", target)
+        return {}
+    try:
+        if target.stat().st_size > _MAX_FILE_BYTES:
+            logger.warning("workspace_file 文件过大,跳过: %s", target)
+            return {}
+        parsed = json.loads(target.read_text(encoding="utf-8"))
+    except Exception:
+        logger.warning("workspace_file 读取/解析失败: %s", target, exc_info=True)
+        return {}
+    if isinstance(parsed, list):
+        return {"items": parsed}
+    if not isinstance(parsed, dict):
+        return {}
+    return parsed
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -222,6 +325,10 @@ _REGISTRY: dict[str, Callable[[Session, dict[str, Any]], Awaitable[dict[str, Any
     "employee_overview": _employee_overview,
     "plan_progress": _plan_progress,
     "skill_usage": _skill_usage,
+    "workspace_file": _workspace_file,
+    "task_execution_trend": _task_execution_trend,
+    "task_status_distribution": _task_status_distribution,
+    "plan_status_distribution": _plan_status_distribution,
 }
 
 

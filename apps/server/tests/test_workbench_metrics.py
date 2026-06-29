@@ -12,6 +12,10 @@ def test_metric_ids_whitelist():
         "employee_overview",
         "plan_progress",
         "skill_usage",
+        "workspace_file",
+        "task_execution_trend",
+        "task_status_distribution",
+        "plan_status_distribution",
     }
 
 
@@ -136,6 +140,71 @@ def test_plan_progress(db_session):
     assert items["已取消"] == 0
 
 
+def _make_workspace(db_session, root: str) -> int:
+    from src.models.workspace import Workspace
+
+    ws = Workspace(name="w", root_path=root, user_id="u1")
+    db_session.add(ws)
+    db_session.commit()
+    return ws.id
+
+
+def test_workspace_file_reads_json(db_session, tmp_path):
+    import json as _json
+
+    (tmp_path / "wc-today.json").write_text(
+        _json.dumps({"items": [{"label": "今日比赛", "value": 1}]}), encoding="utf-8"
+    )
+    ws_id = _make_workspace(db_session, str(tmp_path))
+    out = asyncio.run(
+        wm.resolve_metric(
+            db_session,
+            "workspace_file",
+            {"workspace_id": ws_id, "path": "wc-today.json"},
+        )
+    )
+    assert out["items"][0]["label"] == "今日比赛"
+
+
+def test_workspace_file_subdir_and_array_wrap(db_session, tmp_path):
+    import json as _json
+
+    sub = tmp_path / "artifacts"
+    sub.mkdir()
+    (sub / "scorers.json").write_text(_json.dumps([{"title": "梅西"}]), encoding="utf-8")
+    ws_id = _make_workspace(db_session, str(tmp_path))
+    out = asyncio.run(
+        wm.resolve_metric(
+            db_session,
+            "workspace_file",
+            {"workspace_id": ws_id, "path": "artifacts/scorers.json"},
+        )
+    )
+    assert out == {"items": [{"title": "梅西"}]}  # 顶层数组兜底包成 items
+
+
+def test_workspace_file_traversal_blocked(db_session, tmp_path):
+    ws_id = _make_workspace(db_session, str(tmp_path))
+    with pytest.raises(ValueError):
+        asyncio.run(
+            wm.resolve_metric(
+                db_session,
+                "workspace_file",
+                {"workspace_id": ws_id, "path": "../secret.json"},
+            )
+        )
+
+
+def test_workspace_file_missing_returns_empty(db_session, tmp_path):
+    ws_id = _make_workspace(db_session, str(tmp_path))
+    out = asyncio.run(
+        wm.resolve_metric(
+            db_session, "workspace_file", {"workspace_id": ws_id, "path": "nope.json"}
+        )
+    )
+    assert out == {}
+
+
 def test_skill_usage(monkeypatch):
     import src.service.agent.orchestrator.tools.skills as skills_mod
 
@@ -152,3 +221,68 @@ def test_skill_usage(monkeypatch):
     assert items["技能总数"] == 3
     assert items["内置"] == 1
     assert items["工作区"] == 2
+
+
+def test_task_execution_trend(db_session):
+    from src.core.cst import cst_now
+    from src.models.task_execution_log import TaskExecutionLog
+
+    now = cst_now()
+    for st in ["success", "success", "failed"]:
+        db_session.add(
+            TaskExecutionLog(
+                workspace_id=1,
+                employee_id=1,
+                task_name_snapshot="t",
+                run_status=st,
+                started_at=now,
+            )
+        )
+    db_session.commit()
+    out = asyncio.run(wm.resolve_metric(db_session, "task_execution_trend", {"workspace_id": 1}))
+    assert out["xKey"] == "date"
+    assert len(out["rows"]) == 7
+    series_keys = {s["key"] for s in out["series"]}
+    assert "success" in series_keys
+    assert "failed" in series_keys
+    # Today is the last row (index 6)
+    today_row = out["rows"][-1]
+    assert today_row["success"] == 2
+    assert today_row["failed"] == 1
+
+
+def test_task_status_distribution(db_session):
+    from src.core.cst import cst_now
+    from src.models.task_execution_log import TaskExecutionLog
+
+    now = cst_now()
+    for st in ["success", "success", "failed"]:
+        db_session.add(
+            TaskExecutionLog(
+                workspace_id=1,
+                employee_id=1,
+                task_name_snapshot="t",
+                run_status=st,
+                started_at=now,
+            )
+        )
+    db_session.commit()
+    out = asyncio.run(wm.resolve_metric(db_session, "task_status_distribution", {"workspace_id": 1}))
+    by_name = {it["name"]: it["value"] for it in out["items"]}
+    assert by_name["成功"] == 2
+    assert by_name["失败"] == 1
+
+
+def test_plan_status_distribution(db_session):
+    from src.models.orchestration_plan import OrchestrationPlan
+
+    for st in ["pending", "running", "completed"]:
+        db_session.add(
+            OrchestrationPlan(workspace_id=1, conversation_id=1, user_input="x", status=st)
+        )
+    db_session.commit()
+    out = asyncio.run(wm.resolve_metric(db_session, "plan_status_distribution", {"workspace_id": 1}))
+    by_name = {it["name"]: it["value"] for it in out["items"]}
+    assert by_name["待确认"] == 1
+    assert by_name["进行中"] == 1
+    assert by_name["已完成"] == 1

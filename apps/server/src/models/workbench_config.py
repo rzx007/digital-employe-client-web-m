@@ -49,6 +49,8 @@ class WorkbenchWidget(BaseModel):
     data: dict[str, Any] | None = None
     dataSource: WidgetDataSource | None = None
     options: dict[str, Any] | None = None
+    # 稳定业务键:定时任务用固定 key 做 upsert(同 key 原地更新,免记自动 id)
+    key: str | None = None
 
 
 class HtmlTabRef(BaseModel):

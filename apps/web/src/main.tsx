@@ -11,7 +11,7 @@ import { initTelemetry, track } from "@/lib/telemetry"
 
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { applyBrandTheme, getStoredBrandTheme } from "@/lib/brand/brand-theme"
+import { applySkin, getStoredSkin } from "@/lib/theme/skins"
 import { getBrand } from "@/lib/brand/brand"
 import { TooltipProvider } from "@workspace/ui/components/tooltip"
 import { Toaster } from "@workspace/ui/components/sonner"
@@ -31,9 +31,9 @@ declare module "@tanstack/react-router" {
 }
 
 // 渲染前尽早套用品牌主题色 + 窗口标题，避免首帧闪默认值。
-// 用户未选过主题色时，回退到品牌包指定的 defaultTheme。
+// 用户未选过特殊风格时，回退到品牌包指定的 defaultTheme（皮肤 id）。
 const brand = getBrand()
-applyBrandTheme(getStoredBrandTheme(brand.defaultTheme))
+applySkin(getStoredSkin(brand.defaultTheme), { broadcast: false })
 document.title = brand.windowTitle
 
 const queryClient = createAppQueryClient()
