@@ -65,7 +65,7 @@ import {
 import { isSummarizationTextPart } from "./langchain-summarization-text"
 import { collapseWriteTodosBlocks } from "./collapse-write-todos-blocks"
 import { collapseDocumentPlanBlocks } from "./hitl/collapse-document-plan-blocks"
-import { mergeRoutineToolGroups } from "./merge-routine-tool-groups"
+import { mergeConsecutiveToolGroups } from "./merge-consecutive-tool-groups"
 import type { TodoItem } from "@/components/chat/message-blocks/tool-shared"
 import { normalizeToolPart } from "./tools/normalize-tool-part"
 import { isToolUIPart } from "./tools/tool-part"
@@ -668,7 +668,7 @@ export function classifyMessageParts(
   }
 
   return collapseDocumentPlanBlocks(
-    collapseWriteTodosBlocks(mergeRoutineToolGroups(blocks))
+    collapseWriteTodosBlocks(mergeConsecutiveToolGroups(blocks))
   )
 }
 

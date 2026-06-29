@@ -206,7 +206,7 @@ flowchart TD
   C -- "text + i <= lastToolIndex" --> E[thinking block]
   C -- "tool-*" --> F[tool-group block]
 
-  F --> G[mergeRoutineToolGroups]
+  F --> G[mergeConsecutiveToolGroups]
   G --> H[ToolGroupBlock]
   H --> I{多工具?}
   I -- 是 --> J[可折叠活动流 + ToolActivityLine]
@@ -221,7 +221,7 @@ flowchart TD
 
 ### ToolGroupBlock
 
-- 连续 `ROUTINE_TOOL_NAMES`（shell、grep、glob、ls）由 `mergeRoutineToolGroups` 合并为单个 `tool-group`
+- 连续工具调用（不分类型）由 `mergeConsecutiveToolGroups` 合并为单个 `tool-group`
 - 多工具：可折叠组头 + 组内 `ToolActivityLine`（无独立灰条边框）
 - 单工具：默认 `ToolActivityLine`；`write_todos`（含列表）与 `edit_file`（含 diff）仍用 `ToolActionRow`
 - 行布局：`[类型图标] [summary.label] [状态]`，不展示 `toolName`
@@ -274,7 +274,7 @@ sequenceDiagram
 - `stream-parser` 负责：识别 LangChain 消息、聚合工具参数、累积 `tool_output` 流式输出、输出标准 `UIMessageChunk`
 - `message-classifier` 负责：将 `UIMessage.parts` 分类为 thinking/tool-group/final-response 块，计算 preliminary/hasNewerActiveTool 等渲染辅助字段
 - `tool-summarizer` + `tool-label-registry` 负责：语义化 `summary.label`（shell intent、业务工具固定文案）
-- `merge-routine-tool-groups` 负责：合并相邻常规工具块
+- `merge-consecutive-tool-groups` 负责：合并相邻工具块（不分类型）
 - `tool-activity-line` / `tool-action-row` 负责：紧凑行或富交互行 + `ToolDetailPanel`
 - `tool-group-block` 负责：单工具/多工具活动流布局与 `toolAutoCollapseMap` 下发
 
