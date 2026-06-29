@@ -30,7 +30,6 @@ from deepagents.middleware.filesystem import (
     EDIT_FILE_TOOL_DESCRIPTION,
     NUM_CHARS_PER_TOKEN,
     READ_FILE_TOOL_DESCRIPTION,
-    WRITE_FILE_TOOL_DESCRIPTION,
     EditFileSchema,
     FilesystemMiddleware,
     FilesystemState,
@@ -109,6 +108,24 @@ _READ_FILE_TOOL_DESCRIPTION_OVERRIDE = (
 _READ_CONTINUE_HINT = (
     "\n\n[内容较长已截断。要继续阅读后续部分，请用更大的 offset 再次 "
     "read_file（offset 设为当前已读的末尾行号）；不要重复读取同一段。]"
+)
+
+# 覆盖 deepagents 自带的 write 工具描述。原描述只说"创建新文件、优先 edit"，
+# 没说写入是否有长度限制。观测到弱模型写长文档时，第二次 write 同名文件被
+# "already exists" 拒绝后，把这个拒绝**误读成"内容被截断"**，于是反复重写、
+# 最后放弃文件改贴消息正文。这里给出明确正向锚点：写入无长度限制、一次写全、
+# 绝不截断；already exists 是"文件已存在"（非截断），改用 edit_file 整文件替换。
+_WRITE_FILE_TOOL_DESCRIPTION_OVERRIDE = (
+    "把内容写入文件系统中的一个**新**文件。\n\n"
+    "用法：\n"
+    "- **一次性把完整内容写入**——本工具对 content 长度**没有限制**，多长的报告/"
+    "文档都会**完整写入、绝不会被截断**。无需分多次写，也不要因为内容长就拆开写。\n"
+    "- 写入成功返回 `Updated file <路径>` 即表示**全部内容已落盘**；客户端文件预览"
+    "区可能只显示开头一部分，那只是**界面预览**，不代表写入被截断。\n"
+    "- 若返回 `... already exists`，意思是**该路径文件已存在**（**不是**内容被截断、"
+    "**不是**写入失败）：**禁止**对同一路径反复 write_file，改用 **edit_file** 做整"
+    "文件替换（`old_string`=原文全文、`new_string`=新内容全文）。\n"
+    "- 能改已有文件就优先用 edit_file，不要重复创建同名文件。\n"
 )
 
 
@@ -681,9 +698,11 @@ class OpenAICompatibleFilesystemMiddleware(FilesystemMiddleware):
 
     def _create_write_file_tool(self) -> BaseTool:
         """覆盖基类 write_file：照搬基类工厂体，validate_path 成功后插工作区外写守卫。"""
+        # 优先用户自定义；否则用我们的"无长度限制、勿误判截断"覆盖描述
+        # （不再用 deepagents 那段只说"创建新文件"、无长度说明的原始描述）。
         tool_description = (
             self._custom_tool_descriptions.get("write_file")
-            or WRITE_FILE_TOOL_DESCRIPTION
+            or _WRITE_FILE_TOOL_DESCRIPTION_OVERRIDE
         )
 
         def sync_write_file(
