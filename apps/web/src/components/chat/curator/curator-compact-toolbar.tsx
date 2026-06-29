@@ -28,9 +28,8 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
 import { getContactId } from "@/lib/chat/contact-utils"
 import { focusAfterDeletedConversation } from "@/lib/chat/conversation-selection"
-import { useEmployeeTasksPanelStore } from "@/stores/employee-tasks-panel-store"
-import { useCuratorTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
-import { ACTIVE_TASK_RUN_STATUSES } from "@/types/schedule-monitor"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
+import { useUnifiedRunningCount } from "@/hooks/use-unified-tasks"
 import { cn } from "@workspace/ui/lib/utils"
 import type { ChatViewContact } from "../shared/chat-view-shared"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
@@ -43,8 +42,6 @@ export function CuratorCompactToolbar({
   onOpenConversations,
   resourcesOpen = false,
   onToggleResources,
-  employeeTasksOpen = false,
-  onToggleEmployeeTasks,
   className,
 }: {
   contact?: ChatViewContact
@@ -57,27 +54,15 @@ export function CuratorCompactToolbar({
   isCreatingConversation?: boolean
   resourcesOpen?: boolean
   onToggleResources?: () => void
-  employeeTasksOpen?: boolean
-  onToggleEmployeeTasks?: () => void
   className?: string
 }) {
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [alertOpen, setAlertOpen] = React.useState(false)
   const queryClient = useQueryClient()
   const deleteMutation = useDeleteConversationMutation()
-  const storeEmployeeTasksOpen = useEmployeeTasksPanelStore((s) => s.isOpen)
-  const storeToggleEmployeeTasks = useEmployeeTasksPanelStore((s) => s.toggle)
-  const useLocalEmployeeTasks = onToggleEmployeeTasks != null
-  const isEmployeeTasksPanelOpen = useLocalEmployeeTasks
-    ? employeeTasksOpen
-    : storeEmployeeTasksOpen
-  const handleEmployeeTasksClick = useLocalEmployeeTasks
-    ? onToggleEmployeeTasks
-    : storeToggleEmployeeTasks
-  const { data: executions = [] } = useCuratorTaskExecutions(conversationId)
-  const runningTaskCount = executions.filter((e) =>
-    ACTIVE_TASK_RUN_STATUSES.has(e.run_status)
-  ).length
+  const isTasksPanelOpen = useTasksPanelStore((s) => s.isOpen)
+  const toggleTasksPanel = useTasksPanelStore((s) => s.toggle)
+  const runningTaskCount = useUnifiedRunningCount(conversationId)
   const name =
     contact?.type === "curator"
       ? (contact.curator?.name ?? displayName)
@@ -166,11 +151,11 @@ export function CuratorCompactToolbar({
           )}
           {conversationId != null && (
             <Button
-              title={isEmployeeTasksPanelOpen ? "收起员工任务" : "员工任务"}
+              title={isTasksPanelOpen ? "收起任务" : "查看任务"}
               variant="ghost"
               size="icon-sm"
               className="relative"
-              onClick={handleEmployeeTasksClick}
+              onClick={toggleTasksPanel}
             >
               <IconChecklist className="size-4" />
               {runningTaskCount > 0 && (

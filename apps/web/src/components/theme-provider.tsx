@@ -1,5 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
+import { applyBrandTheme, getStoredBrandTheme } from "@/lib/brand/brand-theme"
+import { subscribeElectron } from "@/lib/electron/host"
+import { broadcastAppearanceChanged } from "@/lib/theme/broadcast-appearance"
 
 type Theme = "dark" | "light" | "system"
 type ResolvedTheme = "dark" | "light"
@@ -97,6 +100,7 @@ export function ThemeProvider({
     (nextTheme: Theme) => {
       localStorage.setItem(storageKey, nextTheme)
       setThemeState(nextTheme)
+      broadcastAppearanceChanged()
     },
     [storageKey]
   )
@@ -168,6 +172,7 @@ export function ThemeProvider({
                 : "dark"
 
         localStorage.setItem(storageKey, nextTheme)
+        broadcastAppearanceChanged()
         return nextTheme
       })
     }
@@ -178,6 +183,20 @@ export function ThemeProvider({
       window.removeEventListener("keydown", handleKeyDown)
     }
   }, [storageKey])
+
+  React.useEffect(() => {
+    return subscribeElectron((api) =>
+      api.onThemeChanged(() => {
+        const storedTheme = localStorage.getItem(storageKey)
+        if (isTheme(storedTheme)) {
+          setThemeState(storedTheme)
+        } else {
+          setThemeState(defaultTheme)
+        }
+        applyBrandTheme(getStoredBrandTheme(), { broadcast: false })
+      })
+    )
+  }, [defaultTheme, storageKey])
 
   React.useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
@@ -191,10 +210,12 @@ export function ThemeProvider({
 
       if (isTheme(event.newValue)) {
         setThemeState(event.newValue)
+        applyBrandTheme(getStoredBrandTheme(), { broadcast: false })
         return
       }
 
       setThemeState(defaultTheme)
+      applyBrandTheme(getStoredBrandTheme(), { broadcast: false })
     }
 
     window.addEventListener("storage", handleStorageChange)

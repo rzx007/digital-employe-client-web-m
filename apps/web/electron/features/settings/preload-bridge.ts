@@ -7,6 +7,10 @@ export const settingsBridge = {
   /** 订阅头像更新广播，回调里通常 bumpAvatarVersion() 触发本窗口头像重取 */
   onAvatarUpdated: (callback: () => void) =>
     onChannelAll("avatar-updated", () => callback()),
+  /** 外观（浅色/深色/主题色）变更后广播给所有窗口 */
+  broadcastThemeChanged: () => invoke(IpcChannels.broadcastThemeChanged),
+  onThemeChanged: (callback: () => void) =>
+    onChannelAll("theme-changed", () => callback()),
   openSettings: () => invoke(IpcChannels.openSettings),
   closeSettings: () => invoke(IpcChannels.closeSettings),
   setAutoLaunch: (enabled: boolean) =>

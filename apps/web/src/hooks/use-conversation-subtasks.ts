@@ -4,9 +4,9 @@ import type { UIMessage } from "ai"
 import { isToolUIPart } from "@/lib/chat/tools/tool-part"
 import { normalizeToolPart } from "@/lib/chat/tools/normalize-tool-part"
 import {
-  useSubtaskPanelStore,
+  useTasksPanelStore,
   type SubtaskCardItem,
-} from "@/stores/subtask-panel-store"
+} from "@/stores/tasks-panel-store"
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : ""
@@ -52,12 +52,12 @@ export function useConversationSubtasks(
 }
 
 /**
- * 把聚合出的子任务写入 subtask-panel-store，让挂在 chat 布局里的子任务面板
+ * 把聚合出的子任务写入 tasks-panel-store，让挂在 chat 布局里的合并任务面板
  * （无法直接拿到 messages）可以读取展示。仅在内容真正变化时写入。
  */
 export function useSyncConversationSubtasks(messages: UIMessage[]): number {
   const subtasks = useConversationSubtasks(messages)
-  const setSubtasks = useSubtaskPanelStore((s) => s.setSubtasks)
+  const setSubtasks = useTasksPanelStore((s) => s.setSubtasks)
 
   useEffect(() => {
     setSubtasks(subtasks)
@@ -66,7 +66,7 @@ export function useSyncConversationSubtasks(messages: UIMessage[]): number {
   // 卸载（切走会话/切联系人）时清空，避免上一个会话的子任务残留到新会话面板。
   useEffect(() => {
     return () => {
-      useSubtaskPanelStore.getState().setSubtasks([])
+      useTasksPanelStore.getState().setSubtasks([])
     }
   }, [])
 

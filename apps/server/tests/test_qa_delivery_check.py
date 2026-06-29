@@ -97,6 +97,48 @@ def test_detect_ignores_file_without_delivery_verb(tmp_path):
     assert detect_missing_delivery_artifacts("我看了下 data.csv 做了分析", tmp_path) is None
 
 
+def test_stale_artifact_flagged_when_not_written_this_turn(tmp_path):
+    """文件在磁盘非空、但不在本轮 file_outputs → 旧产物充数，应标红。"""
+    (tmp_path / "today-trending.md").write_text("上次的旧热搜", encoding="utf-8")
+    msg = detect_missing_delivery_artifacts(
+        "已生成 today-trending.md", tmp_path, this_turn_names=set()
+    )
+    assert msg is not None
+    assert "today-trending.md" in msg
+    assert "旧产物" in msg or "本轮并未写入" in msg
+
+
+def test_fresh_artifact_ok_when_written_this_turn(tmp_path):
+    """文件在磁盘且在本轮 file_outputs → 本次产出，不报。"""
+    (tmp_path / "today-trending.md").write_text("本次新热搜", encoding="utf-8")
+    msg = detect_missing_delivery_artifacts(
+        "已生成 today-trending.md", tmp_path, this_turn_names={"today-trending.md"}
+    )
+    assert msg is None
+
+
+def test_no_stale_check_when_this_turn_names_none(tmp_path):
+    """未传 this_turn_names（链路异常回退）→ 退回纯存在性核验，不误报旧产物。"""
+    (tmp_path / "today-trending.md").write_text("旧的", encoding="utf-8")
+    assert detect_missing_delivery_artifacts("已生成 today-trending.md", tmp_path) is None
+
+
+def test_check_log_delivery_flags_stale(monkeypatch, tmp_path):
+    """wrapper：本轮没写该文件、磁盘上是旧产物 → 标红旧产物充数。"""
+    monkeypatch.setattr(
+        qa_delivery_check, "_resolve_artifacts_dir", lambda db, cid: tmp_path
+    )
+    monkeypatch.setattr(qa_delivery_check, "_this_turn_names", lambda db, cid: set())
+    (tmp_path / "today-trending.md").write_text("上次旧热搜", encoding="utf-8")
+    log = _FakeLog(
+        run_status="success",
+        conversation_id=64,
+        output_json=json.dumps({"content": "已生成 today-trending.md"}, ensure_ascii=False),
+    )
+    msg = check_log_delivery(object(), log)
+    assert msg is not None and "today-trending.md" in msg
+
+
 def test_check_log_delivery_flags_missing(monkeypatch, tmp_path):
     """wrapper：从 success 日志 output 取自报文件，对照解析出的产物区核验。"""
     monkeypatch.setattr(

@@ -24,7 +24,7 @@ import {
   getStoredBrandTheme,
   BRAND_THEMES,
 } from "@/lib/brand/brand-theme"
-import { isElectron, withElectronApi } from "@/lib/electron/host"
+import { isElectron, subscribeElectron, withElectronApi } from "@/lib/electron/host"
 
 const AGENT_MAX_CONCURRENT_CAP = 8
 const AGENT_MAX_CONCURRENT_DEFAULT = 1
@@ -65,6 +65,15 @@ export function GeneralSettings() {
     applyBrandTheme(id)
     setBrandTheme(id)
   }
+
+  React.useEffect(() => {
+    return subscribeElectron((api) =>
+      api.onThemeChanged(() => {
+        setBrandTheme(getStoredBrandTheme())
+      })
+    )
+  }, [])
+
   const [autoLaunch, setAutoLaunch] = React.useState(false)
   const [autoUpdate, setAutoUpdate] = React.useState(true)
   const [notifications, setNotifications] = React.useState(true)

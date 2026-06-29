@@ -97,6 +97,36 @@ def test_create_auto_executes_readonly_single_task(db_session, workspace, monkey
     assert "自动执行" in raw
 
 
+def test_execute_plan_dispatch_turn_forbids_reporting_complete(
+    db_session, workspace, monkeypatch
+):
+    """execute_plan 派发后的返回必须禁止总管在派单当轮报「完成」。
+
+    复现的 bug：单任务派出、员工流还没起（要等总管这轮结束），总管却报「1/1 全部完成」。
+    工具返回是总管派单当轮唯一能据以判断的信号，必须明确「尚无结果、本轮严禁报完成」。
+    """
+    from src.models.orchestration_plan import OrchestrationPlan
+    import src.service.agent.orchestrator.execution as exec_mod
+
+    plan = OrchestrationPlan(
+        workspace_id=workspace.id,
+        conversation_id=1,
+        user_input="查热搜",
+        plan_json="[]",
+        status="pending",
+    )
+    db_session.add(plan)
+    db_session.commit()
+
+    # 不真起员工流（会调主事件循环）；只验返回文案。
+    monkeypatch.setattr(exec_mod, "execute_plan_run", lambda *a, **k: None)
+
+    result = exec_mod.execute_plan(db_session, plan, workspace.id)
+    assert "严禁报「完成」" in result
+    assert "尚未产出任何结果" in result
+    assert "另起一轮" in result
+
+
 def test_create_does_not_auto_execute_when_confirmation_required(
     db_session, workspace, monkeypatch
 ):

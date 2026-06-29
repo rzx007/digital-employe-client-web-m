@@ -1,3 +1,5 @@
+import { broadcastAppearanceChanged } from "@/lib/theme/broadcast-appearance"
+
 export const BRAND_THEME_STORAGE_KEY = "brand-theme"
 
 export interface BrandThemeOption {
@@ -43,10 +45,16 @@ export function getStoredBrandTheme(fallback = "default"): string {
 }
 
 /** 应用预设：default 清属性（走 :root 根变量），其余写 data-brand-theme，并持久化。 */
-export function applyBrandTheme(id: string): void {
+export function applyBrandTheme(
+  id: string,
+  options?: { broadcast?: boolean }
+): void {
   const next = VALID.has(id) ? id : "default"
   localStorage.setItem(BRAND_THEME_STORAGE_KEY, next)
   const root = document.documentElement
   if (next === "default") root.removeAttribute("data-brand-theme")
   else root.setAttribute("data-brand-theme", next)
+  if (options?.broadcast !== false) {
+    broadcastAppearanceChanged()
+  }
 }

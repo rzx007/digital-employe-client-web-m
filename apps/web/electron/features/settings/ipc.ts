@@ -53,6 +53,17 @@ export const settingsIpcContribution: IpcContribution = {
         },
       },
       {
+        // 设置窗改浅色/深色/主题色后广播，主窗等独立渲染进程实时 apply。
+        channel: IpcChannels.broadcastThemeChanged,
+        handler: () => {
+          BrowserWindow.getAllWindows().forEach((win) => {
+            if (!win.isDestroyed()) {
+              win.webContents.send("theme-changed")
+            }
+          })
+        },
+      },
+      {
         channel: IpcChannels.closeSettings,
         handler: () => closeSettingsWindow(),
       },

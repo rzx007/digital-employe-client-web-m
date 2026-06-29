@@ -15,8 +15,7 @@ import {
 } from "@workspace/ui/components/resizable"
 import { cn } from "@workspace/ui/lib/utils"
 import { ArtifactPanel } from "@/components/artifact"
-import { EmployeeTasksPanel } from "@/components/chat/panel/employee-tasks-panel"
-import { ShellTasksPanel } from "@/components/chat/panel/shell-tasks-panel"
+import { TasksPanel } from "@/components/chat/panel/tasks-panel"
 import { CuratorView } from "@/components/chat/curator/curator-view"
 import {
   selectWorkbenchCuratorConversation,
@@ -34,7 +33,7 @@ import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key
 import { chatKeys } from "@/lib/query-keys/chat"
 import { useChatStore } from "@/stores/chat-store"
 import { useArtifactStore } from "@/stores/artifact-store"
-import { useShellTasksPanelStore } from "@/stores/shell-tasks-panel-store"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
 import { useQueryClient } from "@tanstack/react-query"
 import { WorkbenchCuratorSessionsSheet } from "./workbench-curator-sessions-sheet"
 
@@ -91,7 +90,7 @@ function clampClosedResourcesLayout(layout: Layout): Layout {
   }
 }
 
-type SidePanelMode = "closed" | "resources" | "employeeTasks" | "shellTasks"
+type SidePanelMode = "closed" | "resources" | "tasks"
 
 function syncPanelCollapse(
   mode: SidePanelMode,
@@ -119,10 +118,9 @@ export function WorkbenchContentSplit({
   children: ReactNode
 }) {
   const [resourcesOpen, setResourcesOpen] = useState(false)
-  const [employeeTasksOpen, setEmployeeTasksOpen] = useState(false)
   const [curatorSessionsOpen, setCuratorSessionsOpen] = useState(false)
-  const shellTasksOpen = useShellTasksPanelStore((s) => s.isOpen)
-  const closeShellTasks = useShellTasksPanelStore((s) => s.close)
+  const tasksOpen = useTasksPanelStore((s) => s.isOpen)
+  const closeTasks = useTasksPanelStore((s) => s.close)
   const queryClient = useQueryClient()
   const { createCuratorConversation, isPending: isCreatingCurator } =
     useCreateCuratorConversation()
@@ -195,26 +193,27 @@ export function WorkbenchContentSplit({
   useEffect(() => {
     const handler = () => {
       if (activeConversationId == null) return
-      setEmployeeTasksOpen(false)
-      closeShellTasks()
+      closeTasks()
       setResourcesOpen(true)
     }
     window.addEventListener(WORKBENCH_OPEN_RESOURCES_EVENT, handler)
     return () => {
       window.removeEventListener(WORKBENCH_OPEN_RESOURCES_EVENT, handler)
     }
-  }, [activeConversationId, closeShellTasks])
+  }, [activeConversationId, closeTasks])
 
-  // 反向互斥：shell 后台面板从 store 侧被打开时（如 CuratorView 正文里的
-  // 「N 个后台命令运行中 · 查看」指示器），store 的 closeOtherSidePanels 碰不到
-  // 工作台本地的 resourcesOpen / employeeTasksOpen，需在此把它们清掉，
-  // 否则 ArtifactPanel/EmployeeTasksPanel 会与 ShellTasksPanel 同时叠加渲染。
-  useEffect(() => {
-    if (shellTasksOpen) {
-      setResourcesOpen(false)
-      setEmployeeTasksOpen(false)
-    }
-  }, [shellTasksOpen])
+  // 反向互斥：合并任务面板从 store 侧被打开时（如 CuratorView 正文里的
+  // 「N 个任务运行中 · 查看」指示器），store 的 closeOtherSidePanels 碰不到
+  // 工作台本地的 resourcesOpen，需在此把它清掉，否则 ArtifactPanel 会与
+  // TasksPanel 同时叠加渲染。订阅 store 变更、在回调里收起本地资源分栏
+  // （仅在 open 跳变时触发，避免在 effect 体内同步 setState）。
+  useEffect(
+    () =>
+      useTasksPanelStore.subscribe((state, prev) => {
+        if (state.isOpen && !prev.isOpen) setResourcesOpen(false)
+      }),
+    []
+  )
 
   useEffect(() => {
     if (panel.mode === "loading") return
@@ -247,15 +246,9 @@ export function WorkbenchContentSplit({
     }).then(() => {
       setCuratorSessionsOpen(false)
       setResourcesOpen(false)
-      setEmployeeTasksOpen(false)
-      closeShellTasks()
+      closeTasks()
     })
-  }, [
-    curatorContact,
-    createCuratorConversation,
-    isCreatingCurator,
-    closeShellTasks,
-  ])
+  }, [curatorContact, createCuratorConversation, isCreatingCurator, closeTasks])
 
   const handleOpenCuratorConversations = useCallback(() => {
     setCuratorSessionsOpen(true)
@@ -272,13 +265,11 @@ export function WorkbenchContentSplit({
   const sidePanelMode: SidePanelMode =
     activeConversationId == null
       ? "closed"
-      : shellTasksOpen
-        ? "shellTasks"
+      : tasksOpen
+        ? "tasks"
         : resourcesOpen
           ? "resources"
-          : employeeTasksOpen
-            ? "employeeTasks"
-            : "closed"
+          : "closed"
   const showSidePanel = sidePanelMode !== "closed"
 
   const gridPanelRef = usePanelRef()
@@ -301,31 +292,14 @@ export function WorkbenchContentSplit({
     setResourcesOpen((open) => {
       const next = !open
       if (next) {
-        setEmployeeTasksOpen(false)
-        closeShellTasks()
+        closeTasks()
       }
       return next
     })
-  }, [activeConversationId, closeShellTasks])
-
-  const handleToggleEmployeeTasks = useCallback(() => {
-    if (activeConversationId == null) return
-    setEmployeeTasksOpen((open) => {
-      const next = !open
-      if (next) {
-        setResourcesOpen(false)
-        closeShellTasks()
-      }
-      return next
-    })
-  }, [activeConversationId, closeShellTasks])
+  }, [activeConversationId, closeTasks])
 
   const handleCloseResources = useCallback(() => {
     setResourcesOpen(false)
-  }, [])
-
-  const handleCloseEmployeeTasks = useCallback(() => {
-    setEmployeeTasksOpen(false)
   }, [])
 
   const openResource = useArtifactStore((s) => s.openResource)
@@ -333,12 +307,11 @@ export function WorkbenchContentSplit({
   const handleOpenResourceFile = useCallback(
     (path: string) => {
       if (activeConversationId == null) return
-      setEmployeeTasksOpen(false)
-      closeShellTasks()
+      closeTasks()
       setResourcesOpen(true)
       openResource(path)
     },
-    [activeConversationId, openResource, closeShellTasks],
+    [activeConversationId, openResource, closeTasks],
   )
 
   useEffect(() => {
@@ -397,8 +370,6 @@ export function WorkbenchContentSplit({
         className={cn("h-full min-h-0", curatorPanelBorder)}
         resourcesOpen={resourcesOpen}
         onToggleResources={handleToggleResources}
-        employeeTasksOpen={employeeTasksOpen}
-        onToggleEmployeeTasks={handleToggleEmployeeTasks}
         onOpenResourceFile={handleOpenResourceFile}
         onOpenConversations={handleOpenCuratorConversations}
         onNewConversation={handleNewCuratorConversation}
@@ -467,18 +438,11 @@ export function WorkbenchContentSplit({
                   className="h-full rounded-lg border shadow-xl"
                 />
               ) : null}
-              {employeeTasksOpen ? (
-                <EmployeeTasksPanel
-                  curatorConversationId={activeConversationId}
-                  curatorContactId={curatorContact?.curator?.id}
-                  onClose={handleCloseEmployeeTasks}
-                  className="h-full rounded-lg border shadow-xl"
-                />
-              ) : null}
-              {shellTasksOpen ? (
-                <ShellTasksPanel
+              {tasksOpen ? (
+                <TasksPanel
                   conversationId={activeConversationId}
-                  onClose={closeShellTasks}
+                  curatorContactId={curatorContact?.curator?.id}
+                  onClose={closeTasks}
                   className="h-full rounded-lg border shadow-xl"
                 />
               ) : null}
