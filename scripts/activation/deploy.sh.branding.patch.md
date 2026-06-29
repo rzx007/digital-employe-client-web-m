@@ -18,42 +18,64 @@
 
 部署包（Installer 目录）下放一个 `branding/` 文件夹，里面就是某品牌的
 `brand.json` + logo（结构同 `apps/web/branding/<brand>/`）。`deploy.sh` 增加
-一个 `stage_branding()`，在装完客户端 deb 之后执行：
+一个 `stage_branding()`，在装完客户端 deb 之后执行。
+
+> 下面这版**已在 220 真机实测通过**（2026-06-29，0.1.30 deb）：函数定义插在
+> `main()` 之前，调用插在 `stage_digital_employee` 的分隔线之后、`stage_activation` 之前。
+> 用 `run_step` 跑拷贝（与其它 stage 一致：spinner + 计时 + 日志），单独 `record` 一次
+> （**不**用 `&& record OK || record WARN` 反模式——deploy.sh 的 `record()` 末行返回值
+> 会让该反模式误报 WARN，见 deploy.sh.boban-rename.patch.md）。
 
 ```bash
-# 安装根：deb 装在 /opt/BobanStaff，资源在 /opt/BobanStaff/resources
-APP_RESOURCES="${APP_RESOURCES:-/opt/BobanStaff/resources}"
-
 stage_branding() {
   info "品牌资源包"
-  local src="${INSTALLER_DIR:-$(dirname "$0")}/branding"
-  local dst="${APP_RESOURCES}/branding/active"
+  local src="${INSTALLER_DIR}/branding"
+  local res="${APP_RESOURCES:-/opt/BobanStaff/resources}"
+  local dst="${res}/branding/active"
 
-  # 部署包没带 branding/ → 跳过，用打包内 default
   if [[ ! -f "$src/brand.json" ]]; then
-    ok "未提供品牌包，使用内置默认"
+    ok "未提供品牌包（${src}/brand.json 不存在），使用客户端内置默认"
     record branding OK "使用内置默认品牌"
+    return 0
+  fi
+  if [[ ! -d "$res/branding" ]]; then
+    warn "客户端未内置 branding 目录（${res}/branding 缺失），跳过"
+    record branding WARN "客户端无 branding 目录" "升级客户端到含品牌资源包的版本(0.1.30+)"
     return 0
   fi
 
   mkdir -p "$dst"
-  # rsync 优先（增量 + 删除多余文件）；无 rsync 退回 cp
+  local rc
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete "$src"/ "$dst"/
+    run_step branding "应用品牌资源包 → active/" -- rsync -a --delete "$src/" "$dst/"
+    rc=$?
   else
-    rm -rf "$dst"/* 2>/dev/null || true
-    cp -a "$src"/. "$dst"/
+    rm -rf "${dst:?}/"* 2>/dev/null || true
+    run_step branding "应用品牌资源包 → active/" -- cp -a "$src/." "$dst/"
+    rc=$?
   fi
 
+  if [[ $rc -ne 0 ]]; then
+    record branding WARN "应用品牌失败(rc=$rc，见日志)"
+    return 0
+  fi
   local name
   name="$(python3 -c "import json;print(json.load(open('$dst/brand.json')).get('productName',''))" 2>/dev/null)"
-  ok "已应用品牌：${name:-未知}"
+  ok "品牌已应用：${name:-未知}"
   record branding OK "已应用品牌：${name:-未知}"
 }
 ```
 
-调用点：在 `stage_digital_employee`（装客户端 deb）成功之后调用 `stage_branding`。
-`record` / `info` / `ok` 沿用 deploy.sh 既有的总结/日志函数。
+调用点（`main()` 内，已实测的位置）：
+```bash
+  stage_digital_employee
+  echo; hr '─'
+  stage_branding          # ← 新增
+  echo; hr '─'            # ← 新增
+  stage_activation
+```
+`record` / `info` / `ok` / `warn` / `run_step` 沿用 deploy.sh 既有函数。
+`$INSTALLER_DIR` 即脚本所在目录；安装资源根实测为 `/opt/BobanStaff/resources`。
 
 ## 工程人员做国网版的流程
 

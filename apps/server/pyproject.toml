@@ -39,6 +39,7 @@ dev = [
     "digital-employee-client",
     "pyinstaller>=6.0",
     "pytest>=8.0",
+    "pytest-asyncio>=0.23",
     # workspace 包构建所需（CI --frozen + --no-build-isolation）
     # editables: hatchling 可编辑安装(build_editable)需要；--no-build-isolation 下
     # 不会从 extra-build-dependencies 注入，必须真实装进 .venv
@@ -50,6 +51,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"
 [project.urls]
 Repository = "https://github.com/langchain-ai/deepagents/tree/master/examples/text-to-sql-agent"
 

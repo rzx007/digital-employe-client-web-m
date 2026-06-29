@@ -50,6 +50,7 @@ BobanStaff-Installer/
 ├── packages/
 │   ├── BobanStaff-Offline-Linux-arm64-<版本>.deb        数字员工（← 准备第2步从飞书下载放入；核心包不自带）
 │   └── hanhai-cli-linux-arm64.tar.gz                    瀚海 CLI
+├── branding/                  品牌定制（选装，要做国网版等才放；见"可选：品牌版本"一节）
 ├── ime/                       中文输入法离线包
 ├── images/
 │   └── headroom-arm64.tar     压缩网关镜像（选装，默认不启用）
@@ -181,6 +182,53 @@ sudo bash ~/BobanStaff-Installer/deploy.sh --cleanup
 
 ---
 
+## 可选：品牌版本（白标 / 国网版等）
+
+> 不需要定制品牌就**整段跳过**——不放 `branding/` 文件夹时，装出来就是出厂的「数字员工 / BobanStaff」样子。
+> 需要客户端 deb 是 **0.1.30 及以上**（旧版不带品牌机制，放了也不生效）。
+
+要做某个品牌版本（例：国网版），只改**图 + 文字**两类文件，不用改代码、不用重新打包：
+
+1. 在安装目录放一个 `branding/` 文件夹（和 `deploy.sh` 同一层），里面放：
+   ```
+   BobanStaff-Installer/branding/
+   ├── brand.json      品牌文字
+   └── logo.png        品牌 logo（about / 登录 / 标题栏 / 启动屏都用它）
+   ```
+2. `brand.json` 内容（按需改文字；`{year}` 会自动替换成当年）：
+   ```json
+   {
+     "productName": "国网数字员工",
+     "windowTitle": "国网数字员工",
+     "subtitle": "数字员工智能助手",
+     "companyName": "国家电网",
+     "copyright": "© {year} 国家电网. All rights reserved.",
+     "logos": { "app": "logo.png", "login": "logo.png", "splash": "logo.png" },
+     "defaultTheme": "green"
+   }
+   ```
+   - `defaultTheme` 可选：首次启动的默认主题色（`default` 靛蓝 / `green` 国网绿 / `teal` 青蓝）。
+     用户之后仍可在 **设置 → 通用 → 主题色** 自行切换。
+3. 正常跑 `sudo bash deploy.sh`（装完数字员工后会自动应用品牌）。
+
+**应该看到**：安装总结里多一行
+```
+品牌资源包         ✓ 成功     已应用品牌：国网数字员工
+```
+打开数字员工：about / 登录页 / 标题栏 / 启动屏显示「国网数字员工」「© 国家电网」，主题色为绿。
+
+**验证 / 排查**：
+```bash
+cat /opt/BobanStaff/resources/branding/active/brand.json   # 应是你放的品牌内容
+```
+- 装出来还是「数字员工」没变 → 检查：deb 是否 ≥0.1.30；`branding/brand.json` 是否和 deploy.sh 同层；总结里"品牌资源包"那行状态。
+- **还原成出厂默认**：删掉 `/opt/BobanStaff/resources/branding/active/` 整个目录，重启数字员工即可。
+
+> 字段全量说明见客户端仓库 `apps/web/branding/README.md`；deploy.sh 的 `stage_branding` 实现见
+> `scripts/activation/deploy.sh.branding.patch.md`。
+
+---
+
 ## 出问题怎么办（对照表）
 
 | 现象 | 怎么做 |
@@ -191,6 +239,7 @@ sudo bash ~/BobanStaff-Installer/deploy.sh --cleanup
 | 报告里"模型服务 ✗ 失败" | 记下报告路径，把 `cat 该路径` 内容发给技术对接人 |
 | 没装模型，数字员工连不上模型 | 在数字员工应用内配置模型服务地址（远程 API 或其它服务） |
 | 中文还是打不出（已重启） | 再注销重登一次；仍不行联系技术对接人 |
+| 放了 `branding/` 但品牌没变 | 确认 deb ≥0.1.30、`branding/brand.json` 与 deploy.sh 同层；看总结"品牌资源包"那行；详见"可选：品牌版本" |
 | `--cleanup` 后还想看报告 | 报告已随安装目录删除，正常现象 |
 
 ---
@@ -202,7 +251,7 @@ sudo bash ~/BobanStaff-Installer/deploy.sh --cleanup
 
 > 把方括号替换成实际联系人后再发给现场人员。
 
-版本 v2.1（核心包不含 deb 单独下载 / headroom 压缩网关选装 / 数据目录 `.boban-staff-next`）
+版本 v2.2（核心包不含 deb 单独下载 / headroom 压缩网关选装 / 数据目录 `.boban-staff-next` / 品牌版本选装）
 
 ---
 
