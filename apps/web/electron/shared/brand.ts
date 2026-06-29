@@ -7,7 +7,7 @@ export interface ResolvedBrand {
   /** 可含 {year} 占位，渲染时替换为当前年 */
   copyright: string
   logos: { app: string; login: string; splash: string }
-  /** 可选：品牌默认主题色预设 id（见 renderer brand-theme.ts） */
+  /** 可选：默认特殊风格皮肤 id（renderer 端 lib/theme/skins.ts 的 SKINS 之一） */
   defaultTheme?: string
 }
 

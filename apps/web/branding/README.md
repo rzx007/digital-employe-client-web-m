@@ -1,7 +1,7 @@
 # 品牌资源包（白标 / 多版本）
 
 工程人员**只需替换本目录下的图片 + 文字**，即可打造不同品牌版本（如国网版），
-无需改代码。主题色 / 背景色是 app 内置预设，由用户在「设置 → 通用 → 主题色」切换，
+无需改代码。深浅色与特殊风格皮肤是 app 内置预设，由用户在「设置 → 通用 → 外观设置」切换，
 不在本目录维护。
 
 ## 目录结构
@@ -32,7 +32,7 @@ branding/
 | `logos.app` | 通用 logo（about / 标题栏 / 欢迎页），相对本目录的文件名 |
 | `logos.login` | 登录/注册页 logo（缺省回退 `app`） |
 | `logos.splash` | 启动屏 logo（缺省回退 `app`） |
-| `defaultTheme` | 可选。首次启动的默认主题色预设 id（`default`/`green`/`teal`），用户仍可改 |
+| `defaultTheme` | 可选。首次启动的默认特殊风格皮肤 id（见 `apps/web/src/lib/theme/skins.ts` 的 `SKINS`，如 `guowang-green`），用户仍可改 |
 
 > 图片支持 png/svg/jpg/webp。缺某个 logo 会逐项回退到 `app`，再回退到打包默认图，不会裂图。
 

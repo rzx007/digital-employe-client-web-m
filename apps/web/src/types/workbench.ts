@@ -29,6 +29,8 @@ export interface WorkbenchWidget {
   data?: Record<string, any>
   dataSource?: WidgetDataSource
   options?: Record<string, any>
+  /** 稳定业务键:后端 upsert 用(同 key 原地更新);前端透传保留 */
+  key?: string
 }
 
 export interface HtmlArtifactRef {
