@@ -70,7 +70,6 @@ from src.service.agent.orchestrator.tools import (
 from src.service.context_compression import build_summarization_middleware_stack
 from src.service.agent.remember_memory_tool import create_remember_memory_tool
 from src.service.agent.get_current_time_tool import get_current_time_tool
-from src.service.agent.web_search import create_web_search_tool
 from src.service.agent.shell_execute_tool import (
     create_shell_execute_tool,
     create_shell_kill_tool,
@@ -331,6 +330,8 @@ def get_orchestrator_agent(
     )
     remember_memory_tool = create_remember_memory_tool(memories_dir)
 
+    # 注：总管不持有 web_search。联网信息检索（含浏览器交互）一律派给「浏览器助手」，
+    # 由其内部「先 web_search、搞不定再开浏览器」处理（见 prompts.py 需求分流·A）。
     orchestrator_tools: list = [
         shell_execute_tool,
         create_shell_poll_tool(),
@@ -338,7 +339,6 @@ def get_orchestrator_agent(
         create_shell_kill_tool(),
         remember_memory_tool,
         get_current_time_tool,
-        create_web_search_tool(),
     ]
 
     # 工作区外目录写授权：与员工对称接线。登记本会话合法写入根集合 + workspace_id，
