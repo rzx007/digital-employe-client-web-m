@@ -62,6 +62,15 @@ async function main() {
   } else {
     const userDataDir = args.userDataDir ?? defaultProfileDir(args.browser)
     fs.mkdirSync(userDataDir, { recursive: true }) // chrome-launcher 在此目录写 chrome-out.log，须先存在
+    // 清理上次未干净退出残留的单例锁：否则新 Chrome 撞锁会把请求转交给"已有实例"再自退，
+    // 导致 remote-debugging 端口无人监听 → CDP attach 报 ECONNREFUSED。
+    for (const lock of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
+      try {
+        fs.rmSync(path.join(userDataDir, lock), { force: true })
+      } catch {
+        /* ignore */
+      }
+    }
     const launched = await launch({
       chromeFlags: args.headless ? ["--headless=new"] : [],
       userDataDir,
