@@ -9,7 +9,19 @@ export class ChromeCdpTransport implements Transport {
 
   async attach(): Promise<void> {
     if (this.client !== null) return // 幂等：已连接则短路，避免覆盖旧 client 泄漏 WebSocket
-    this.client = await CDP({ port: this.opts.port })
+    // Chrome 的 CDP endpoint 在 launch 返回后可能还需数百 ms 才就绪（尤其有头），
+    // chrome-remote-interface 不自带重试，这里重试直到连上或超时（约 5s）。
+    let lastErr: unknown
+    for (let i = 0; i < 20; i++) {
+      try {
+        this.client = await CDP({ port: this.opts.port })
+        break
+      } catch (e) {
+        lastErr = e
+        await new Promise((r) => setTimeout(r, 250))
+      }
+    }
+    if (this.client === null) throw lastErr
     this.client.on("event", (msg: CDP.EventMessage) => {
       this.msgCb?.(msg.method, msg.params, msg.sessionId)
     })
