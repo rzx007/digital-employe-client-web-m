@@ -1,0 +1,26 @@
+{
+  "name": "browserctl-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "browserctl": "dist/cli.js" },
+  "files": ["dist", "bin"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "chrome-launcher": "^1.1.0",
+    "chrome-remote-interface": "^0.33.0"
+  },
+  "devDependencies": {
+    "@workspace/browser-sdk": "workspace:*",
+    "@workspace/browserctl-daemon": "workspace:*",
+    "@workspace/browserctl": "workspace:*",
+    "@types/node": "^25.9.1",
+    "tsup": "^8.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  }
+}
