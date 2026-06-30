@@ -434,7 +434,7 @@ git commit -m "feat(browser): ElectronHost(包 window-controller/确认/高亮/�
 把 `handleBrowserRequest` 的 switch（snapshot/click/fill/select/press/scroll/wait/extract-text/screenshot/get-url/get-title/get-value/get-attribute/navigate/close）搬进 SDK，规则：
 - 所有 `dbg.<method>()` → `controller.<method>()`。
 - `navigate` action → `await host.ensureBrowser(url)` 然后 `controller.navigate(url)`；`host.setActiveSession?.(convId)`。
-- `click --confirm` → `host.requestConfirmation(msg)`；确认期 `host.beforeInteraction?.()`；点击后 `host.afterClick?.(ref)`。
+- `click --confirm` → 先 `controller.screenshot()` 截图，再 `host.requestConfirmation(msg, shot.ok ? shot.data?.base64 : undefined)`（confirm 期 suppress/restore 已封装在 host 内，createBridge 不管可见性）；未通过返回 `USER_CANCELLED`。点击成功且 `ref` 是 selector（非 `@e` 开头）时调 `host.afterClick?.(ref)`。
 - `get-url`/`get-title` → `controller.getUrl()`/`controller.getTitle()`（已纯 CDP，不再走 wc）。
 - `screenshot` → `controller.screenshot()` **只返回 base64**（与现状一致；**写盘由 CLI `index.js` 完成，bridge 不写盘**，否则双写）。`host.resolveArtifactPath` 接口保留备未来用，标准 screenshot action 不触发它。
 - `health` → **留宿主侧**：`createBridge(controller, host, opts)` 接受可选 `opts.health?: () => Promise<unknown>`；Electron 侧注入（用 window-controller 的 wc 探活 url/title），独立侧返回 daemon/transport 状态。bridge 的 health 路由调它，SDK 不直接碰 wc。

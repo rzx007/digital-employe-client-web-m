@@ -38,14 +38,25 @@ export class ElectronHost implements Host {
 
   constructor(private transport: ElectronDebuggerTransport) {}
 
-  async requestConfirmation(message: string): Promise<boolean> {
-    // Host 接口只传 message；refOrSelector 在此上下文无具体目标，置空串。
-    // 视图压制由 beforeInteraction / afterClick 在 controller 层管理。
-    return requestBrowserConfirmation({
-      message,
-      refOrSelector: "",
-      conversationId: this.activeConversationId,
-    })
+  async requestConfirmation(
+    message: string,
+    screenshotBase64?: string
+  ): Promise<boolean> {
+    // 内嵌浏览器是原生 WebContentsView，合成层永远盖在 React 之上（z-index 无效），
+    // 会挡住确认弹窗；确认期间临时锁定隐藏视图，确认后恢复（finally 保证）。
+    const controller = getBrowserController()
+    const wasVisible = controller.isOpen()
+    if (wasVisible) controller.setVisibilitySuppressed(true)
+    try {
+      return await requestBrowserConfirmation({
+        message,
+        refOrSelector: "",
+        screenshotBase64,
+        conversationId: this.activeConversationId,
+      })
+    } finally {
+      if (wasVisible) controller.setVisibilitySuppressed(false)
+    }
   }
 
   resolveArtifactPath(nameOrPath: string): string {
@@ -103,11 +114,6 @@ export class ElectronHost implements Host {
         conversationId: this.activeConversationId ?? null,
       })
     }
-  }
-
-  beforeInteraction(): void {
-    // 确认弹窗/交互前：压制内嵌浏览器视图（让 React 层置顶）
-    getBrowserController().setVisibilitySuppressed(true)
   }
 
   afterClick(refOrSelector: string): void {
