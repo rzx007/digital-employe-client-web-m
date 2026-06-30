@@ -6,8 +6,9 @@
 #   将 Runner 服务从 systemprofile 改为 yaoji 运行。
 #   CI job 即「远程下发指令」，实际执行 scripts/ci/build-windows.ps1。
 #   默认保留 .venv / node_modules，比旧 CI 冷启动快。
-#   - 推 vX.Y.Z tag → build:windows 自动触发
+#   - 推 vX.Y.Z tag → build:windows 自动触发（全平台 release 流程中的 Windows 部分）
 #   - 分支 Pipeline → build:windows:manual 网页手动点 Play
+#   - 打包门户 Pipeline Trigger（dev 等分支）→ build:windows:branded 自动跑（仅 Windows 品牌在线包）
 #   RDP 本地也可直接跑同一脚本。
 #
 # macOS / Linux：推送 tag 时由 mac-builder CI 自动构建。
@@ -18,6 +19,7 @@
 
 stages:
   - build
+  - package
 
 variables:
   # ---------- 国内镜像（npmmirror，与根目录 .npmrc 一致）----------
@@ -129,7 +131,36 @@ build:windows:manual:
     expire_in: 7 days
 
 # ------------------------------------------------------------------------------
-# Windows x64 离线版：手动触发（含内嵌后端，体积较大）
+# Windows x64 品牌在线包（打包门户专用 stage）
+#
+# 与 build:windows / build:windows:manual 分离：
+#   - 仅 Pipeline Trigger 来源（门户 POST trigger/pipeline）自动执行，无需点 Play
+#   - 只打 Windows 在线包，不触发 mac/linux/tag release 流程
+#   - 必填变量：BRAND_PROJECT、BRAND_ASSETS_REPO（门户传入）
+# ------------------------------------------------------------------------------
+build:windows:branded:
+  <<: *win_build
+  stage: package
+  tags:
+    - win-builder
+  only:
+    - triggers
+  except:
+    - tags
+  script:
+    - if (-not $env:BRAND_PROJECT) { throw "BRAND_PROJECT 未设置（请通过打包门户或 trigger-branded-build.ps1 传入）" }
+    - if (-not $env:BRAND_ASSETS_REPO) { throw "BRAND_ASSETS_REPO 未设置" }
+    - if (-not $env:BRAND_ASSETS_REF) { $env:BRAND_ASSETS_REF = "main" }
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_REF_NAME -SkipGitSync -BrandProject $env:BRAND_PROJECT -AssetsRepo $env:BRAND_ASSETS_REPO -AssetsRef $env:BRAND_ASSETS_REF
+  artifacts:
+    name: "BobanStaff-Branded-$CI_COMMIT_REF_NAME-$BRAND_PROJECT"
+    paths:
+      - apps/web/release/*.yml
+      - apps/web/release/*.blockmap
+      - apps/web/.branded-build.json
+    expire_in: 14 days
+
+# ------------------------------------------------------------------------------
 # tag 或分支 Pipeline 均可点 Play
 # ------------------------------------------------------------------------------
 build:windows:offline:

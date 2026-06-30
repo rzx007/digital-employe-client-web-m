@@ -1,0 +1,9 @@
+{
+  "productName": "国网数字员工",
+  "windowTitle": "国网数字员工",
+  "subtitle": "数字员工智能助手",
+  "companyName": "国家电网",
+  "copyright": "© {year} 国家电网. All rights reserved.",
+  "logos": { "app": "logo.png", "login": "logo.png", "splash": "logo.png" },
+  "defaultTheme": "guowang-green"
+}

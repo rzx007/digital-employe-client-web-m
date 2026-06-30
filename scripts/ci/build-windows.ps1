@@ -59,7 +59,11 @@ param(
     [switch]$SkipGitSync,
     [switch]$Offline,
     [ValidateSet("none", "test", "prod")]
-    [string]$PushUpdate = "none"
+    [string]$PushUpdate = "none",
+    [string]$BrandProject = "",
+    [string]$AssetsRepo = "",
+    [string]$AssetsRef = "",
+    [string]$AssetsDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -207,6 +211,29 @@ Invoke-Timed "pnpm install" {
     if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
 }
 
+if ($BrandProject) {
+    if (-not $AssetsRepo -and -not $AssetsDir) {
+        $AssetsRepo = $env:BRAND_ASSETS_REPO
+    }
+    if (-not $AssetsRef) {
+        $AssetsRef = if ($env:BRAND_ASSETS_REF) { $env:BRAND_ASSETS_REF } else { "main" }
+    }
+    if (-not $AssetsRepo -and -not $AssetsDir) {
+        throw "品牌打包需 -AssetsRepo 或 -AssetsDir（或环境变量 BRAND_ASSETS_REPO）"
+    }
+    Invoke-Timed "品牌资源注入 ($BrandProject)" {
+        $prepArgs = @{
+            BrandProject = $BrandProject
+            RepoRoot     = $RepoRoot
+            AssetsRef    = $AssetsRef
+        }
+        if ($AssetsDir) { $prepArgs.AssetsDir = $AssetsDir }
+        if ($AssetsRepo) { $prepArgs.AssetsRepo = $AssetsRepo }
+        & pwsh -NoProfile -File (Join-Path $RepoRoot "scripts\ci\prepare-branded-build.ps1") @prepArgs
+        if ($LASTEXITCODE -ne 0) { throw "prepare-branded-build.ps1 failed" }
+    }
+}
+
 # 把 GitLab CI/CD Variables 里的 VITE_*（转写凭证等）落到 apps/web/.env，
 # 让 vite 构建时能编译进 bundle。.env 不入库，凭证只放 GitLab 一处管理。
 Invoke-Timed "写入 .env（VITE_* from CI variables）" {
@@ -239,8 +266,15 @@ else {
 
     Invoke-Timed "Electron 客户端 (Vite + NSIS)" {
         Set-Location $RepoRoot
-        pnpm build:client
-        if ($LASTEXITCODE -ne 0) { throw "pnpm build:client failed" }
+        pnpm --filter boban-staff exec vite build --mode electron
+        if ($LASTEXITCODE -ne 0) { throw "vite build failed" }
+        if ($BrandProject) {
+            pnpm --filter boban-staff exec electron-builder --config electron-builder.branded.json5
+        }
+        else {
+            pnpm --filter boban-staff exec electron-builder
+        }
+        if ($LASTEXITCODE -ne 0) { throw "electron-builder failed" }
     }
 }
 

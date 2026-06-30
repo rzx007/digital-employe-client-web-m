@@ -1,0 +1,16 @@
+services:
+  packaging-portal:
+    image: packaging-portal:latest
+    container_name: packaging-portal
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      DATABASE_PATH: /data/packaging-portal.db
+    volumes:
+      - portal-data:/data
+
+volumes:
+  portal-data:
