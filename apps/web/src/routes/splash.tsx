@@ -27,16 +27,20 @@ function SplashPage() {
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       <div className="flex flex-col items-center">
-        <img src={brand.logos.splash} alt="logo" className="mb-5 w-14" />
+        <img
+          src={brand.logos.splash}
+          alt={brand.productName}
+          className="mb-8 h-[72px] w-auto max-w-[320px] object-contain"
+        />
         <div
           className={cn(
-            "h-7 w-7 animate-spin rounded-full border-[3px] border-muted",
+            "h-8 w-8 animate-spin rounded-full border-[3px] border-muted",
             isError ? "border-t-destructive" : "border-t-primary",
           )}
         />
         <span
           className={cn(
-            "mt-4 text-[13px] tracking-wide",
+            "mt-5 text-sm tracking-wide",
             isError ? "text-destructive" : "text-muted-foreground",
           )}
         >

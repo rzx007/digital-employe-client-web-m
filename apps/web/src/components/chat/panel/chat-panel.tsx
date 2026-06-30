@@ -317,7 +317,7 @@ export function ChatPanel({
                         <img
                           src={brand.logos.app}
                           alt="Logo"
-                          className="w-12 opacity-80"
+                          className="h-12 w-auto max-w-[200px] object-contain opacity-80"
                         />
                         <div className="space-y-3 text-center">
                           <h2 className="text-md font-semibold tracking-tight">
@@ -351,9 +351,9 @@ export function ChatPanel({
                   <ConversationEmptyState className="py-16">
                     <div className="flex flex-col items-center gap-5">
                       <img
-                        src={brand.logos.app}
-                        alt="Logo"
-                        className="w-14 opacity-50"
+                          src={brand.logos.app}
+                          alt="Logo"
+                          className="h-14 w-auto max-w-[220px] object-contain opacity-50"
                       />
                       <div className="space-y-1.5 text-center">
                         <h3 className="text-sm font-medium">开始新对话</h3>
