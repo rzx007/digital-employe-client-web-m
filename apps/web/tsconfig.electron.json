@@ -12,7 +12,10 @@
     "moduleDetection": "force",
     "noEmit": true,
     "strict": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@workspace/browser-sdk": ["../../packages/browser-sdk/src/index.ts"]
+    }
   },
   "include": ["electron/**/*.ts", "electron/**/*.d.ts"]
 }
