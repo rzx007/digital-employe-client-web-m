@@ -482,7 +482,7 @@ import { ElectronHost } from "./electron-host"
 export function startBrowserHttpBridge(port = 34555): http.Server {
   const transport = new ElectronDebuggerTransport()
   const host = new ElectronHost(transport)
-  const controller = new BrowserController(transport, host)
+  const controller = new BrowserController(transport)  // controller 只需 transport；host 给 createBridge
   return createBridge(controller, host, { port })
 }
 ```
@@ -709,7 +709,7 @@ async function main() {
   const transport = new ChromeCdpTransport({ port })
   await transport.attach()
   const host = new StandaloneHost({ attach: async () => {} })
-  const controller = new BrowserController(transport, host)
+  const controller = new BrowserController(transport)  // controller 只需 transport；host 给 createBridge
   const server = createBridge(controller, host, { port: args.port ?? 34555 })
   console.error(`[browserctl-daemon] listening on ${args.port ?? 34555}, driving Chrome :${port}`)
 }
@@ -762,7 +762,7 @@ test("headless Chrome: open→snapshot→fill→get value（含同源 iframe）"
   catch { t.skip("无 Chrome 可用"); return }
   const transport = new ChromeCdpTransport({ port: chrome.port })
   await transport.attach()
-  const c = new BrowserController(transport, new StandaloneHost({}))
+  const c = new BrowserController(transport)  // 集成测试直接调 controller，不经 bridge/host
   try {
     const url = pathToFileURL(path.resolve(import.meta.dirname, "fixtures/iframe-page.html")).href
     await transport.sendCommand("Page.enable")
