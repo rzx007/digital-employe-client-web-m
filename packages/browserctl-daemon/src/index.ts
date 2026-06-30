@@ -60,9 +60,11 @@ async function main() {
     cdpPort = args.cdp
     console.error(`[browserctl-daemon] connecting to existing Chrome on debug port ${cdpPort}`)
   } else {
+    const userDataDir = args.userDataDir ?? defaultProfileDir(args.browser)
+    fs.mkdirSync(userDataDir, { recursive: true }) // chrome-launcher 在此目录写 chrome-out.log，须先存在
     const launched = await launch({
       chromeFlags: args.headless ? ["--headless=new"] : [],
-      userDataDir: args.userDataDir ?? defaultProfileDir(args.browser),
+      userDataDir,
       chromePath: resolveExecutable(args),
     })
     chrome = launched
