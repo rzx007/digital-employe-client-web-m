@@ -115,7 +115,16 @@ async function main() {
   await startDaemon(parseArgs(process.argv.slice(2)))
 }
 
-main().catch((e) => {
-  console.error("[browserctl-daemon] fatal:", e)
-  process.exit(1)
-})
+// 仅当作为可执行入口直接运行时才执行（被 browserctl-cli bundle 时跳过）。
+// __CLI_BUNDLE__ 由 browserctl-cli tsup.config 注入；daemon-entry.ts 顶层 await 自己调 startDaemon。
+declare const __CLI_BUNDLE__: boolean | undefined
+const _invokedDirectly =
+  typeof __CLI_BUNDLE__ === "undefined" &&
+  process.argv[1] != null
+
+if (_invokedDirectly) {
+  main().catch((e) => {
+    console.error("[browserctl-daemon] fatal:", e)
+    process.exit(1)
+  })
+}
