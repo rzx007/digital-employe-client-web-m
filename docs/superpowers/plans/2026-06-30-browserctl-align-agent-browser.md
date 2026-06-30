@@ -420,14 +420,20 @@ test("check：未勾选时点击，再回读校验", async () => {
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
     "Runtime.callFunctionOn": { result: { value: false } },
   })
-  // 用 callFnCount 模拟 isChecked 多次回读（前两次 false、JS-click 后 true）
+  // 用 isCheckedCall 专用计数器模拟 isChecked 多次回读（前两次 false、JS-click 后第三次 true）。
+  // 仅当 callFunctionOn 的 functionDeclaration 含 isChecked 体时递增，JS-click 自身的 runOnElement 不计入。
   const origSend = t.sendCommand
-  let callFnCount = 0
+  let isCheckedCall = 0
   t.sendCommand = async (method, params) => {
     t.calls.push([method, params])
     if (method === "Runtime.callFunctionOn") {
-      callFnCount++
-      return { result: { value: callFnCount <= 2 ? false : true } }
+      const fn = String((params as { functionDeclaration?: string }).functionDeclaration)
+      if (fn.includes("return !!el.checked") || fn.includes("aria-checked")) {
+        isCheckedCall++
+        return { result: { value: isCheckedCall <= 2 ? false : true } }
+      }
+      // JS-click 兑底的 runOnElement 返回值被 setChecked 忽略
+      return { result: { value: undefined } }
     }
     return ({}) as unknown
   }
@@ -435,6 +441,7 @@ test("check：未勾选时点击，再回读校验", async () => {
   const r = await c.check("@e0")
   assert.equal(r.ok, true)
   assert.equal((r.data as { checked?: boolean }).checked, true)
+  assert.ok(isCheckedCall >= 3, "至少 3 次 isChecked 回读才成功")
 })
 ```
 
