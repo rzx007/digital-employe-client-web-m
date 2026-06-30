@@ -432,4 +432,5 @@ git commit -m "feat(browserctl-cli): bin wrapper(PATH 全局)+ README"
 Phase 1–3 子代理完成 + 各自 review;Phase 4 人工冒烟。全绿后:
 1. 内部包回归:`cd packages/browser-sdk && npx tsx --test test/*.test.ts`(13)、`cd packages/browserctl-daemon && npx tsx --test test/*.test.ts`(6)仍绿。
 2. 走 superpowers:finishing-a-development-branch 合并回 dev。
-3. **后续(暂缓)**:npm publish(去 private + publishConfig + LICENSE);多会话 `--session`;ensureDaemon 空闲端口自动选。
+3. **后续(暂缓)**:npm publish(去 private + publishConfig + LICENSE);多会话 `--session`。
+   - ✅ **已落地**:ensureDaemon 空闲端口自动选(`pickFreePort`,不再硬编码 34555)+ daemon 启动失败可观测(stderr 落盘 `~/.browserctl/daemon.log`,子进程早退立即读日志尾部抛真实原因,不再干等 15s)+ 复用前 `isPidAlive` 校验。见 `feat/browserctl-cli-free-port` 分支。
