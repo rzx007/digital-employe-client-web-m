@@ -8,9 +8,12 @@
 |------|------|
 | `window-controller.ts` | 视口布局、`WebContentsView` 生命周期、URL/错误 IPC |
 | `viewport-bounds.ts` | DOM 测量脚本、CSS px → DIP |
-| `browser-http-bridge.ts` | `browserctl` 本地 HTTP runtime |
-| `browser-debugger-controller.ts` | CDP |
+| `browser-http-bridge.ts` | 组装 `@workspace/browser-sdk` 的 `createBridge`（`browserctl` 本地 HTTP runtime，端口 34555） |
+| `electron-transport.ts` | `ElectronDebuggerTransport`：用 `webContents.debugger` 实现 SDK `Transport` |
+| `electron-host.ts` | `ElectronHost`：确认/高亮/会话/产物/视图生命周期，实现 SDK `Host` |
 | `preload-bridge.ts` | `browser.syncBounds` 等 |
+
+> CDP 命令逻辑（snapshot/click/fill/select/iframe 等）与 `ax-tree`/`frame-tree` 已迁至 `@workspace/browser-sdk`（`BrowserController` + `createBridge`），Electron 与独立 Chrome/Edge 双后端共用；本目录只保留 Electron 适配（transport/host）与视口/窗口逻辑。
 
 渲染进程：`src/components/chat/right-panels/browser-panel.tsx`（`data-browser-viewport` / `data-browser-footer`）、`src/hooks/use-browser-viewport-sync.ts`、`src/lib/browser/viewport-bounds.ts`。
 
