@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron"
-import path from "node:path"
 import { setForceQuit } from "../../core/services/lifecycle"
+import { resolveBrandIconPaths } from "../branding/brand-icon"
 import { stopBackend } from "../backend/backend-process"
 import { createSettingsWindow } from "../settings/window-settings"
 import { destroyPetWindow } from "../pet/pet-window"
@@ -66,23 +66,23 @@ function generateNotifyIcon(base: Electron.NativeImage): Electron.NativeImage {
 const MAC_TRAY_ICON_SIZE = 22
 
 function loadRawIcon(): Electron.NativeImage {
-  const icoPath = path.join(process.env.APP_ROOT!, "build/icon.ico")
-  const pngPath = path.join(process.env.APP_ROOT!, "build/icon.png")
+  const appRoot = process.env.APP_ROOT ?? ""
+  const { ico, png } = resolveBrandIconPaths(appRoot)
 
   if (process.platform === "darwin") {
-    const png = nativeImage.createFromPath(pngPath)
-    if (!png.isEmpty()) return png
-    return nativeImage.createFromPath(icoPath)
+    const pngImg = nativeImage.createFromPath(png)
+    if (!pngImg.isEmpty()) return pngImg
+    return nativeImage.createFromPath(ico)
   }
 
   try {
-    const image = nativeImage.createFromPath(icoPath)
+    const image = nativeImage.createFromPath(ico)
     if (!image.isEmpty()) return image
   } catch {
     // .ico 加载失败，尝试 .png
   }
 
-  return nativeImage.createFromPath(pngPath)
+  return nativeImage.createFromPath(png)
 }
 
 function prepareMacTrayIcon(image: Electron.NativeImage): Electron.NativeImage {

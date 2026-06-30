@@ -1,4 +1,5 @@
 import { createAppPaths } from "./app-context"
+import { getAppIconPathForPlatform } from "../features/branding/brand-icon"
 
 export interface ElectronRuntimePaths {
   readonly appRoot: string
@@ -48,5 +49,5 @@ export function getExtensionPreloadPath(): string {
 
 export function getAppIconPath(): string {
   const { appRoot } = getElectronRuntime()
-  return `${appRoot}/build/icon.ico`
+  return getAppIconPathForPlatform(appRoot)
 }

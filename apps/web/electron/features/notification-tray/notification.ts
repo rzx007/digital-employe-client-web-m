@@ -1,4 +1,5 @@
 import { BrowserWindow, Notification } from "electron"
+import { resolveBrandIconPaths } from "../branding/brand-icon"
 
 let notificationsEnabled = true
 
@@ -18,13 +19,17 @@ export function sendNotification(options: {
 }): void {
   if (!notificationsEnabled) return
 
+  const iconPath = process.env.APP_ROOT
+    ? resolveBrandIconPaths(process.env.APP_ROOT).png
+    : process.env.VITE_PUBLIC
+      ? `${process.env.VITE_PUBLIC}/logo.png`
+      : undefined
+
   const notification = new Notification({
     title: options.title,
     body: options.body,
     silent: options.silent ?? false,
-    icon: process.env.VITE_PUBLIC
-      ? `${process.env.VITE_PUBLIC}/logo.png`
-      : undefined,
+    icon: iconPath,
   })
 
   notification.on("click", () => {

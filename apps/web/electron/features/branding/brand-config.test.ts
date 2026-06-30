@@ -1,10 +1,15 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { loadBrandFromDir, substituteYear, resolveBrandingDir } from "./brand-config"
+import {
+  loadBrandFromDir,
+  substituteYear,
+  resolveBrandingDir,
+  resolveExeAdjacentBrandingDir,
+} from "./brand-config"
 
 function withTempDir(fn: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), "brand-"))
@@ -56,6 +61,28 @@ test("loadBrandFromDir：login/splash 缺省回退到 app logo", () => {
 
 test("substituteYear 替换 {year}", () => {
   assert.equal(substituteYear("© {year} X", 2026), "© 2026 X")
+})
+
+test("resolveExeAdjacentBrandingDir：exe 同级 branding/ 含 brand.json 时返回该目录", () => {
+  withTempDir((installDir) => {
+    const brandingDir = join(installDir, "branding")
+    mkdirSync(brandingDir, { recursive: true })
+    writeFileSync(
+      join(brandingDir, "brand.json"),
+      JSON.stringify({ productName: "外挂品牌" })
+    )
+    const fakeExe = join(installDir, "BobanStaff.exe")
+    writeFileSync(fakeExe, "")
+    assert.equal(resolveExeAdjacentBrandingDir(fakeExe), brandingDir)
+  })
+})
+
+test("resolveExeAdjacentBrandingDir：无 brand.json 时返回 undefined", () => {
+  withTempDir((installDir) => {
+    const fakeExe = join(installDir, "BobanStaff.exe")
+    writeFileSync(fakeExe, "")
+    assert.equal(resolveExeAdjacentBrandingDir(fakeExe), undefined)
+  })
 })
 
 test("resolveBrandingDir：DE_BRANDING_DIR 含 brand.json 时优先采用", () => {

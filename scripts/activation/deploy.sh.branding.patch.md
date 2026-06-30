@@ -9,7 +9,7 @@
 - `branding/` 整个目录经 `extraResources` 装进安装目录 `resources/branding/`
   （`default/` 兜底 + 各品牌示例）。
 - app 启动时按顺序解析品牌目录：
-  `DE_BRANDING_DIR` > `resources/branding/active/` > `resources/branding/default/`。
+  `DE_BRANDING_DIR` > `<exeDir>/branding/` > `resources/branding/active/` > `resources/branding/default/`。
 - 因此**部署侧只要把选定品牌拷进 `resources/branding/active/`**，app 即按该品牌显示。
 
 安装目录（deb）一般是 `/opt/BobanStaff/resources/branding/`。
