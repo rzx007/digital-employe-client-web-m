@@ -95,7 +95,8 @@ def add_workbench_widget(
       workspace_file(读工作空间内 JSON 文件当数据,配任意 type)。
       绑定示例: data_source={"metricId":"task_execution_stats","refreshSec":30}。
       workspace_file 用法: data_source={"metricId":"workspace_file",
-        "params":{"path":"wc-today.json"},"refreshSec":600}——path 相对工作空间根(可子目录),
+        "params":{"path":"wc-today.json"},"refreshSec":600}——path 相对**产物目录**
+        ($WORKSPACE_DIR,即 write_file 写入、shell 默认 cwd 的目录),**直接写文件名即可**;
         文件内容须是该 widget type 的 data 形状(如 table→{columns,rows});适合"定时任务写
         文件→看板自动刷"的场景,widget 只建一次、数据与展示解耦。
 

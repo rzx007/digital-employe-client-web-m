@@ -183,6 +183,27 @@ def test_workspace_file_subdir_and_array_wrap(db_session, tmp_path):
     assert out == {"items": [{"title": "梅西"}]}  # 顶层数组兜底包成 items
 
 
+def test_workspace_file_app_managed_reads_from_artifacts(db_session, tmp_path, monkeypatch):
+    """app 托管项目:文件在 root/artifacts,path 直接写文件名应能读到(对齐 $WORKSPACE_DIR)。"""
+    import json as _json
+
+    from src.service.agent import workspace_paths
+
+    monkeypatch.setattr(workspace_paths, "APP_PROJECTS_BASE", tmp_path)
+    root = tmp_path / "projects" / "1"
+    (root / "artifacts").mkdir(parents=True)
+    (root / "artifacts" / "wc-today.json").write_text(
+        _json.dumps({"items": [{"label": "今日", "value": 1}]}), encoding="utf-8"
+    )
+    ws_id = _make_workspace(db_session, str(root))
+    out = asyncio.run(
+        wm.resolve_metric(
+            db_session, "workspace_file", {"workspace_id": ws_id, "path": "wc-today.json"}
+        )
+    )
+    assert out["items"][0]["label"] == "今日"  # 文件名即可,自动落到 artifacts
+
+
 def test_workspace_file_traversal_blocked(db_session, tmp_path):
     ws_id = _make_workspace(db_session, str(tmp_path))
     with pytest.raises(ValueError):

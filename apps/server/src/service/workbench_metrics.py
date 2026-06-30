@@ -24,6 +24,10 @@ from src.models.employee import Employee
 from src.models.orchestration_plan import OrchestrationPlan
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.workspace import Workspace
+from src.service.agent.workspace_paths import (
+    APP_PROJECTS_BASE,
+    resolve_workspace_dirs,
+)
 from src.service.performance_balance_service import PerformanceBalanceService
 from src.service.task_service import TaskService
 
@@ -276,8 +280,9 @@ async def _plan_status_distribution(db: Session, params: dict[str, Any]) -> dict
 async def _workspace_file(db: Session, params: dict[str, Any]) -> dict[str, Any]:
     """读工作空间内的 JSON 文件当 widget 数据(定时任务写文件 → 看板按 refreshSec 自动刷)。
 
-    - ``params.path``:相对工作空间根目录的路径(允许子目录如 ``artifacts/wc-today.json``),
-      限制在工作空间目录内(防 ``..`` 越权),只允许 ``.json``。
+    - ``params.path``:相对**产物目录**($WORKSPACE_DIR,即 write_file 写入、shell 默认 cwd
+      的 ``root/artifacts`` 目录)的路径——通常直接写文件名(如 ``wc-today.json``);
+      也兼容放在项目根。限制在工作空间目录内(防 ``..`` 越权),只允许 ``.json``。
     - 文件内容须为 JSON 对象,形状匹配所绑定的 widget type(如 table→{columns,rows}、
       kpi→{items});顶层是数组则按 ``{"items": [...]}`` 兜底包一层。
     - 文件缺失 / 解析失败 → 返回 ``{}``(widget 显示空态),不抛 500,适配实时轮询。
@@ -286,31 +291,40 @@ async def _workspace_file(db: Session, params: dict[str, Any]) -> dict[str, Any]
     rel = str(params.get("path") or "").strip().replace("\\", "/")
     if not rel:
         raise ValueError("workspace_file 需要 params.path")
+    if not rel.lower().endswith(".json"):
+        raise ValueError("workspace_file 只支持 .json 文件")
     ws = db.get(Workspace, ws_id)
     if ws is None or not ws.root_path:
         return {}
-    base = Path(ws.root_path).resolve()
-    target = (base / rel).resolve()
-    if not target.is_relative_to(base):
-        raise ValueError("path 越出工作空间目录")
-    if target.suffix.lower() != ".json":
-        raise ValueError("workspace_file 只支持 .json 文件")
-    if not target.is_file():
-        logger.debug("workspace_file 文件不存在: %s", target)
-        return {}
-    try:
-        if target.stat().st_size > _MAX_FILE_BYTES:
-            logger.warning("workspace_file 文件过大,跳过: %s", target)
+    # 与全队一致:文件实际写在产物目录($WORKSPACE_DIR = root/artifacts,app 托管;
+    # 外部 flat 则 = root 本身)。优先按产物目录解析,兼容也放项目根的情况。
+    dirs = resolve_workspace_dirs(root_path=ws.root_path, base_dir=APP_PROJECTS_BASE)
+    bases: list[Path] = []
+    for cand in (dirs.workspace_dir, Path(ws.root_path)):
+        rb = Path(cand).resolve()
+        if rb not in bases:
+            bases.append(rb)
+    for base in bases:
+        target = (base / rel).resolve()
+        if not target.is_relative_to(base):
+            raise ValueError("path 越出工作空间目录")
+        if not target.is_file():
+            continue
+        try:
+            if target.stat().st_size > _MAX_FILE_BYTES:
+                logger.warning("workspace_file 文件过大,跳过: %s", target)
+                return {}
+            parsed = json.loads(target.read_text(encoding="utf-8"))
+        except Exception:
+            logger.warning("workspace_file 读取/解析失败: %s", target, exc_info=True)
             return {}
-        parsed = json.loads(target.read_text(encoding="utf-8"))
-    except Exception:
-        logger.warning("workspace_file 读取/解析失败: %s", target, exc_info=True)
-        return {}
-    if isinstance(parsed, list):
-        return {"items": parsed}
-    if not isinstance(parsed, dict):
-        return {}
-    return parsed
+        if isinstance(parsed, list):
+            return {"items": parsed}
+        if not isinstance(parsed, dict):
+            return {}
+        return parsed
+    logger.debug("workspace_file 文件不存在(产物目录/项目根均无): %s", rel)
+    return {}
 
 
 # ---------------------------------------------------------------------------
