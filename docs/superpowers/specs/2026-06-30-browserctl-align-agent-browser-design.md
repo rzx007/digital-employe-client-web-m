@@ -129,6 +129,7 @@
 ### 4.0 CLI guard 与 flag 解析（必改，否则新 flag 报错）
 现有 `index.js` 的 `wait` 在无 `--selector|--text|--ms` 时抛 `wait requires --selector, --text or --ms`。**必须把 guard 扩为**：`requires one of --selector|--text|--ms|--url|--load|--fn`（`--state` 必须配 `--selector`，单独传 `--state` 抛 `--state requires --selector`）。
 - `--fn <js>`：直接传 JS 表达式。多行/含引号/`$`/反引号的 JS 经 shell 难传，故**加 `--fn-file <path>` 和 `--fn-stdin`**（与 `fill --text-file/--text-stdin` 同模式），优先级 `--fn-file > --fn-stdin > --fn` 位置/flag。
+- **fn 源归一**：在 guard 之前，把 `--fn-file`/`--fn-stdin` 读出的内容赋给 `flags.fn`（仿 `fill --text-file` 处理），guard 只需判 `flags.fn` 是否存在即可，无需把 `--fn-file`/`--fn-stdin` 列入 guard 谓词——避免「传了 `--fn-file` 却因无 `--fn` 被 guard 拒」的死路。
 
 ### 4.1 `wait --url <pattern>`
 轮询 `Runtime.evaluate("window.location.href")`，glob 匹配（`*`→`.*`，全匹配；`?`→`.`）。超时 `TIMEOUT`。
