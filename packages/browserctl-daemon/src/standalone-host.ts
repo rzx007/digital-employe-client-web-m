@@ -17,5 +17,9 @@ export class StandaloneHost implements Host {
   }
   async ensureBrowser(_url?: string): Promise<void> {}
   async ensureAttached(): Promise<void> {}
-  async close(): Promise<void> {}
+  async close(): Promise<void> {
+    // 独立 daemon 模式：Chrome 生命周期由 daemon(SIGINT/SIGTERM)管理，
+    // browserctl close 不杀 Chrome 进程，仅记录提示（结束请停 daemon）。
+    this.log("[browserctl] 独立后端：close 为 no-op（Chrome 由 daemon 生命周期管理）")
+  }
 }

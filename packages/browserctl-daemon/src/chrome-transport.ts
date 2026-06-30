@@ -8,6 +8,7 @@ export class ChromeCdpTransport implements Transport {
   constructor(private opts: { port: number }) {}
 
   async attach(): Promise<void> {
+    if (this.client !== null) return // 幂等：已连接则短路，避免覆盖旧 client 泄漏 WebSocket
     this.client = await CDP({ port: this.opts.port })
     this.client.on("event", (msg: CDP.EventMessage) => {
       this.msgCb?.(msg.method, msg.params, msg.sessionId)
