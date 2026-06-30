@@ -46,15 +46,16 @@
 
 实现以 agent-browser `cli/src/native/interaction.rs` / `element.rs` 为参考。`ref|sel` 解析复用现有 `resolveNode`（`@eN` 走 refCache + `DOM.resolveNode`；CSS selector 走 `Runtime.evaluate` + `document.querySelector`）。
 
-### 3.1 fill 升级为 `Input.insertText`（行为变更，重点回归）
+### 3.1 fill 升级为 `Input.insertText`（最小化、非破坏性）
 **现状**：`controller.fill` 逐字符 `Input.dispatchKeyEvent {type:"char"}`。
-**新法**（对齐 agent-browser `interaction::fill`）：
-1. `resolveNode` → `DOM.resolveNode` 取 objectId
-2. `Runtime.callFunctionOn("function(){ this.focus(); }")`
-3. 清空：`Runtime.callFunctionOn("function(){ this.select && this.select(); this.value=''; this.dispatchEvent(new Event('input',{bubbles:true})); }")`（保留现有 `clearElement` 的 React/Vue setter 思路也可，但简化为 agent-browser 版本）
-4. `Input.insertText({ text })` 一次性插入
+**新法**（对齐 agent-browser `interaction::fill` 的输入语义，但**只动输入段、不动清空段**，降低风险）：
+1. `resolveNode` → 现有 `clearElement`（**保留原型 setter 清空**，React/Vue 友好，不改）
+2. focus（现有 fill 开头的 click-to-focus 保留）
+3. **唯一变更**：把逐字符 `dispatchKeyEvent {type:"char"}` 循环替换为单次 `Input.insertText({ text })`
 
-**风险**：`insertText` 对受控组件的兼容性需回归（现有 `clearElement` 用原型 setter 是为 React 友好；新法 `this.value=''` 直接赋值 + input 事件，React 18+ 已能识别。spec 实现阶段需在真实 React 页面验证，若受控组件失效则保留原型 setter 清空 + insertText 输入的组合）。
+**为何不动清空**：agent-browser 用 `this.value=''` + input 事件清空，但现有 `clearElement` 的原型 setter 是为 React 受控组件专门调过的，换掉有回归风险。本轮只把「输入」对齐到 `insertText`（agent-browser 注释明确：VS Code/Electron webview 拒绝重复 printable `dispatchKeyEvent`，printable 走 `insertText` 更可靠），清空保持原样。完整 agent-browser 式清空留后续。
+
+**验收门禁**（§7.1 baidu 冒烟即回归）：`fill @eN "关键词"` 后 `get value @eN` 必须返回 `"关键词"`；若返回空/旧值即判定 insertText 在该页面失效，回退逐字符 dispatchKeyEvent 并记 DONE_WITH_CONCERNS。这是明确 pass/fail 信号，不留主观判断。
 
 ### 3.2 `type <ref|sel> <text>`（不清空）
 对齐 `interaction::type_text`：
@@ -83,6 +84,8 @@
 3. 再读 `isChecked`，若仍不符 → JS-click 兜底：`callFunctionOn` 执行 `.click()`，带 label 重定向（同 is_element_checked 的 label 解析逻辑）
 4. 仍不符 → `ok:false, code:"NOT_CHECKABLE"`
 
+> level-4（嵌套 input）为 best-effort：取 `querySelector` 第一个匹配，可能命中无关后代 checkbox；这是弱信号兜底，仅在 level 1-3 都不命中时用，并在代码注释标注。
+
 ### 3.7 `drag <ref|sel> <ref|sel>`（source, target）
 对齐 `actions::handle_drag`：
 1. resolveNode source center `(sx,sy)`、target center `(tx,ty)`
@@ -102,32 +105,70 @@
 ### Batch 1 新增错误码
 `FILE_NOT_FOUND`（upload）、`NOT_CHECKABLE`（check/uncheck 目标非可勾选项且 JS-click 兜底失败）。复用 `ELEMENT_NOT_FOUND` / `TIMEOUT`。
 
+**错误码接线（必做，归 Batch 1）**：
+- controller 新方法返回 `{ok:false}` 时**必须显式带 `code` 字段**（如 `{ok:false, error:"not checkable", code:"NOT_CHECKABLE"}`），不依赖 bridge 兜底映射。
+- 同时扩展 `bridge.ts` 的 `errorCode()` 映射表，加入 `FILE_NOT_FOUND` / `NOT_CHECKABLE`（defense-in-depth，防止漏带 code 时落到 `BROWSER_ERROR`）。
+- `reference.md` 错误码表同步新增这两条。
+
+### Batch 1 各命令 JSON 输出 envelope
+| 命令 | `data` |
+|---|---|
+| `hover` / `dblclick` / `focus` / `type` / `drag` | 无 data（`{ok:true}`） |
+| `check` / `uncheck` | `{ checked: boolean }`（便于校验回读） |
+| `upload` | `{ uploaded: number }` |
+| `fill`（升级后） | 不变（现有 `{ok:true}`） |
+
+所有命令失败时统一 `{ok:false, error, code}`。
+
 ---
 
 ## 4. Batch 2 — wait 增强（4 条）
 
 扩展现有 `controller.waitFor` 轮询 + 新增 networkidle 事件路径。CLI flag 在现有 `wait (--selector|--text|--ms)` 基础上加 `--url / --load / --fn / --state`。
 
+### 4.0 CLI guard 与 flag 解析（必改，否则新 flag 报错）
+现有 `index.js` 的 `wait` 在无 `--selector|--text|--ms` 时抛 `wait requires --selector, --text or --ms`。**必须把 guard 扩为**：`requires one of --selector|--text|--ms|--url|--load|--fn`（`--state` 必须配 `--selector`，单独传 `--state` 抛 `--state requires --selector`）。
+- `--fn <js>`：直接传 JS 表达式。多行/含引号/`$`/反引号的 JS 经 shell 难传，故**加 `--fn-file <path>` 和 `--fn-stdin`**（与 `fill --text-file/--text-stdin` 同模式），优先级 `--fn-file > --fn-stdin > --fn` 位置/flag。
+
 ### 4.1 `wait --url <pattern>`
 轮询 `Runtime.evaluate("window.location.href")`，glob 匹配（`*`→`.*`，全匹配；`?`→`.`）。超时 `TIMEOUT`。
 
 ### 4.2 `wait --load networkidle`
-**事件路径**（需 controller 加事件多路复用基础设施，见 §4.5）：
+**事件路径 + 已就绪兜底**（关键：Chrome 只在状态转换时发 `networkIdle`，已 idle 时不再发，纯监听会必超时）：
 1. `Page.enable` + `Network.enable`
-2. 注册临时监听器，等 `Page.lifecycleEvent` 且 `params.name === "networkIdle"`
-3. 命中 → `ok:true`；超时 → `TIMEOUT`
-4. 移除监听器
+2. **先探测当前是否已 idle**：`Runtime.evaluate("document.readyState === 'complete'")` 且用一个 JS 侧 idle 启发式（`performance.getEntriesByType('resource')` 最近无新增 + 无 pending `fetch`/`XMLHttpRequest` 的简易计数）——若已 idle 立即 `ok:true` 返回
+3. 否则注册临时 `Page.lifecycleEvent{name:"networkIdle"}` 监听器，命中 → `ok:true`
+4. 超时 → `TIMEOUT`
+5. `finally` 移除监听器（见 §4.5 disposer）
+
+> JS 侧 idle 启发式不完美，但只用于「已 idle」短路；正常转换路径靠 `networkIdle` 事件，可靠。
 
 ### 4.3 `wait --fn <js>`
-轮询 `Runtime.evaluate(<js>, returnByValue:true)`，`result.value === true` 即满足。超时 `TIMEOUT`。JS 表达式由调用方负责，不做沙箱（与 agent-browser `wait_for_function` 一致）。
+轮询 `Runtime.evaluate(<js>, returnByValue:true)`，`result.value === true` 即满足。超时 `TIMEOUT`。JS 来自 `--fn`/`--fn-file`/`--fn-stdin`。不做沙箱（与 agent-browser `wait_for_function` 一致）。
 
 ### 4.4 `wait <sel> --state hidden`
-扩展现有 `--selector` 路径：`state` 默认 `visible`（现有行为：`document.querySelector` 命中即满足）。新增 `hidden`：命中 null，或元素 `getComputedStyle().display==="none"` 或 `visibility==="hidden"` 即满足。
+**`--state` 必须配 `--selector`**，否则 CLI 抛 `--state requires --selector`。`state` 默认 `visible`（现有行为：`document.querySelector` 命中即满足）。新增 `hidden`：命中 null，或元素 `getComputedStyle().display==="none"` 或 `visibility==="hidden"` 即满足。
 
 ### 4.5 controller 事件多路复用（唯一基础设施改动）
 **问题**：`Transport.on("message", cb)` 是单回调。若 `waitForNetworkIdle` 直接 `transport.on` 会覆盖他人。
-**方案**：`BrowserController` 构造时注册一个总 `transport.on("message", dispatcher)`，`dispatcher` 维护 `Set<(method, params) => void>`。新增 `addMessageListener(pred, cb)` / 移除。`waitForNetworkIdle` 临时加一个监听、命中后移除。
-**风险**：Electron 与独立 daemon 的 transport 都已实现 `on("message", ...)` 转发 CDP 事件（已确认 `electron-transport.ts` 与 `chrome-transport.ts`）。无并发（bridge 串行处理 HTTP 请求），监听器生命周期清晰。
+**方案**：`BrowserController` 构造时注册一个总 `transport.on("message", dispatcher)`，`dispatcher` 维护 `Set<listener>`。
+**API**：
+```ts
+// 返回 disposer，调用即移除该监听器
+private addMessageListener(
+  pred: (method: string, params: unknown, sessionId?: string) => boolean,
+  cb: () => void
+): () => void
+```
+`pred` 命中后由 `cb` 决定是否继续（`waitForNetworkIdle` 用一次性语义：pred 命中 → cb resolve → 立即调 disposer）。`waitForNetworkIdle` 用 `try/finally` 确保 disposer 必被调用：
+```ts
+const dispose = this.addMessageListener(
+  (m, p) => m === "Page.lifecycleEvent" && (p as any)?.name === "networkIdle",
+  () => resolve(),
+)
+try { /* await pred/timeout */ } finally { dispose() }
+```
+**已确认**：`electron-transport.ts` 与 `chrome-transport.ts` 都实现 `on("message", ...)` 转发 CDP 事件，且当前无其他调用方占用 `on`，单 callback 安全。bridge 串行处理 HTTP 请求，无并发。
 
 ---
 
@@ -137,11 +178,11 @@
 
 | flag | 实现 |
 |---|---|
-| `-c` / `--compact` | 输出精简：每 ref 一行 `@eN  role  name`，省略无文字/无 role 名的叶子冗余；JSON 模式下保留结构但裁剪空字段 |
+| `-c` / `--compact` | **裁剪层在 `ax-tree.buildRefs`**：`buildRefs(nodes, maxNodes, { compact?: boolean })`。compact 时丢弃 `name===null` 与 `value===null` 的字段，保留 `ref/role/backendNodeId/depth`。JSON 与文本输出都生效（CLI 渲染时无需再判空）。 |
 | `-d N` / `--depth N` | ax-tree 遍历限深 N（从 RootWebArea 起） |
-| `-s sel` / `--scope sel` | 主 frame 用 `DOM.querySelector` 定位子树根 backendNodeId → `Accessibility.getChildAXTree` 或对该子树跑 `getFullAXTree` + 过滤；取不到子树回退整树 |
+| `-s sel` / `--scope sel` | 主 frame：`DOM.querySelector(sel)` 命中 → `DOM.requestNode` 拿 nodeId → `Accessibility.getChildAXTree({nodeId})` 取子树。取不到 `getChildAXTree`（旧 Chrome）回退 `getFullAXTree` + 按 backendNodeId 子树过滤。`-s` 仅作用于主 frame，iframe 子树仍按现有逻辑收集。 |
 
-`--max-nodes` 保留，与 `-c/-d/-s` 可组合。iframe 子树仍按现有逻辑收集（`-s` 仅作用于主 frame）。
+`--max-nodes` 保留，与 `-c/-d/-s` 可组合。
 
 ---
 
@@ -151,7 +192,7 @@
 
 ### 流程
 1. 取 refCache（无则先 `snapshot()`）
-2. 对每个 ref：`DOM.resolveNode{backendNodeId}` → objectId → `Runtime.callFunctionOn("function(){ const r=this.getBoundingClientRect(); return {x,y,width,height}; }")`，过滤 `width>0 && height>0`
+2. 对每个 ref **逐个 try/catch**：`DOM.resolveNode{backendNodeId}` → objectId → `Runtime.callFunctionOn("function(){ const r=this.getBoundingClientRect(); return {x,y,width,height}; }")`，过滤 `width>0 && height>0`。**OOPIF 跨源 iframe 的 ref 在主 session 上 `DOM.resolveNode` 会抛错——静默跳过**（catch 后 continue），不中断整个 annotate。`reference.md` 注明「OOPIF 跨源 iframe 的 @eN 不参与 annotate」（与现有「iframe 内只能用 @eN 定位」一致）。
 3. 按 ref number 排序
 4. 注入 overlay（`Runtime.evaluate`）：
 ```js
@@ -173,9 +214,9 @@
   document.documentElement.appendChild(c); return true;
 })()
 ```
-5. `Page.captureScreenshot{format:png}` 拿 base64
+5. `Page.captureScreenshot{format:png, captureBeyondViewport:true}` 拿 base64（**`captureBeyondViewport:true`** 让截全文档区域，与 overlay 标注范围一致，避免视口外的 @eN 标了却不在图里）
 6. `Runtime.evaluate("document.getElementById('__browserctl_annotations__')?.remove()")` 移除 overlay
-7. 落盘（`--out` 或会话产物目录）+ 返回 `{ path, bytes, annotations:[{ref,number,role,name?,box}] }`
+7. 落盘（`--out` 或会话产物目录）+ 返回 `{ path, bytes, annotations:[{ref,number,role,name?,box:{x,y,width,height}}] }`
 
 `annotations` JSON 随返回一起给调用方，方便 Agent 对照 @eN 与截图。零 Node 侧图像处理、零新依赖。Electron 与独立 daemon 通用。
 
@@ -185,7 +226,8 @@
 
 ### 7.1 测试
 - `packages/browser-sdk/test/controller.test.ts`：每批加 mock-transport 单测（仿现有 13 个模式），覆盖新方法的关键路径（hover 派发 mouseMoved、drag 10 步、check 三步法的 is_checked 回退、annotate overlay 注入/移除调用序列、wait --fn/--state hidden 轮询）。
-- `packages/browserctl/test/index.test.js`：加 CLI 分发测试（新命令解析 → 调对应 bridge 路由）。
+- **事件多路复用专项测试**：mock transport 发 `Page.lifecycleEvent{networkIdle}` → `waitForNetworkIdle` resolve；断言监听器已从 Set 移除（再发第二个 networkIdle 事件不触发已 resolve promise 的 stale 回调）。
+- `packages/browserctl/test/index.test.js`：加 CLI 分发测试（新命令解析 → 调对应 bridge 路由；`wait` guard 扩展后 `--url/--load/--fn` 不再抛 `requires --selector`；`--state` 无 `--selector` 抛 `--state requires --selector`）。
 - 每批末回归：`cd packages/browser-sdk && npx tsx --test test/*.test.ts`、`cd packages/browserctl-daemon && npx tsx --test test/chrome-transport.test.ts test/standalone-host.test.ts`。
 - fill 升级为 insertText：单独在真实页面（baidu 搜索框）手动冒烟，确认受控组件不失效。
 
