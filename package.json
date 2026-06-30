@@ -33,6 +33,9 @@
     "node": ">=20"
   },
   "pnpm": {
+    "overrides": {
+      "recharts": "3.8.1"
+    },
     "onlyBuiltDependencies": [
       "electron",
       "better-sqlite3"

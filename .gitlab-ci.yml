@@ -129,6 +129,25 @@ build:windows:manual:
     expire_in: 7 days
 
 # ------------------------------------------------------------------------------
+# Windows x64 离线版：手动触发（含内嵌后端，体积较大）
+# tag 或分支 Pipeline 均可点 Play
+# ------------------------------------------------------------------------------
+build:windows:offline:
+  <<: *win_build
+  stage: build
+  tags:
+    - win-builder
+  when: manual
+  script:
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_REF_NAME -SkipGitSync -Offline
+  artifacts:
+    name: "BobanStaff-Windows-Offline-$CI_COMMIT_REF_NAME"
+    paths:
+      - apps/web/release/*.yml
+      - apps/web/release/*.blockmap
+    expire_in: 30 days
+
+# ------------------------------------------------------------------------------
 # 仅测试飞书推送：复用 release 目录里已打好的安装包跑 publish-feishu.py，不重新打包。
 # 手动触发（需上次 build:windows:manual 留下的 exe 还在工作区，GIT_CLEAN_FLAGS="" 会保留）。
 # ------------------------------------------------------------------------------
