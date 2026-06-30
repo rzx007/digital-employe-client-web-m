@@ -9,7 +9,7 @@
     "noEmit": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": []
   },
   "include": ["src"],
   "exclude": ["node_modules"]
