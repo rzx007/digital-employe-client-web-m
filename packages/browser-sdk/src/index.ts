@@ -1,2 +1,6 @@
 export type { Transport } from "./transport.js"
 export type { Host } from "./host.js"
+export { buildRefs } from "./ax-tree.js"
+export type { RefNode, AxNode } from "./ax-tree.js"
+export { collectChildFrames } from "./frame-tree.js"
+export type { FrameTreeNode } from "./frame-tree.js"
