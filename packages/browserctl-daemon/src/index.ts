@@ -6,7 +6,7 @@ import { BrowserController, createBridge } from "@workspace/browser-sdk"
 import { ChromeCdpTransport } from "./chrome-transport.js"
 import { StandaloneHost } from "./standalone-host.js"
 
-interface Args {
+export interface Args {
   browser: "chrome" | "edge"
   headless: boolean
   userDataDir?: string
@@ -15,7 +15,7 @@ interface Args {
   cdp?: number // connect to existing debug port instead of launching
 }
 
-function parseArgs(argv: string[]): Args {
+export function parseArgs(argv: string[]): Args {
   const a: Args = { browser: "chrome", headless: false, port: 34555 }
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i]
@@ -51,8 +51,7 @@ function resolveExecutable(args: Args): string | undefined {
   return undefined // chrome: chrome-launcher 自动探测
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2))
+export async function startDaemon(args: Args): Promise<void> {
   let cdpPort: number
   let chrome: { kill: () => void } | null = null
 
@@ -110,6 +109,10 @@ async function main() {
   }
   process.on("SIGINT", shutdown)
   process.on("SIGTERM", shutdown)
+}
+
+async function main() {
+  await startDaemon(parseArgs(process.argv.slice(2)))
 }
 
 main().catch((e) => {

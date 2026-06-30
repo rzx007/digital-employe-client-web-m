@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": { ".": "./src/index.ts" },
   "bin": { "browserctl-daemon": "./src/index.ts" },
   "scripts": {
     "test": "node --import tsx --test test/*.test.ts",
