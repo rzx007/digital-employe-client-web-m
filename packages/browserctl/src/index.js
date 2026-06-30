@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url"
 const VERSION = "0.1.0"
 const DEFAULT_BASE_URL =
   process.env.BROWSER_RUNTIME_BRIDGE_URL || "http://127.0.0.1:34555"
+let activeBaseUrl = DEFAULT_BASE_URL
 // 会话归属：显式 BROWSER_RUNTIME_SESSION 覆盖 > 发起会话 CONVERSATION_ID（桌面端
 // 每会话 shell 已注入）> "default"（脱离桌面端单独调 CLI 时回落）。bridge 据此把
 // 浏览器面板只摊给发起会话，不再无条件拍到当前前台窗口。
@@ -132,7 +133,7 @@ export function resolveArtifactRealPath(input) {
 }
 
 function bridgeUrl(path) {
-  return new URL(path, DEFAULT_BASE_URL.replace(/\/$/, ""))
+  return new URL(path, activeBaseUrl.replace(/\/$/, ""))
 }
 
 function sleep(ms) {
@@ -264,7 +265,7 @@ function requestJson(method, path, payload = {}) {
         ok: false,
         error: timedOut
           ? `browser runtime request timed out after ${REQUEST_TIMEOUT_MS}ms`
-          : `cannot connect browser runtime at ${DEFAULT_BASE_URL}: ${error.message}`,
+          : `cannot connect browser runtime at ${activeBaseUrl}: ${error.message}`,
         code: timedOut ? "BRIDGE_TIMEOUT" : "BRIDGE_CONNECT_FAILED",
       })
     })
@@ -287,7 +288,8 @@ function print(result, pretty = false) {
   process.exitCode = result && result.ok === false ? 1 : 0
 }
 
-async function run(argv) {
+async function run(argv, baseUrl) {
+  if (baseUrl) activeBaseUrl = baseUrl
   const { args, flags } = parseFlags(argv)
   const [command, ...rest] = args
 
@@ -545,6 +547,8 @@ async function run(argv) {
 
   throw new Error(`unknown command: ${command}`)
 }
+
+export { run }
 
 // 仅当作为可执行入口直接运行时才执行（被测试 import 时不触发）
 const invokedDirectly =
