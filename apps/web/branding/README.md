@@ -36,12 +36,28 @@ branding/
 
 > 图片支持 png/svg/jpg/webp。缺某个 logo 会逐项回退到 `app`，再回退到打包默认图，不会裂图。
 
+### 系统图标（窗口 / 托盘 / 任务栏 / 浏览器标签）
+
+与 `brand.json` 同级（或放在 `build/` 子目录）可放：
+
+| 文件 | 用途 |
+|------|------|
+| `icon.ico` | Windows 窗口标题栏、托盘 |
+| `icon.png` | macOS / Linux 窗口、系统通知、浏览器 favicon |
+| `icon.icns` | macOS Dock（可选，缺省用 `icon.png`） |
+
+查找顺序：品牌包根目录 → 品牌包 `build/` → 打包内 `apps/web/build/`。
+无 `icon.png` 时回退到 `logo.png`（与 `logos.app` 同文件）。
+
+> **不能运行时替换**：安装包 `.exe` 文件图标、桌面快捷方式图标（需在打包时改 `electron-builder` 的 `build/icon.ico`）。
+
 ## 运行时品牌目录解析顺序（先到先用）
 
 1. 环境变量 `DE_BRANDING_DIR`（指向含 `brand.json` 的目录；本地验证 / 临时覆盖）
-2. `resources/branding/active/`（部署时拷入的选定品牌）
-3. `resources/branding/default/`（打包内兜底）
-4. 开发态：仓库 `apps/web/branding/default/`
+2. **`<exe 所在目录>/branding/`**（Windows 便携 / 外挂：与 `BobanStaff.exe` 同级放品牌包）
+3. `resources/branding/active/`（部署时拷入的选定品牌）
+4. `resources/branding/default/`（打包内兜底）
+5. 开发态：仓库 `apps/web/branding/default/`
 
 ## 做一个新品牌版本（例：国网版）
 
@@ -49,7 +65,9 @@ branding/
 2. 把 `logo.png` 换成目标品牌 logo（保持文件名，或在 `brand.json` 里改 `logos`）。
 3. **本地验证**：`DE_BRANDING_DIR=apps/web/branding/guowang pnpm --filter web dev:app`，
    确认 about / 登录 / 标题栏 / 启动屏都显示新品牌。
-4. **部署**：把该品牌目录放到部署包的 `branding/` 下，重跑 `deploy.sh`
+4. **部署（Windows 外挂）**：把品牌目录内容放到安装根目录下的 `branding/`（与 `BobanStaff.exe` 同级），
+   内含 `brand.json` + logo，重启 app 即生效；无需改 `resources/`、无需环境变量。
+5. **部署（Linux / 拷贝进 resources）**：把该品牌目录放到部署包的 `branding/` 下，重跑 `deploy.sh`
    （deploy.sh 会拷到 `resources/branding/active/`）。详见
    `scripts/activation/deploy.sh.branding.patch.md`。
 

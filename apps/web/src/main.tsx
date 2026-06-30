@@ -36,6 +36,16 @@ const brand = getBrand()
 applySkin(getStoredSkin(brand.defaultTheme), { broadcast: false })
 document.title = brand.windowTitle
 
+if (brand.logos.app) {
+  let link = document.querySelector<HTMLLinkElement>("link[rel='icon']")
+  if (!link) {
+    link = document.createElement("link")
+    link.rel = "icon"
+    document.head.appendChild(link)
+  }
+  link.href = brand.logos.app
+}
+
 const queryClient = createAppQueryClient()
 setQueryClient(queryClient)
 

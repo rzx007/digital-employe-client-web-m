@@ -13,6 +13,7 @@ import { resolveBrowserConfirmation } from "../features/browser/browser-confirma
 import { IpcChannels } from "../shared/ipc-channels"
 import { getAppDisplayName } from "./app-product"
 import { getResolvedBrand } from "../features/branding/brand-config"
+import { getAppIconPath } from "../core/runtime-paths"
 import { initMainLogger, rootLogger as logger } from "../core/logger"
 import { bootstrapApp } from "../core/bootstrap"
 
@@ -81,7 +82,7 @@ let win: BrowserWindow | null = null
 function getMainWindowOptions(): Electron.BrowserWindowConstructorOptions {
   const base: Electron.BrowserWindowConstructorOptions = {
     title: getResolvedBrand().windowTitle,
-    icon: path.join(process.env.APP_ROOT!, "build/icon.ico"),
+    icon: getAppIconPath(),
     webPreferences: {
       preload: paths.preloadPath,
       // 关闭后台节流：主窗口被遮挡/隐藏时 Chromium 默认会冻结 rAF、钳制定时器，

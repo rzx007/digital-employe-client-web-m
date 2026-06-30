@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
-import logoImage from "@/assets/logo.png"
 import { IconX } from "@tabler/icons-react"
 import { ActivationForm } from "@/components/activation/activation-form"
+import { useBrand } from "@/lib/brand/brand"
 import { isElectron, withElectronApi } from "@/lib/electron/host"
 
 export const Route = createFileRoute("/activation")({
@@ -9,6 +9,7 @@ export const Route = createFileRoute("/activation")({
 })
 
 function ActivationPage() {
+  const brand = useBrand()
   const handleClose = () => {
     if (isElectron()) {
       void withElectronApi((api) => api.quitApp())
@@ -36,7 +37,7 @@ function ActivationPage() {
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <div className="flex flex-col items-center gap-2">
-          <img src={logoImage} alt="logo" className="w-12" />
+          <img src={brand.logos.login} alt={brand.productName} className="w-12" />
           <h1 className="text-lg font-semibold">应用激活</h1>
           <p className="text-center text-xs text-muted-foreground">
             首次使用需绑定本机设备并输入授权码

@@ -14,8 +14,8 @@ import {
   IconX,
 } from "@tabler/icons-react"
 import { motion, AnimatePresence } from "motion/react"
-import logoImage from "@/assets/logo.png"
 import feishuIcon from "@/assets/feishu.svg"
+import { useBrand } from "@/lib/brand/brand"
 import { useAuthStore } from "@/stores/auth-store"
 import type { LoginUser } from "@/api/types"
 import { EndpointConfig } from "@/components/login/endpoint-config"
@@ -52,6 +52,7 @@ const dragStyle = (on: boolean): React.CSSProperties =>
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties
 
 function LoginPage() {
+  const brand = useBrand()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -303,12 +304,12 @@ function LoginPage() {
                     style={dragStyle(inElectron)}
                   >
                     <img
-                      src={logoImage}
-                      alt="数字员工"
+                      src={brand.logos.login}
+                      alt={brand.productName}
                       className="h-[58px] w-auto object-contain"
                     />
                     <div className="mt-4 text-2xl font-bold tracking-[0.06em] text-foreground">
-                      数字员工
+                      {brand.productName}
                     </div>
                     <div className="mt-1.5 text-[11.5px] tracking-[0.34em] text-muted-foreground/70 uppercase">
                       Digital Employee
@@ -470,16 +471,17 @@ function SubViewFrame({
   copy: { title: string; subtitle: string }
   children: React.ReactNode
 }) {
+  const brand = useBrand()
   return (
     <div>
       <div className="flex items-center gap-2 pt-1.5 pb-4">
         <img
-          src={logoImage}
-          alt="数字员工"
+          src={brand.logos.login}
+          alt={brand.productName}
           className="h-[22px] w-auto object-contain"
         />
         <span className="text-[15px] font-bold tracking-[0.04em] text-foreground">
-          数字员工
+          {brand.productName}
         </span>
       </div>
       <div className="mb-4">

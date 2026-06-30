@@ -23,6 +23,7 @@ import { initExtensions } from "../features/extension/extension-loader"
 import { rootLogger } from "./logger"
 import { isOfflineMode } from "./runtime-env"
 import { registerBrandingIpc } from "../features/branding/ipc"
+import { applyBrandDockIcon } from "../features/branding/brand-icon"
 
 export interface BootstrapOptions {
   mainDirname: string
@@ -37,6 +38,7 @@ export interface BootstrapOptions {
 export async function bootstrapApp(options: BootstrapOptions): Promise<void> {
   // 必须在创建任何窗口前：preload 同步取品牌靠这个 handler。
   registerBrandingIpc()
+  if (process.env.APP_ROOT) applyBrandDockIcon(process.env.APP_ROOT)
 
   if (process.platform === "darwin") {
     Menu.setApplicationMenu(createMacApplicationMenu())
