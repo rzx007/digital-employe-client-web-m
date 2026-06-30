@@ -9,9 +9,11 @@ export class ElectronDebuggerTransport implements Transport {
   setWebContents(wc: WebContents): void { this.wc = wc }
 
   async attach(): Promise<void> {
-    if (!this.wc) throw new Error("BROWSER_UNAVAILABLE")
-    if (this.wc.isDestroyed()) throw new Error("BROWSER_UNAVAILABLE")
-    if (!this.wc.debugger.isAttached()) this.wc.debugger.attach("1.3")
+    if (!this.wc || this.wc.isDestroyed()) throw new Error("BROWSER_UNAVAILABLE")
+    // 同 wc 已附加（含 message listener）→ 短路，避免 per-action attach 累积 listener
+    if (this.wc.debugger.isAttached()) return
+    this.wc.debugger.attach("1.3")
+    this.wc.debugger.removeAllListeners("message") // 清旧 wc / 旧附加周期遗留
     this.wc.debugger.on("message", (_e, method, params, sessionId) => {
       this.msgCb?.(method, params, sessionId)
     })

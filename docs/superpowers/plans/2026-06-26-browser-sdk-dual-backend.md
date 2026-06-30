@@ -432,8 +432,9 @@ git commit -m "feat(browser): ElectronHost(包 window-controller/确认/高亮/�
 - [ ] **Step 1: 实现 createBridge**
 
 把 `handleBrowserRequest` 的 switch（snapshot/click/fill/select/press/scroll/wait/extract-text/screenshot/get-url/get-title/get-value/get-attribute/navigate/close）搬进 SDK，规则：
+- **每个浏览器 action（snapshot/click/fill/select/press/scroll/wait/extract-text/screenshot/get-url/get-title/get-value/get-attribute）开头先 `await host.ensureAttached()`**（替代原 bridge 的 `attachDebugger()`；若抛 BROWSER_UNAVAILABLE → reply 503）。`navigate` 改用 `ensureBrowser`（已含 attach）；`close`/`health` 不调 ensure*。
 - 所有 `dbg.<method>()` → `controller.<method>()`。
-- `navigate` action → `await host.ensureBrowser(url)` 然后 `controller.navigate(url)`；`host.setActiveSession?.(convId)`。
+- `navigate` action → `host.setActiveSession?.(convId)` → `await host.ensureBrowser(url)` → `controller.navigate(url)`（统一 `Page.navigate`；这是 Electron 行为变化点，B4 重点验证 url-change/标题/布局，异常则回退方案见 B2 注记）。
 - `click --confirm` → 先 `controller.screenshot()` 截图，再 `host.requestConfirmation(msg, shot.ok ? shot.data?.base64 : undefined)`（confirm 期 suppress/restore 已封装在 host 内，createBridge 不管可见性）；未通过返回 `USER_CANCELLED`。点击成功且 `ref` 是 selector（非 `@e` 开头）时调 `host.afterClick?.(ref)`。
 - `get-url`/`get-title` → `controller.getUrl()`/`controller.getTitle()`（已纯 CDP，不再走 wc）。
 - `screenshot` → `controller.screenshot()` **只返回 base64**（与现状一致；**写盘由 CLI `index.js` 完成，bridge 不写盘**，否则双写）。`host.resolveArtifactPath` 接口保留备未来用，标准 screenshot action 不触发它。

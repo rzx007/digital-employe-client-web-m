@@ -105,6 +105,15 @@ export class ElectronHost implements Host {
     await this.transport.attach()
   }
 
+  // 每个浏览器 action 前调：确保 transport 连到当前内嵌视图的 wc（处理切会话后 wc 变化）。
+  // 复刻原 bridge 的 per-action attachDebugger。attach 幂等（transport 内部短路同 wc）。
+  async ensureAttached(): Promise<void> {
+    const wc = getBrowserController().getBrowserWebContents()
+    if (!wc || wc.isDestroyed()) throw new Error("BROWSER_UNAVAILABLE")
+    this.transport.setWebContents(wc)
+    await this.transport.attach()
+  }
+
   async close(): Promise<void> {
     await this.transport.detach()
     getBrowserController().close()
