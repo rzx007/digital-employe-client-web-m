@@ -1,12 +1,12 @@
 # 内嵌浏览器说明
 
-数字员工浏览器不是外部 Chrome，而是 Electron 主窗口右栏中的 `WebContentsView`。
+数字员工浏览器默认不是外部 Chrome，而是 Electron 主窗口右栏中的 `WebContentsView`。命令逻辑已抽成与宿主无关的 SDK，**同一套 `browserctl` 命令也能驱动独立 Chrome/Edge**（开发/CI 场景，见 [reference.md](reference.md) 末尾「独立后端」）；员工日常仍是桌面端内嵌浏览器。
 
 ## 与 agent-browser 的差异
 
 | 项 | agent-browser | 数字员工 browser-runtime |
 |----|---------------|--------------------------|
-| 浏览器宿主 | 独立 Chrome / 云浏览器 | Electron 右栏 `WebContentsView` |
+| 浏览器宿主 | 独立 Chrome / 云浏览器 | Electron 右栏 `WebContentsView`（默认）或独立 Chrome/Edge daemon |
 | 调用入口 | `agent-browser` CLI | `browserctl` CLI |
 | 会话 | CLI daemon 管理 | Electron 主进程管理 |
 | HITL | CLI policy / confirm | 桌面端确认 UI |
