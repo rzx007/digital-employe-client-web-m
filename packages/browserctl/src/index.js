@@ -551,7 +551,10 @@ async function run(argv, baseUrl) {
 export { run }
 
 // 仅当作为可执行入口直接运行时才执行（被测试 import 时不触发）
+// __CLI_BUNDLE__ 由 browserctl-cli 的 tsup build 注入，打包时跳过此自调用——
+// 入口改由 cli.ts 顶层 await run() 负责，避免双次调用。
 const invokedDirectly =
+  typeof __CLI_BUNDLE__ === "undefined" &&
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 if (invokedDirectly) {

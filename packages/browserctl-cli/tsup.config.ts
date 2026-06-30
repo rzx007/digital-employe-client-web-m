@@ -7,5 +7,6 @@ export default defineConfig({
   noExternal: [/@workspace\//],
   external: ["chrome-launcher", "chrome-remote-interface"],
   banner: { js: "#!/usr/bin/env node" },
+  define: { __CLI_BUNDLE__: "true" },
   clean: true,
 })
