@@ -33,7 +33,10 @@ test("parseFlags 区分带值 flag、布尔 flag 与位置参数", () => {
 })
 
 test("parseFlags 支持 --interactive 与 -i 等价", () => {
-  assert.equal(parseFlags(["snapshot", "--interactive"]).flags.interactive, true)
+  assert.equal(
+    parseFlags(["snapshot", "--interactive"]).flags.interactive,
+    true
+  )
   assert.equal(parseFlags(["snapshot", "-i"]).flags.interactive, true)
   assert.equal(parseFlags(["snapshot", "--tree"]).flags.tree, true)
 })
@@ -396,7 +399,8 @@ test("open-artifact 用 CONVERSATION_ID 与 backend url 构造静态 url 并 nav
     received = JSON.parse(await readBody(req))
     res.end(JSON.stringify({ ok: true, data: {} }))
   })
-  const real = "/Users/u/.digital-employee/conversations/42/artifacts/report.html"
+  const real =
+    "/Users/u/.digital-employee/conversations/42/artifacts/report.html"
   try {
     await runCli(["open-artifact", real], {
       env: {
@@ -553,6 +557,182 @@ test("select @e5 BJ 把位置参数作为 body.value 携带", async () => {
   }
 })
 
+test("hover @e0 命中 /hover 且 body.ref_or_selector=@e0", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["hover", "@e0"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/hover"), `expected /hover, got ${reqUrl}`)
+    assert.equal(received.ref_or_selector, "@e0")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("dblclick @e1 命中 /dblclick 且 body.ref_or_selector=@e1", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["dblclick", "@e1"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/dblclick"), `expected /dblclick, got ${reqUrl}`)
+    assert.equal(received.ref_or_selector, "@e1")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("focus @e2 命中 /focus 且 body.ref_or_selector=@e2", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["focus", "@e2"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/focus"), `expected /focus, got ${reqUrl}`)
+    assert.equal(received.ref_or_selector, "@e2")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("type @e3 hello 命中 /type 且 body.text=hello", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["type", "@e3", "hello"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/type"), `expected /type, got ${reqUrl}`)
+    assert.equal(received.ref_or_selector, "@e3")
+    assert.equal(received.text, "hello")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("check @e4 命中 /check 且 body.ref_or_selector=@e4", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["check", "@e4"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/check"), `expected /check, got ${reqUrl}`)
+    assert.equal(received.ref_or_selector, "@e4")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("uncheck @e5 命中 /uncheck 且 body.ref_or_selector=@e5", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["uncheck", "@e5"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/uncheck"), `expected /uncheck, got ${reqUrl}`)
+    assert.equal(received.ref_or_selector, "@e5")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("drag @e6 @e7 命中 /drag 且 body.source/target 正确", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["drag", "@e6", "@e7"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/drag"), `expected /drag, got ${reqUrl}`)
+    assert.equal(received.source, "@e6")
+    assert.equal(received.target, "@e7")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("upload @e8 a.txt b.png 命中 /upload 且 body.files 为数组", async () => {
+  let reqUrl
+  let received
+  const srv = await startServer(async (req, res) => {
+    reqUrl = req.url
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["upload", "@e8", "a.txt", "b.png"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.ok(reqUrl.endsWith("/upload"), `expected /upload, got ${reqUrl}`)
+    assert.equal(received.ref_or_selector, "@e8")
+    assert.deepEqual(received.files, ["a.txt", "b.png"])
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("upload 缺少文件参数时 CLI 报错且不访问 bridge", async () => {
+  let hit = false
+  const srv = await startServer((req, res) => {
+    hit = true
+    res.end(JSON.stringify({ ok: true }))
+  })
+  try {
+    const { stdout, stderr } = await runCli(["upload", "@e8"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(hit, false)
+    assert.ok(
+      stderr.includes("at least one file path required") ||
+        stdout.includes("at least one file path required"),
+      "expected error message"
+    )
+  } finally {
+    await closeServer(srv)
+  }
+})
+
 test("get value @e4 命中 /get-value 并把 data.value 输出", async () => {
   let reqUrl
   let received
@@ -565,7 +745,10 @@ test("get value @e4 命中 /get-value 并把 data.value 输出", async () => {
     const { stdout } = await runCli(["get", "value", "@e4"], {
       env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
     })
-    assert.ok(reqUrl.endsWith("/get-value"), `expected /get-value, got ${reqUrl}`)
+    assert.ok(
+      reqUrl.endsWith("/get-value"),
+      `expected /get-value, got ${reqUrl}`
+    )
     assert.equal(received.ref_or_selector, "@e4")
     const j = JSON.parse(stdout)
     assert.equal(j.data.value, "x")

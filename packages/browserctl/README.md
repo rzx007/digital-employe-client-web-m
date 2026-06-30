@@ -23,6 +23,14 @@ browserctl snapshot [--max-nodes 200] [--tree | --interactive]
 browserctl wait (--selector <css> | --text <text> | --ms <n>) [--timeout 10000]
 browserctl click <@eN|selector> [--confirm "确认文案"]
 browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin)
+browserctl hover <@eN|selector>            # 鼠标悬停（单次 mouseMoved，不点击）
+browserctl dblclick <@eN|selector>         # 双击（clickCount:2）
+browserctl focus <@eN|selector>            # 聚焦元素（this.focus()）
+browserctl type <@eN|selector> (<text> | --text-file <path> | --text-stdin)  # 追加输入，不清空
+browserctl check <@eN|selector>            # 勾选 checkbox/radio
+browserctl uncheck <@eN|selector>          # 取消勾选 checkbox
+browserctl drag <@eN|selector> <@eN|selector>   # 从 source 拖到 target（10 步插值）
+browserctl upload <@eN|selector> <file...> # 给 <input type=file> 设置文件
 browserctl get url|title
 browserctl extract-text
 browserctl screenshot [--out <path>]  # 落盘返回 { path, bytes }，不输出 base64
@@ -44,7 +52,7 @@ browserctl close                      # 关闭内嵌浏览器并收起右栏
 
 ## 错误码
 
-`BRIDGE_CONNECT_FAILED` / `BRIDGE_TIMEOUT` / `BROWSER_UNAVAILABLE` / `BROWSER_VIEWPORT_NOT_READY` / `ELEMENT_NOT_FOUND` / `USER_CANCELLED` / `TIMEOUT` / `EMPTY_SCREENSHOT` / `WRITE_FAILED` / `CLI_USAGE_ERROR`
+`BRIDGE_CONNECT_FAILED` / `BRIDGE_TIMEOUT` / `BROWSER_UNAVAILABLE` / `BROWSER_VIEWPORT_NOT_READY` / `ELEMENT_NOT_FOUND` / `OPTION_NOT_FOUND` / `NOT_CHECKABLE` / `FILE_NOT_FOUND` / `USER_CANCELLED` / `TIMEOUT` / `EMPTY_SCREENSHOT` / `WRITE_FAILED` / `CLI_USAGE_ERROR`
 
 ## 测试
 

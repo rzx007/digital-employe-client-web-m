@@ -18,6 +18,8 @@ function errorCode(message: unknown, fallback = "BROWSER_ERROR"): string {
   const raw = String(message || fallback)
   if (raw.includes("BROWSER_UNAVAILABLE")) return "BROWSER_UNAVAILABLE"
   if (raw.includes("ELEMENT_NOT_FOUND")) return "ELEMENT_NOT_FOUND"
+  if (raw.includes("FILE_NOT_FOUND")) return "FILE_NOT_FOUND"
+  if (raw.includes("NOT_CHECKABLE")) return "NOT_CHECKABLE"
   if (raw.includes("USER_CANCELLED")) return "USER_CANCELLED"
   if (raw.includes("TIMEOUT")) return "TIMEOUT"
   if (raw.includes("BROWSER_VIEWPORT_NOT_READY")) {
@@ -247,10 +249,16 @@ async function handleBridgeRequest(
           const shot = await controller.screenshot()
           const approved = await host.requestConfirmation(
             confirmationMessage,
-            shot.ok ? (shot.data as { base64?: string } | undefined)?.base64 : undefined
+            shot.ok
+              ? (shot.data as { base64?: string } | undefined)?.base64
+              : undefined
           )
           if (!approved) {
-            reply(res, 200, { ok: false, error: "USER_CANCELLED", code: "USER_CANCELLED" })
+            reply(res, 200, {
+              ok: false,
+              error: "USER_CANCELLED",
+              code: "USER_CANCELLED",
+            })
             return
           }
         }
@@ -281,6 +289,177 @@ async function handleBridgeRequest(
         const text = String(body.text ?? "")
         const result = await controller.fill(refOrSelector, text)
         if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "hover": {
+        try {
+          await host.ensureAttached()
+        } catch {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.hover(refOrSelector)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "dblclick": {
+        try {
+          await host.ensureAttached()
+        } catch {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.dblclick(refOrSelector)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "focus": {
+        try {
+          await host.ensureAttached()
+        } catch {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.focus(refOrSelector)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "type": {
+        try {
+          await host.ensureAttached()
+        } catch {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const text = String(body.text ?? "")
+        const result = await controller.type(refOrSelector, text)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "check":
+      case "uncheck": {
+        try {
+          await host.ensureAttached()
+        } catch {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result =
+          action === "check"
+            ? await controller.check(refOrSelector)
+            : await controller.uncheck(refOrSelector)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        if (!result.ok && result.code === "NOT_CHECKABLE") {
+          reply(res, 422, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "drag": {
+        try {
+          await host.ensureAttached()
+        } catch {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const source = String(body.source ?? "")
+        const target = String(body.target ?? "")
+        if (!source || !target) {
+          reply(res, 400, {
+            ok: false,
+            error: "source and target required",
+            code: "BAD_REQUEST",
+          })
+          return
+        }
+        const result = await controller.drag(source, target)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "upload": {
+        try {
+          await host.ensureAttached()
+        } catch {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const files = Array.isArray(body.files) ? body.files.map(String) : []
+        if (!files.length) {
+          reply(res, 400, {
+            ok: false,
+            error: "files required",
+            code: "BAD_REQUEST",
+          })
+          return
+        }
+        const result = await controller.upload(refOrSelector, files)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        if (!result.ok && result.code === "FILE_NOT_FOUND") {
           reply(res, 404, result)
           return
         }
@@ -495,10 +674,12 @@ export function createBridge(
   const healthFn = opts.health
 
   const server = http.createServer((req, res) => {
-    void handleBridgeRequest(req, res, controller, host, healthFn).catch((err) => {
-      console.warn("[browser-http] unhandled request error", String(err))
-      reply(res, 500, { ok: false, error: String(err) })
-    })
+    void handleBridgeRequest(req, res, controller, host, healthFn).catch(
+      (err) => {
+        console.warn("[browser-http] unhandled request error", String(err))
+        reply(res, 500, { ok: false, error: String(err) })
+      }
+    )
   })
 
   listenWithRetry(server, port)

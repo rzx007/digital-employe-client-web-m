@@ -61,6 +61,24 @@ browserctl fill @eN "search query"
 # Click an element identified by element number
 browserctl click @eN
 
+# Hover / double-click / focus an element
+browserctl hover @eN
+browserctl dblclick @eN
+browserctl focus @eN
+
+# Type (append, does not clear) into an input identified by element number
+browserctl type @eN "search query"
+
+# Check / uncheck a checkbox or radio
+browserctl check @eN
+browserctl uncheck @eN
+
+# Drag from one element to another
+browserctl drag @eN @eM
+
+# Upload files to an <input type="file">
+browserctl upload @eN file1.png file2.pdf
+
 # Get the current page URL
 browserctl get url
 

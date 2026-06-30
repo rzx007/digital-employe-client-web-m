@@ -1,3 +1,6 @@
+import fs from "node:fs"
+import path from "node:path"
+
 import { buildRefs } from "./ax-tree.js"
 import type { AxNode, RefNode } from "./ax-tree.js"
 import { collectChildFrames } from "./frame-tree.js"
@@ -18,19 +21,24 @@ const logger = {
   warn: (..._a: unknown[]) => {},
 }
 
-const KEY_MAP: Record<string, { key: string; code: string; keyCode: number }> = {
-  Enter: { key: "Enter", code: "Enter", keyCode: 13 },
-  Tab: { key: "Tab", code: "Tab", keyCode: 9 },
-  Escape: { key: "Escape", code: "Escape", keyCode: 27 },
-  Backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
-  Delete: { key: "Delete", code: "Delete", keyCode: 46 },
-  ArrowUp: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
-  ArrowDown: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
-  ArrowLeft: { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
-  ArrowRight: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
-}
+const KEY_MAP: Record<string, { key: string; code: string; keyCode: number }> =
+  {
+    Enter: { key: "Enter", code: "Enter", keyCode: 13 },
+    Tab: { key: "Tab", code: "Tab", keyCode: 9 },
+    Escape: { key: "Escape", code: "Escape", keyCode: 27 },
+    Backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
+    Delete: { key: "Delete", code: "Delete", keyCode: 46 },
+    ArrowUp: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
+    ArrowDown: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
+    ArrowLeft: { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
+    ArrowRight: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
+  }
 
-function resolveKey(key: string): { key: string; code: string; keyCode: number } {
+function resolveKey(key: string): {
+  key: string
+  code: string
+  keyCode: number
+} {
   if (KEY_MAP[key]) return KEY_MAP[key]
   if (key.length === 1) {
     const code = /[a-z]/i.test(key)
@@ -45,7 +53,9 @@ function resolveKey(key: string): { key: string; code: string; keyCode: number }
 
 // CDP Input.dispatchKeyEvent modifiers 位掩码：Alt=1, Ctrl=2, Meta=4, Shift=8
 function modBits(m: Record<string, boolean>): number {
-  return (m.alt ? 1 : 0) | (m.ctrl ? 2 : 0) | (m.meta ? 4 : 0) | (m.shift ? 8 : 0)
+  return (
+    (m.alt ? 1 : 0) | (m.ctrl ? 2 : 0) | (m.meta ? 4 : 0) | (m.shift ? 8 : 0)
+  )
 }
 
 export class BrowserController {
@@ -62,7 +72,9 @@ export class BrowserController {
     return this.transport.sendCommand(method, params)
   }
 
-  async navigate(url: string): Promise<CdpResult<{ url: string; title: string }>> {
+  async navigate(
+    url: string
+  ): Promise<CdpResult<{ url: string; title: string }>> {
     try {
       await this.sendCommand("Page.enable")
       await this.sendCommand("Page.navigate", { url })
@@ -147,9 +159,7 @@ export class BrowserController {
   async scrollIntoView(refOrSelector: string): Promise<void> {
     const node = await this.resolveNode(refOrSelector)
     if (!node?.backendNodeId) {
-      const escaped = refOrSelector
-        .replace(/\\/g, "\\\\")
-        .replace(/'/g, "\\'")
+      const escaped = refOrSelector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
       await this.sendCommand("Runtime.evaluate", {
         expression: `document.querySelector('${escaped}')?.scrollIntoView({block:'center',inline:'center'})`,
       })
@@ -228,6 +238,233 @@ export class BrowserController {
     }
   }
 
+  async hover(refOrSelector: string): Promise<CdpResult> {
+    try {
+      await this.scrollIntoView(refOrSelector)
+      const fresh = await this.resolveNode(refOrSelector)
+      if (!fresh)
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      const { x, y } = fresh.center
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x,
+        y,
+      })
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
+    }
+  }
+
+  async dblclick(refOrSelector: string): Promise<CdpResult> {
+    try {
+      await this.scrollIntoView(refOrSelector)
+      const fresh = await this.resolveNode(refOrSelector)
+      if (!fresh)
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      const { x, y } = fresh.center
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x,
+        y,
+        button: "left",
+        clickCount: 2,
+      })
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x,
+        y,
+        button: "left",
+        clickCount: 2,
+      })
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
+    }
+  }
+
+  async focus(refOrSelector: string): Promise<CdpResult> {
+    try {
+      return await this.focusByRefOrSelector(refOrSelector)
+    } catch (e) {
+      return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
+    }
+  }
+
+  /**
+   * 聚焦元素，供 focus / type 复用。
+   * @eN 走 DOM.resolveNode → callFunctionOn；CSS 选择器走 Runtime.evaluate 取 objectId
+   * 再 callFunctionOn（resolveNode 对选择器返回 backendNodeId=0，旧实现会静默 ELEMENT_NOT_FOUND）。
+   * 选择器路径不调 resolveNode，避免与坐标查询的 Runtime.evaluate(returnByValue) 冲突。
+   */
+  private async focusByRefOrSelector(
+    refOrSelector: string
+  ): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
+    if (refOrSelector.startsWith("@e")) {
+      const node = await this.resolveNode(refOrSelector)
+      if (!node?.backendNodeId) {
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      }
+      const resolved = (await this.sendCommand("DOM.resolveNode", {
+        backendNodeId: node.backendNodeId,
+      })) as { object?: { objectId?: string } }
+      if (!resolved.object?.objectId) {
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      }
+      await this.sendCommand("Runtime.callFunctionOn", {
+        objectId: resolved.object.objectId,
+        functionDeclaration: "function(){ this.focus(); }",
+      })
+      return { ok: true }
+    }
+    // 选择器路径：直接 Runtime.evaluate 取元素 objectId
+    const escaped = refOrSelector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+    const evalResult = (await this.sendCommand("Runtime.evaluate", {
+      expression: `document.querySelector('${escaped}')`,
+    })) as { result?: { objectId?: string } }
+    const objectId = evalResult.result?.objectId
+    if (!objectId)
+      return {
+        ok: false,
+        error: "ELEMENT_NOT_FOUND",
+        code: "ELEMENT_NOT_FOUND",
+      }
+    await this.sendCommand("Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: "function(){ this.focus(); }",
+    })
+    return { ok: true }
+  }
+
+  async type(refOrSelector: string, raw: string): Promise<CdpResult> {
+    try {
+      const focusRes = await this.focusByRefOrSelector(refOrSelector)
+      if (!focusRes.ok) return focusRes
+      // 归一化 Windows \r\n → 单个 \n，避免 \r 与 \n 各触发一次 Enter
+      const text = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+      for (const ch of text) {
+        if (ch === "\n") {
+          const k = resolveKey("Enter")
+          await this.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: k.key,
+            code: k.code,
+            windowsVirtualKeyCode: k.keyCode,
+          })
+          await this.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: k.key,
+            code: k.code,
+            windowsVirtualKeyCode: k.keyCode,
+          })
+        } else if (ch === "\t") {
+          const k = resolveKey("Tab")
+          await this.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: k.key,
+            code: k.code,
+            windowsVirtualKeyCode: k.keyCode,
+          })
+          await this.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: k.key,
+            code: k.code,
+            windowsVirtualKeyCode: k.keyCode,
+          })
+        } else {
+          await this.sendCommand("Input.insertText", { text: ch })
+        }
+      }
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
+    }
+  }
+
+  // 四级回退读 checked 状态（对齐 agent-browser element::is_element_checked）。
+  // level-4（嵌套 input）为 best-effort：取 querySelector 第一个匹配，可能命中无关后代 checkbox。
+  // 注意：runOnElement 已把 funcBody 包成 `function(){ const el=this; <body> }`，
+  // 这里 body 不得再声明 el（否则重复声明 SyntaxError）。
+  private async isChecked(refOrSelector: string): Promise<boolean | null> {
+    const v = await this.runOnElement(
+      refOrSelector,
+      `
+      // level 1: native checkbox/radio
+      if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return !!el.checked;
+      // level 2: ARIA role
+      const role = el.getAttribute('role');
+      if (['checkbox','radio','switch','menuitemcheckbox','menuitemradio','option','treeitem'].includes(role)) {
+        return el.getAttribute('aria-checked') === 'true';
+      }
+      // level 3: label.control
+      const label = el.closest('label');
+      if (label && label.control) return !!label.control.checked;
+      // level 4 (best-effort, first match): 嵌套 input
+      const inner = el.querySelector('input[type=checkbox],input[type=radio]');
+      if (inner) return !!inner.checked;
+      return null;
+      `
+    )
+    return typeof v === "boolean" ? v : null
+  }
+
+  async check(refOrSelector: string): Promise<CdpResult<{ checked: boolean }>> {
+    return this.setChecked(refOrSelector, true)
+  }
+
+  async uncheck(
+    refOrSelector: string
+  ): Promise<CdpResult<{ checked: boolean }>> {
+    return this.setChecked(refOrSelector, false)
+  }
+
+  private async setChecked(
+    refOrSelector: string,
+    expect: boolean
+  ): Promise<CdpResult<{ checked: boolean }>> {
+    try {
+      let cur = await this.isChecked(refOrSelector)
+      if (cur === expect) return { ok: true, data: { checked: cur } }
+      // step 2: 坐标点击
+      await this.click(refOrSelector)
+      cur = await this.isChecked(refOrSelector)
+      if (cur === expect) return { ok: true, data: { checked: cur } }
+      // step 3: JS-click 兜底（带 label 重定向）
+      await this.runOnElement(
+        refOrSelector,
+        `
+        const label = el.closest('label');
+        const target = (label && label.control) ? label.control : el;
+        target.click();
+        `
+      )
+      cur = await this.isChecked(refOrSelector)
+      if (cur === expect) return { ok: true, data: { checked: cur } }
+      return { ok: false, error: "not checkable", code: "NOT_CHECKABLE" }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg === "ELEMENT_NOT_FOUND")
+        return { ok: false, error: msg, code: "ELEMENT_NOT_FOUND" }
+      return { ok: false, error: msg, code: "BROWSER_ERROR" }
+    }
+  }
+
   async fill(refOrSelector: string, text: string): Promise<CdpResult> {
     try {
       const nodeInfo = await this.resolveNode(refOrSelector)
@@ -253,15 +490,124 @@ export class BrowserController {
       // 改用 JS 直接清空 value 并派发 input 事件（React/Vue 受控组件友好）。
       await this.clearElement(refOrSelector, nodeInfo.backendNodeId)
 
-      for (const char of text) {
-        await this.sendCommand("Input.dispatchKeyEvent", {
-          type: "char",
-          text: char,
-        })
-      }
+      // 输入：单次 Input.insertText（agent-browser 注释：VS Code/Electron webview
+      // 拒绝重复 printable dispatchKeyEvent，printable 走 insertText 更可靠）
+      await this.sendCommand("Input.insertText", { text })
       return { ok: true }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  async drag(sourceRef: string, targetRef: string): Promise<CdpResult> {
+    try {
+      await this.scrollIntoView(sourceRef)
+      const src = await this.resolveNode(sourceRef)
+      if (!src)
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      await this.scrollIntoView(targetRef)
+      const tgt = await this.resolveNode(targetRef)
+      if (!tgt)
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      const sx = src.center.x,
+        sy = src.center.y
+      const tx = tgt.center.x,
+        ty = tgt.center.y
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x: sx,
+        y: sy,
+      })
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x: sx,
+        y: sy,
+        button: "left",
+        buttons: 1,
+        clickCount: 1,
+      })
+      // 零距离：source 与 target 同点，跳过 10 步插值（否则在原地发 10 次多余的 mouseMoved）
+      if (sx !== tx || sy !== ty) {
+        for (let i = 1; i <= 10; i++) {
+          const cx = sx + ((tx - sx) * i) / 10
+          const cy = sy + ((ty - sy) * i) / 10
+          await this.sendCommand("Input.dispatchMouseEvent", {
+            type: "mouseMoved",
+            x: cx,
+            y: cy,
+            button: "left",
+            buttons: 1,
+          })
+          await new Promise((r) => setTimeout(r, 10))
+        }
+      }
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x: tx,
+        y: ty,
+        button: "left",
+        buttons: 0,
+        clickCount: 1,
+      })
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
+    }
+  }
+
+  async upload(
+    refOrSelector: string,
+    files: string[]
+  ): Promise<CdpResult<{ uploaded: number }>> {
+    try {
+      const abs = files.map((f) => path.resolve(f))
+      for (const f of abs) {
+        if (!fs.existsSync(f))
+          return {
+            ok: false,
+            error: `file not found: ${f}`,
+            code: "FILE_NOT_FOUND",
+          }
+      }
+      if (refOrSelector.startsWith("@e")) {
+        const node = await this.resolveNode(refOrSelector)
+        if (!node?.backendNodeId) {
+          return {
+            ok: false,
+            error: "ELEMENT_NOT_FOUND",
+            code: "ELEMENT_NOT_FOUND",
+          }
+        }
+        await this.sendCommand("DOM.setFileInputFiles", {
+          files: abs,
+          backendNodeId: node.backendNodeId,
+        })
+        return { ok: true, data: { uploaded: abs.length } }
+      }
+      // 选择器路径：Runtime.evaluate 取元素 objectId，再用 objectId 调 setFileInputFiles
+      const escaped = refOrSelector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+      const evalResult = (await this.sendCommand("Runtime.evaluate", {
+        expression: `document.querySelector('${escaped}')`,
+      })) as { result?: { objectId?: string } }
+      const objectId = evalResult.result?.objectId
+      if (!objectId)
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      await this.sendCommand("DOM.setFileInputFiles", { files: abs, objectId })
+      return { ok: true, data: { uploaded: abs.length } }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
     }
   }
 
@@ -505,7 +851,10 @@ export class BrowserController {
           returnByValue: true,
         })) as { result?: { value?: boolean } }
         if (r.result?.value === true) {
-          return { ok: true, data: { matched: true, waitedMs: Date.now() - start } }
+          return {
+            ok: true,
+            data: { matched: true, waitedMs: Date.now() - start },
+          }
         }
       } catch {
         /* retry until timeout */
@@ -581,7 +930,10 @@ export class BrowserController {
 
   private async resolveNode(
     refOrSelector: string
-  ): Promise<{ backendNodeId: number; center: { x: number; y: number } } | null> {
+  ): Promise<{
+    backendNodeId: number
+    center: { x: number; y: number }
+  } | null> {
     if (refOrSelector.startsWith("@e")) {
       let found = this.refCache.find((r) => r.ref === refOrSelector)
       if (!found) {

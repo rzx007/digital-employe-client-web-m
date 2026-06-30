@@ -37,6 +37,14 @@ Usage:
   browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>] [--pretty]
   browserctl wait (--selector <css> | --text <text> | --ms <n>) [--timeout 10000] [--pretty]
   browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin) [--pretty]
+  browserctl hover <@eN|selector> [--pretty]
+  browserctl dblclick <@eN|selector> [--pretty]
+  browserctl focus <@eN|selector> [--pretty]
+  browserctl type <@eN|selector> (<text> | --text-file <path> | --text-stdin) [--pretty]
+  browserctl check <@eN|selector> [--pretty]
+  browserctl uncheck <@eN|selector> [--pretty]
+  browserctl drag <@eN|selector> <@eN|selector> [--pretty]
+  browserctl upload <@eN|selector> <file...> [--pretty]
   browserctl select <@eN|selector> (<value> | --label <text>) [--pretty]
   browserctl get url|title [--pretty]
   browserctl get value <@eN|selector> [--pretty]
@@ -75,6 +83,26 @@ export function parseFlags(argv) {
       flags.text = argv[++i] || ""
     } else if (value === "--label") {
       flags.label = argv[++i] || ""
+    } else if (value === "--url") {
+      flags.url = argv[++i] || ""
+    } else if (value === "--load") {
+      flags.load = argv[++i] || ""
+    } else if (value === "--fn") {
+      flags.fn = argv[++i] || ""
+    } else if (value === "--fn-file") {
+      flags.fnFile = argv[++i] || ""
+    } else if (value === "--fn-stdin") {
+      flags.fnStdin = true
+    } else if (value === "--state") {
+      flags.state = argv[++i] || ""
+    } else if (value === "--annotate") {
+      flags.annotate = true
+    } else if (value === "-c" || value === "--compact") {
+      flags.compact = true
+    } else if (value === "-d" || value === "--depth") {
+      flags.depth = Number(argv[++i])
+    } else if (value === "-s" || value === "--scope") {
+      flags.scope = argv[++i] || ""
     } else if (value === "--ms") {
       flags.ms = Number(argv[++i])
     } else if (value === "--timeout") {
@@ -197,7 +225,9 @@ async function resolveFillText(rest, flags) {
     try {
       raw = fs.readFileSync(flags.textFile, "utf8")
     } catch (error) {
-      throw new Error(`cannot read --text-file ${flags.textFile}: ${error.message}`)
+      throw new Error(
+        `cannot read --text-file ${flags.textFile}: ${error.message}`
+      )
     }
     return raw.replace(/\r?\n$/, "")
   }
@@ -283,7 +313,9 @@ function postAction(action, payload) {
 }
 
 function print(result, pretty = false) {
-  const output = pretty ? JSON.stringify(result, null, 2) : JSON.stringify(result)
+  const output = pretty
+    ? JSON.stringify(result, null, 2)
+    : JSON.stringify(result)
   process.stdout.write(`${output}\n`)
   process.exitCode = result && result.ok === false ? 1 : 0
 }
@@ -387,6 +419,71 @@ async function run(argv, baseUrl) {
     return
   }
 
+  if (command === "hover") {
+    const refOrSelector = rest[0]
+    if (!refOrSelector) throw new Error("ref or selector required")
+    print(
+      await postAction("hover", { ref_or_selector: refOrSelector }),
+      flags.pretty
+    )
+    return
+  }
+  if (command === "dblclick") {
+    const refOrSelector = rest[0]
+    if (!refOrSelector) throw new Error("ref or selector required")
+    print(
+      await postAction("dblclick", { ref_or_selector: refOrSelector }),
+      flags.pretty
+    )
+    return
+  }
+  if (command === "focus") {
+    const refOrSelector = rest[0]
+    if (!refOrSelector) throw new Error("ref or selector required")
+    print(
+      await postAction("focus", { ref_or_selector: refOrSelector }),
+      flags.pretty
+    )
+    return
+  }
+  if (command === "type") {
+    const refOrSelector = rest[0]
+    if (!refOrSelector) throw new Error("ref or selector required")
+    const text = await resolveFillText(rest, flags)
+    print(
+      await postAction("type", { ref_or_selector: refOrSelector, text }),
+      flags.pretty
+    )
+    return
+  }
+  if (command === "check" || command === "uncheck") {
+    const refOrSelector = rest[0]
+    if (!refOrSelector) throw new Error("ref or selector required")
+    print(
+      await postAction(command, { ref_or_selector: refOrSelector }),
+      flags.pretty
+    )
+    return
+  }
+  if (command === "drag") {
+    const source = rest[0],
+      target = rest[1]
+    if (!source || !target) throw new Error("source and target required")
+    print(await postAction("drag", { source, target }), flags.pretty)
+    return
+  }
+  if (command === "upload") {
+    const refOrSelector = rest[0]
+    if (!refOrSelector) throw new Error("ref or selector required")
+    const files = rest.slice(1)
+    if (!files.length) throw new Error("at least one file path required")
+    print(
+      await postAction("upload", { ref_or_selector: refOrSelector, files }),
+      flags.pretty
+    )
+    return
+  }
+
   if (command === "fill") {
     const refOrSelector = rest[0]
     if (!refOrSelector) throw new Error("ref or selector required")
@@ -426,7 +523,11 @@ async function run(argv, baseUrl) {
     if (flags.alt) modifiers.alt = true
     if (flags.meta) modifiers.meta = true
     print(
-      await postAction("press", { key, ref_or_selector: refOrSelector, modifiers }),
+      await postAction("press", {
+        key,
+        ref_or_selector: refOrSelector,
+        modifiers,
+      }),
       flags.pretty
     )
     return
@@ -480,13 +581,24 @@ async function run(argv, baseUrl) {
     if (target === "value") {
       const refOrSelector = rest[1]
       if (!refOrSelector) throw new Error("ref or selector required")
-      print(await postAction("get-value", { ref_or_selector: refOrSelector }), flags.pretty)
+      print(
+        await postAction("get-value", { ref_or_selector: refOrSelector }),
+        flags.pretty
+      )
       return
     }
     if (target === "attr" || target === "attribute") {
-      const refOrSelector = rest[1], name = rest[2]
-      if (!refOrSelector || !name) throw new Error("ref/selector and attribute name required")
-      print(await postAction("get-attribute", { ref_or_selector: refOrSelector, name }), flags.pretty)
+      const refOrSelector = rest[1],
+        name = rest[2]
+      if (!refOrSelector || !name)
+        throw new Error("ref/selector and attribute name required")
+      print(
+        await postAction("get-attribute", {
+          ref_or_selector: refOrSelector,
+          name,
+        }),
+        flags.pretty
+      )
       return
     }
     throw new Error("get target must be url|title|value|attr")

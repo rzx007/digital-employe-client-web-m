@@ -1,9 +1,14 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { BrowserController } from "../src/controller.js"
 import type { Transport } from "../src/transport.js"
 
-function mockTransport(responses: Record<string, unknown> = {}): Transport & { calls: Array<[string, unknown]> } {
+function mockTransport(
+  responses: Record<string, unknown> = {}
+): Transport & { calls: Array<[string, unknown]> } {
   const calls: Array<[string, unknown]> = []
   return {
     calls,
@@ -32,11 +37,605 @@ test("getUrl 走纯 CDP（不依赖 Electron webContents）", async () => {
 
 test("snapshot 调 Accessibility.getFullAXTree（命令逻辑复用）", async () => {
   const t = mockTransport({
-    "Accessibility.getFullAXTree": { nodes: [{ nodeId: "1", role: { value: "RootWebArea" }, childIds: [] }] },
+    "Accessibility.getFullAXTree": {
+      nodes: [{ nodeId: "1", role: { value: "RootWebArea" }, childIds: [] }],
+    },
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
   })
   const c = new BrowserController(t)
   const r = await c.snapshot(50)
   assert.equal(r.ok, true)
   assert.ok(t.calls.some(([m]) => m === "Accessibility.getFullAXTree"))
+})
+
+test("fill 用 Input.insertText 一次性输入（非逐字符 dispatchKeyEvent char）", async () => {
+  const t = mockTransport({
+    "Runtime.evaluate": { result: { value: { x: 10, y: 10 } } },
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  await c.fill("#kw", "关键词")
+  const charCalls = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchKeyEvent" && (p as { type?: string }).type === "char"
+  )
+  assert.equal(charCalls.length, 0, "不应再发逐字符 char 事件")
+  const insertCalls = t.calls.filter(([m]) => m === "Input.insertText")
+  assert.ok(insertCalls.length >= 1, "应调用 Input.insertText")
+  assert.equal((insertCalls[0][1] as { text?: string }).text, "关键词")
+})
+
+test("hover 派发单次 mouseMoved 到元素中心", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": { model: { content: [0, 0, 100, 0, 100, 100, 0, 100] } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  await c.hover("@e0")
+  const moved = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchMouseEvent" &&
+      (p as { type?: string }).type === "mouseMoved"
+  )
+  assert.equal(moved.length, 1)
+  const p = moved[0][1] as { x: number; y: number }
+  assert.equal(p.x, 50)
+  assert.equal(p.y, 50)
+})
+
+test("dblclick 派发 clickCount:2 的 pressed+released", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  await c.dblclick("@e0")
+  const pressed = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchMouseEvent" &&
+      (p as { type?: string }).type === "mousePressed"
+  )
+  const released = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchMouseEvent" &&
+      (p as { type?: string }).type === "mouseReleased"
+  )
+  assert.equal(pressed.length, 1)
+  assert.equal(released.length, 1)
+  assert.equal((pressed[0][1] as { clickCount?: number }).clickCount, 2)
+  assert.equal((released[0][1] as { clickCount?: number }).clickCount, 2)
+})
+
+test("focus 调 callFunctionOn this.focus()", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  await c.focus("@e0")
+  const callFn = t.calls.filter(
+    ([m, p]) =>
+      m === "Runtime.callFunctionOn" &&
+      String(
+        (p as { functionDeclaration?: string }).functionDeclaration
+      ).includes("this.focus()")
+  )
+  assert.ok(callFn.length >= 1)
+})
+
+test("type 不清空：printable 走 insertText，\\n 走 keyDown+keyUp", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  await c.type("@e0", "ab\n")
+  const focusCalls = t.calls.filter(
+    ([m, p]) =>
+      m === "Runtime.callFunctionOn" &&
+      String(
+        (p as { functionDeclaration?: string }).functionDeclaration
+      ).includes("this.focus()")
+  )
+  assert.ok(focusCalls.length >= 1)
+  const insertCalls = t.calls.filter(([m]) => m === "Input.insertText")
+  assert.ok(insertCalls.some(([, p]) => (p as { text?: string }).text === "a"))
+  assert.ok(insertCalls.some(([, p]) => (p as { text?: string }).text === "b"))
+  const keyDown = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchKeyEvent" &&
+      (p as { type?: string }).type === "keyDown"
+  )
+  const keyUp = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchKeyEvent" &&
+      (p as { type?: string }).type === "keyUp"
+  )
+  assert.ok(keyDown.length >= 1)
+  assert.ok(keyUp.length >= 1)
+  const clearCalls = t.calls.filter(
+    ([m, p]) =>
+      m === "Runtime.callFunctionOn" &&
+      String(
+        (p as { functionDeclaration?: string }).functionDeclaration
+      ).includes("setter.call(el, '')")
+  )
+  assert.equal(clearCalls.length, 0, "type 不应清空")
+})
+
+test("check：未勾选时点击，再回读校验", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+    "Runtime.callFunctionOn": { result: { value: false } },
+  })
+  // 用 isCheckedCall 专用计数器模拟 isChecked 多次回读（前两次 false、JS-click 后第三次 true）。
+  // 仅拦截 callFunctionOn；其他方法委托原 sendCommand 走 responses 映射，避免破坏 snapshot/resolveNode。
+  const origSend = t.sendCommand.bind(t)
+  let isCheckedCall = 0
+  t.sendCommand = async (method, params) => {
+    if (method === "Runtime.callFunctionOn") {
+      t.calls.push([method, params])
+      const fn = String(
+        (params as { functionDeclaration?: string }).functionDeclaration
+      )
+      if (fn.includes("return !!el.checked") || fn.includes("aria-checked")) {
+        isCheckedCall++
+        return { result: { value: isCheckedCall <= 2 ? false : true } }
+      }
+      return { result: { value: undefined } }
+    }
+    return origSend(method, params)
+  }
+  const c = new BrowserController(t)
+  const r = await c.check("@e0")
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { checked?: boolean }).checked, true)
+  assert.ok(isCheckedCall >= 3, "至少 3 次 isChecked 回读才成功")
+})
+
+test("drag：10 步插值 mouseMoved", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  // 按 backendNodeId 稳定返回 box：@e0→bnid 1→(10,10)，@e1→bnid 2→(110,110)
+  // （曾按调用序号返回，但 scrollIntoView 也会触发 getBoxModel 导致序号漂移、
+  // src 与 tgt 撞到同点被零距离分支跳过插值）
+  const origSend = t.sendCommand.bind(t)
+  t.sendCommand = async (method, params) => {
+    if (method === "DOM.getBoxModel") {
+      t.calls.push([method, params])
+      const bnid = (params as { backendNodeId?: number }).backendNodeId ?? 0
+      return {
+        model: {
+          content:
+            bnid === 2
+              ? [100, 100, 120, 100, 120, 120, 100, 120]
+              : [0, 0, 20, 0, 20, 20, 0, 20],
+        },
+      }
+    }
+    return origSend(method, params)
+  }
+  const c = new BrowserController(t)
+  const r = await c.drag("@e0", "@e1")
+  assert.equal(r.ok, true)
+  const moved = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchMouseEvent" &&
+      (p as { type?: string }).type === "mouseMoved"
+  )
+  // 1 次初始 moveTo source + 10 步插值 = 11 次 mouseMoved
+  assert.equal(moved.length, 11)
+})
+
+test("upload：文件不存在 → FILE_NOT_FOUND", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  const r = await c.upload("@e0", ["C:\\definitely-not-exists-12345.png"])
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "FILE_NOT_FOUND")
+})
+
+test("upload：文件存在 → DOM.setFileInputFiles", async () => {
+  const tmp = path.join(os.tmpdir(), `browserctl-upload-${Date.now()}.txt`)
+  fs.writeFileSync(tmp, "hello")
+  try {
+    const t = mockTransport({
+      "DOM.resolveNode": { object: { objectId: "obj-1" } },
+      "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
+      "Accessibility.getFullAXTree": {
+        nodes: [
+          {
+            nodeId: "1",
+            role: { value: "RootWebArea" },
+            childIds: ["2"],
+            backendDOMNodeId: 1,
+          },
+          {
+            nodeId: "2",
+            role: { value: "button" },
+            name: { value: "OK" },
+            backendDOMNodeId: 2,
+          },
+        ],
+      },
+      "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+    })
+    const c = new BrowserController(t)
+    const r = await c.upload("@e0", [tmp])
+    assert.equal(r.ok, true)
+    assert.equal((r.data as { uploaded?: number }).uploaded, 1)
+    const setFile = t.calls.filter(([m]) => m === "DOM.setFileInputFiles")
+    assert.equal(setFile.length, 1)
+  } finally {
+    fs.unlinkSync(tmp)
+  }
+})
+
+test("type 把 \\r\\n 归一化为单次 Enter（Windows 行尾不应产生两次 Enter）", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  await c.type("@e0", "a\r\nb")
+  const enterDown = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchKeyEvent" &&
+      (p as { type?: string }).type === "keyDown" &&
+      (p as { key?: string }).key === "Enter"
+  )
+  const enterUp = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchKeyEvent" &&
+      (p as { type?: string }).type === "keyUp" &&
+      (p as { key?: string }).key === "Enter"
+  )
+  assert.equal(enterDown.length, 1, "应只产生 1 次 Enter keyDown")
+  assert.equal(enterUp.length, 1, "应只产生 1 次 Enter keyUp")
+  // 'a' 与 'b' 仍走 insertText
+  const insertTexts = t.calls
+    .filter(([m]) => m === "Input.insertText")
+    .map(([, p]) => (p as { text?: string }).text)
+  assert.deepEqual(insertTexts, ["a", "b"])
+})
+
+test("focus 支持 CSS 选择器（backendNodeId=0 走 Runtime.evaluate 取 objectId）", async () => {
+  const t = mockTransport({
+    "Runtime.evaluate": { result: { objectId: "obj-sel" } },
+  })
+  const c = new BrowserController(t)
+  const r = await c.focus("input#x")
+  assert.equal(r.ok, true)
+  const evalCalls = t.calls.filter(
+    ([m, p]) =>
+      m === "Runtime.evaluate" &&
+      String((p as { expression?: string }).expression).includes(
+        "document.querySelector"
+      )
+  )
+  assert.ok(evalCalls.length >= 1, "应通过 Runtime.evaluate 取元素")
+  const focusCalls = t.calls.filter(
+    ([m, p]) =>
+      m === "Runtime.callFunctionOn" &&
+      (p as { objectId?: string }).objectId === "obj-sel" &&
+      String(
+        (p as { functionDeclaration?: string }).functionDeclaration
+      ).includes("this.focus()")
+  )
+  assert.equal(focusCalls.length, 1, "应用取到的 objectId 调 this.focus()")
+})
+
+test("type 支持 CSS 选择器（focus 后 insertText 不依赖 nodeId）", async () => {
+  const t = mockTransport({
+    "Runtime.evaluate": { result: { objectId: "obj-sel" } },
+  })
+  const c = new BrowserController(t)
+  const r = await c.type("input#x", "hi")
+  assert.equal(r.ok, true)
+  const focusCalls = t.calls.filter(
+    ([m, p]) =>
+      m === "Runtime.callFunctionOn" &&
+      (p as { objectId?: string }).objectId === "obj-sel" &&
+      String(
+        (p as { functionDeclaration?: string }).functionDeclaration
+      ).includes("this.focus()")
+  )
+  assert.equal(focusCalls.length, 1)
+  const insertTexts = t.calls
+    .filter(([m]) => m === "Input.insertText")
+    .map(([, p]) => (p as { text?: string }).text)
+  assert.deepEqual(insertTexts, ["h", "i"])
+})
+
+test("upload 支持 CSS 选择器（用 objectId 调 setFileInputFiles）", async () => {
+  const tmp1 = path.join(
+    os.tmpdir(),
+    `browserctl-upload-sel1-${Date.now()}.txt`
+  )
+  const tmp2 = path.join(
+    os.tmpdir(),
+    `browserctl-upload-sel2-${Date.now()}.txt`
+  )
+  fs.writeFileSync(tmp1, "a")
+  fs.writeFileSync(tmp2, "b")
+  try {
+    const t = mockTransport({
+      "Runtime.evaluate": { result: { objectId: "obj-sel" } },
+    })
+    const c = new BrowserController(t)
+    const r = await c.upload("input#x", [tmp1, tmp2])
+    assert.equal(r.ok, true)
+    assert.equal((r.data as { uploaded?: number }).uploaded, 2)
+    const setFile = t.calls.filter(([m]) => m === "DOM.setFileInputFiles")
+    assert.equal(setFile.length, 1)
+    const params = setFile[0][1] as {
+      files?: string[]
+      objectId?: string
+      backendNodeId?: number
+    }
+    assert.equal(params.objectId, "obj-sel")
+    assert.equal(params.backendNodeId, undefined)
+    assert.equal(params.files?.length, 2)
+    // 两个绝对路径
+    assert.ok(params.files?.every((f) => path.isAbsolute(f)))
+  } finally {
+    fs.unlinkSync(tmp1)
+    fs.unlinkSync(tmp2)
+  }
+})
+
+test("drag 零距离：source 与 target 同点时跳过 10 步插值", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  // @e0 与 @e1 都用同一个 boxModel → 中心都是 (10,10)，零距离
+  const r = await c.drag("@e0", "@e1")
+  assert.equal(r.ok, true)
+  const moved = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchMouseEvent" &&
+      (p as { type?: string }).type === "mouseMoved"
+  )
+  // 仅 1 次初始 mouseMoved，无 10 步插值
+  assert.equal(moved.length, 1, "零距离应只有 1 次 mouseMoved（无插值步）")
+  const pressed = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchMouseEvent" &&
+      (p as { type?: string }).type === "mousePressed"
+  )
+  const released = t.calls.filter(
+    ([m, p]) =>
+      m === "Input.dispatchMouseEvent" &&
+      (p as { type?: string }).type === "mouseReleased"
+  )
+  assert.equal(pressed.length, 1)
+  assert.equal(released.length, 1)
+})
+
+test("upload 多文件：uploaded 计数与 setFileInputFiles 收到两个绝对路径", async () => {
+  const tmp1 = path.join(
+    os.tmpdir(),
+    `browserctl-upload-multi1-${Date.now()}.txt`
+  )
+  const tmp2 = path.join(
+    os.tmpdir(),
+    `browserctl-upload-multi2-${Date.now()}.txt`
+  )
+  fs.writeFileSync(tmp1, "a")
+  fs.writeFileSync(tmp2, "b")
+  try {
+    const t = mockTransport({
+      "DOM.resolveNode": { object: { objectId: "obj-1" } },
+      "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
+      "Accessibility.getFullAXTree": {
+        nodes: [
+          {
+            nodeId: "1",
+            role: { value: "RootWebArea" },
+            childIds: ["2"],
+            backendDOMNodeId: 1,
+          },
+          {
+            nodeId: "2",
+            role: { value: "button" },
+            name: { value: "OK" },
+            backendDOMNodeId: 2,
+          },
+        ],
+      },
+      "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+    })
+    const c = new BrowserController(t)
+    const r = await c.upload("@e0", [tmp1, tmp2])
+    assert.equal(r.ok, true)
+    assert.equal((r.data as { uploaded?: number }).uploaded, 2)
+    const setFile = t.calls.filter(([m]) => m === "DOM.setFileInputFiles")
+    assert.equal(setFile.length, 1)
+    const params = setFile[0][1] as { files?: string[]; backendNodeId?: number }
+    assert.equal(params.files?.length, 2)
+    assert.ok(params.files?.every((f) => path.isAbsolute(f)))
+    // @e0 → RootWebArea，backendDOMNodeId=1
+    assert.equal(params.backendNodeId, 1)
+  } finally {
+    fs.unlinkSync(tmp1)
+    fs.unlinkSync(tmp2)
+  }
 })

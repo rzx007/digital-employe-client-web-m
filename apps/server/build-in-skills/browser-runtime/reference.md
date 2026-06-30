@@ -33,6 +33,8 @@
 | `BROWSER_VIEWPORT_NOT_READY` | 右栏视口尚未完成布局 |
 | `ELEMENT_NOT_FOUND` | 元素引用或选择器未找到 |
 | `OPTION_NOT_FOUND` | `select` 下拉项按 value/label 都未匹配到 |
+| `NOT_CHECKABLE` | `check`/`uncheck` 目标非 checkbox/radio，无法勾选 |
+| `FILE_NOT_FOUND` | `upload` 给定的文件路径不存在 |
 | `USER_CANCELLED` | 用户取消确认 |
 | `TIMEOUT` | 操作超时（含 `wait` 超时） |
 | `EMPTY_SCREENSHOT` | 截图数据为空 |
@@ -75,6 +77,16 @@ browserctl wait --ms <毫秒>          # 固定等待（无明确目标时兜底
 browserctl fill <@eN|selector> <text>
 browserctl fill <@eN|selector> --text-file <path>   # 文本含引号/&/|/空格/换行等特殊字符时优先用
 browserctl fill <@eN|selector> --text-stdin          # 从管道读取文本（echo ... | browserctl fill ...）
+browserctl hover <@eN|selector>                       # 鼠标悬停到元素中心（单次 mouseMoved，不点击）
+browserctl dblclick <@eN|selector>                    # 双击（clickCount:2 的 pressed+released）
+browserctl focus <@eN|selector>                       # 调用元素 this.focus() 获取焦点
+browserctl type <@eN|selector> <text>                 # 在当前焦点处追加输入（不清空；printable 走 insertText，\n 走 keyDown+keyUp）
+browserctl type <@eN|selector> --text-file <path>     # 同 fill，文本含特殊字符时优先用文件
+browserctl type <@eN|selector> --text-stdin           # 同 fill，从管道读取文本
+browserctl check <@eN|selector>                       # 勾选 checkbox/radio（未勾选时点击，已勾选保持；非 checkbox/radio 返回 NOT_CHECKABLE）
+browserctl uncheck <@eN|selector>                     # 取消勾选 checkbox（已勾选时点击，未勾选保持；非 checkbox/radio 返回 NOT_CHECKABLE）
+browserctl drag <@eN|selector> <@eN|selector>         # 从 source 元素中心拖拽到 target 元素中心（10 步插值 mouseMoved + pressed/released）
+browserctl upload <@eN|selector> <file...>            # 给 <input type=file> 设置文件（多文件按位置参数顺序；文件不存在返回 FILE_NOT_FOUND）
 browserctl press <key> [@eN|selector] [--ctrl|--shift|--alt|--meta]   # 按键；不带元素则发到当前焦点
 browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>]        # 滚动到元素/顶底/指定距离
 browserctl select <@eN|selector> (<value> | --label <文本>)          # 选原生 <select> 项（value 精确匹配 / label 按文本）
@@ -88,6 +100,34 @@ browserctl extract-text
 browserctl screenshot [--out <path>]   # 截图落盘到产物目录，返回 { path, bytes }，不输出 base64
 browserctl close                       # 关闭内嵌浏览器并收起右栏（任务结束释放资源）
 ```
+
+### 交互命令详解（Batch 1 新增）
+
+下列 8 条命令与 `agent-browser` 对齐，均接收 `ref_or_selector`（`@eN` 引用或 CSS 选择器），返回统一 envelope `{ ok: true, data: {...} }` 或 `{ ok: false, error, code }`。
+
+| 命令 | 语法 | 参数 | 返回 data | 错误码 |
+|------|------|------|-----------|--------|
+| `hover` | `browserctl hover <ref_or_selector>` | `ref_or_selector` | `{}` | `ELEMENT_NOT_FOUND` / `BROWSER_UNAVAILABLE` |
+| `dblclick` | `browserctl dblclick <ref_or_selector>` | `ref_or_selector` | `{}` | 同上 |
+| `focus` | `browserctl focus <ref_or_selector>` | `ref_or_selector` | `{}` | 同上 |
+| `type` | `browserctl type <ref_or_selector> <text>` | `ref_or_selector`, `text` | `{}` | 同上 |
+| `check` | `browserctl check <ref_or_selector>` | `ref_or_selector` | `{ checked: true/false }` | `NOT_CHECKABLE` / `ELEMENT_NOT_FOUND` |
+| `uncheck` | `browserctl uncheck <ref_or_selector>` | `ref_or_selector` | `{ checked: false }` | `NOT_CHECKABLE` / `ELEMENT_NOT_FOUND` |
+| `drag` | `browserctl drag <source> <target>` | `source`, `target`（均为 `@eN`/选择器） | `{}` | `ELEMENT_NOT_FOUND` |
+| `upload` | `browserctl upload <ref_or_selector> <file...>` | `ref_or_selector`, `files`（路径数组） | `{ uploaded: number }` | `FILE_NOT_FOUND` / `ELEMENT_NOT_FOUND` |
+
+返回示例：
+
+```json
+{ "ok": true, "data": {} }
+{ "ok": false, "error": "file not found: <path>", "code": "FILE_NOT_FOUND" }
+```
+
+> `type` 与 `fill` 区别：`fill` 先清空再输入；`type` 在当前焦点处追加，不清空。两者文本参数均支持 `--text-file` / `--text-stdin`。
+>
+> `fill` 输入段已改用 CDP `Input.insertText` 一次性注入（保留 `clearElement` 原型 setter 清空步骤，非破坏性），避免逐字符 `dispatchKeyEvent` 在中文/复合输入场景下的丢字问题。
+>
+> OOPIF（跨源 iframe）annotate / `-c`/`-d`/`-s` 等扩展 flag 为后续 Batch 预留，本批仅落地上述 8 条交互命令。
 
 > `snapshot` 会自动遍历同源 iframe：iframe 内的元素也会出现在 `@eN` 列表里，可直接 `click`/`fill`/`select`/`get`/`scroll`。跨源 iframe（不同域，走独立进程）会被静默跳过、不影响主页面。**iframe 内只能用 `@eN` 定位，CSS 选择器不跨 frame**（选择器只在主文档生效），优先用 `@eN`。
 

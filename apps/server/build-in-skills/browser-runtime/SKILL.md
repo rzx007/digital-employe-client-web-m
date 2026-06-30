@@ -72,6 +72,14 @@ browserctl snapshot --max-nodes 200   # 自动含同源 iframe 内元素；跨�
 browserctl click @e3
 browserctl click @e8 --confirm "确认提交申请？"
 browserctl fill @e4 "输入内容"
+browserctl hover @e3                      # 鼠标悬停（不点击）
+browserctl dblclick @e3                   # 双击
+browserctl focus @e3                      # 聚焦元素
+browserctl type @e4 "追加文本"            # 在当前焦点处追加输入（不清空）
+browserctl check @e5                      # 勾选 checkbox/radio
+browserctl uncheck @e5                    # 取消勾选 checkbox
+browserctl drag @e6 @e7                   # 从 @e6 拖到 @e7
+browserctl upload @e8 file1.png file2.pdf # 给 <input type=file> 设置文件
 browserctl press Enter @e4                # 按键（Enter/Tab/Escape/方向键等）；可带 --ctrl/--shift/--alt/--meta
 browserctl scroll --to bottom            # 滚动到底部/顶部；或 scroll @e3 滚到元素、--by <px> 滚指定距离
 browserctl select @e5 --label "北京"     # 选原生 <select> 下拉项（--label 按文本 / 位置参数按 value）
