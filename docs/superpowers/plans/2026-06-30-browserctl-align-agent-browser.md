@@ -70,7 +70,10 @@ test("fill 用 Input.insertText 一次性输入（非逐字符 dispatchKeyEvent 
     "Runtime.evaluate": { result: { value: { x: 10, y: 10 } } },
     "DOM.resolveNode": { object: { objectId: "obj-1" } },
     "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
-    "Accessibility.getFullAXTree": { nodes: [] },
+    "Accessibility.getFullAXTree": { nodes: [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"], backendDOMNodeId: 1 },
+      { nodeId: "2", role: { value: "button" }, name: { value: "OK" }, backendDOMNodeId: 2 },
+    ] },
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
   })
   const c = new BrowserController(t)
@@ -115,11 +118,11 @@ Expected: PASS（含新测试）。
 
 ```bash
 # 启动 daemon（或 Electron dev），然后：
-node packages/browserctl/bin/browserctl.js open https://www.baidu.com
-node packages/browserctl/bin/browserctl.js snapshot --interactive
+node packages/browserctl/src/index.js open https://www.baidu.com
+node packages/browserctl/src/index.js snapshot --interactive
 # 用返回的 @eN 指向搜索框
-node packages/browserctl/bin/browserctl.js fill @eN "关键词"
-node packages/browserctl/bin/browserctl.js get value @eN
+node packages/browserctl/src/index.js fill @eN "关键词"
+node packages/browserctl/src/index.js get value @eN
 ```
 Expected: `get value` 返回 `{"ok":true,"data":{"value":"关键词"}}`。若返回空/旧值 → insertText 在该页面失效，回退逐字符 `dispatchKeyEvent {type:"char"}` 并在 commit message 标 `DONE_WITH_CONCERNS`。这是明确 pass/fail 信号。
 
@@ -140,7 +143,10 @@ test("hover 派发单次 mouseMoved 到元素中心", async () => {
   const t = mockTransport({
     "DOM.resolveNode": { object: { objectId: "obj-1" } },
     "DOM.getBoxModel": { model: { content: [0, 0, 100, 0, 100, 100, 0, 100] } },
-    "Accessibility.getFullAXTree": { nodes: [] },
+    "Accessibility.getFullAXTree": { nodes: [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"], backendDOMNodeId: 1 },
+      { nodeId: "2", role: { value: "button" }, name: { value: "OK" }, backendDOMNodeId: 2 },
+    ] },
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
   })
   const c = new BrowserController(t)
@@ -205,7 +211,10 @@ test("dblclick 派发 clickCount:2 的 pressed+released", async () => {
   const t = mockTransport({
     "DOM.resolveNode": { object: { objectId: "obj-1" } },
     "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
-    "Accessibility.getFullAXTree": { nodes: [] },
+    "Accessibility.getFullAXTree": { nodes: [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"], backendDOMNodeId: 1 },
+      { nodeId: "2", role: { value: "button" }, name: { value: "OK" }, backendDOMNodeId: 2 },
+    ] },
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
   })
   const c = new BrowserController(t)
@@ -268,7 +277,10 @@ test("focus 调 callFunctionOn this.focus()", async () => {
   const t = mockTransport({
     "DOM.resolveNode": { object: { objectId: "obj-1" } },
     "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
-    "Accessibility.getFullAXTree": { nodes: [] },
+    "Accessibility.getFullAXTree": { nodes: [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"], backendDOMNodeId: 1 },
+      { nodeId: "2", role: { value: "button" }, name: { value: "OK" }, backendDOMNodeId: 2 },
+    ] },
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
   })
   const c = new BrowserController(t)
@@ -319,7 +331,10 @@ test("type 不清空：printable 走 insertText，\\n 走 keyDown+keyUp", async 
   const t = mockTransport({
     "DOM.resolveNode": { object: { objectId: "obj-1" } },
     "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
-    "Accessibility.getFullAXTree": { nodes: [] },
+    "Accessibility.getFullAXTree": { nodes: [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"], backendDOMNodeId: 1 },
+      { nodeId: "2", role: { value: "button" }, name: { value: "OK" }, backendDOMNodeId: 2 },
+    ] },
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
   })
   const c = new BrowserController(t)
@@ -398,11 +413,14 @@ test("check：未勾选时点击，再回读校验", async () => {
   const t = mockTransport({
     "DOM.resolveNode": { object: { objectId: "obj-1" } },
     "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
-    "Accessibility.getFullAXTree": { nodes: [] },
+    "Accessibility.getFullAXTree": { nodes: [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"], backendDOMNodeId: 1 },
+      { nodeId: "2", role: { value: "button" }, name: { value: "OK" }, backendDOMNodeId: 2 },
+    ] },
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
     "Runtime.callFunctionOn": { result: { value: false } },
   })
-  // 让第二次 callFunctionOn 返回 true
+  // 用 callFnCount 模拟 isChecked 多次回读（前两次 false、JS-click 后 true）
   const origSend = t.sendCommand
   let callFnCount = 0
   t.sendCommand = async (method, params) => {
@@ -420,7 +438,7 @@ test("check：未勾选时点击，再回读校验", async () => {
 })
 ```
 
-> 注：上述 mock 用 `callFnCount` 模拟「先读 false → 点击 → 再读 true」。`isChecked` 内部用 `runOnElement`（走 `callFunctionOn`），点击用 `Input.dispatchMouseEvent`。
+> 注：上述 mock 用 `isCheckedCall` 专用计数器模拟 `isChecked` 的多次回读（前两次 false、JS-click 后第三次 true）。`isChecked` 内部用 `runOnElement`（走 `callFunctionOn`），点击用 `Input.dispatchMouseEvent`，JS-click 兜底也走 `runOnElement`（返回值被 `setChecked` 忽略）。
 
 - [ ] **Step 2: 跑测试确认失败** → FAIL。
 
@@ -509,7 +527,10 @@ test("drag：10 步插值 mouseMoved", async () => {
   const t = mockTransport({
     "DOM.resolveNode": { object: { objectId: "obj-1" } },
     "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
-    "Accessibility.getFullAXTree": { nodes: [] },
+    "Accessibility.getFullAXTree": { nodes: [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"], backendDOMNodeId: 1 },
+      { nodeId: "2", role: { value: "button" }, name: { value: "OK" }, backendDOMNodeId: 2 },
+    ] },
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
   })
   const c = new BrowserController(t)
@@ -583,7 +604,10 @@ test("upload：文件不存在 → FILE_NOT_FOUND", async () => {
   const t = mockTransport({
     "DOM.resolveNode": { object: { objectId: "obj-1" } },
     "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
-    "Accessibility.getFullAXTree": { nodes: [] },
+    "Accessibility.getFullAXTree": { nodes: [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"], backendDOMNodeId: 1 },
+      { nodeId: "2", role: { value: "button" }, name: { value: "OK" }, backendDOMNodeId: 2 },
+    ] },
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
   })
   const c = new BrowserController(t)
@@ -599,7 +623,10 @@ test("upload：文件存在 → DOM.setFileInputFiles", async () => {
     const t = mockTransport({
       "DOM.resolveNode": { object: { objectId: "obj-1" } },
       "DOM.getBoxModel": { model: { content: [0, 0, 20, 0, 20, 20, 0, 20] } },
-      "Accessibility.getFullAXTree": { nodes: [] },
+      "Accessibility.getFullAXTree": { nodes: [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"], backendDOMNodeId: 1 },
+      { nodeId: "2", role: { value: "button" }, name: { value: "OK" }, backendDOMNodeId: 2 },
+    ] },
       "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
     })
     const c = new BrowserController(t)
@@ -678,7 +705,70 @@ test("upload：文件存在 → DOM.setFileInputFiles", async () => {
       }
 ```
 
-`check / uncheck` 取 `ref_or_selector`，返回 `{ok, data:{checked}}`。`drag` 取 `source` + `target`。`upload` 取 `ref_or_selector` + `files: string[]`（`body.files` 为数组）。`type` 取 `ref_or_selector` + `text`。`focus` 取 `ref_or_selector`。
+其余 7 个 case 完整实现如下（结构与 hover 一致：ensureAttached → 取参 → 调 controller → ELEMENT_NOT_FOUND 映 404 → reply）：
+
+```typescript
+      case "dblclick": {
+        try { await host.ensureAttached() } catch { reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE", code: "BROWSER_UNAVAILABLE" }); return }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.dblclick(refOrSelector)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") { reply(res, 404, result); return }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "focus": {
+        try { await host.ensureAttached() } catch { reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE", code: "BROWSER_UNAVAILABLE" }); return }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.focus(refOrSelector)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") { reply(res, 404, result); return }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "type": {
+        try { await host.ensureAttached() } catch { reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE", code: "BROWSER_UNAVAILABLE" }); return }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const text = String(body.text ?? "")
+        const result = await controller.type(refOrSelector, text)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") { reply(res, 404, result); return }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "check":
+      case "uncheck": {
+        try { await host.ensureAttached() } catch { reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE", code: "BROWSER_UNAVAILABLE" }); return }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = action === "check"
+          ? await controller.check(refOrSelector)
+          : await controller.uncheck(refOrSelector)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") { reply(res, 404, result); return }
+        if (!result.ok && result.code === "NOT_CHECKABLE") { reply(res, 422, result); return }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "drag": {
+        try { await host.ensureAttached() } catch { reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE", code: "BROWSER_UNAVAILABLE" }); return }
+        const source = String(body.source ?? "")
+        const target = String(body.target ?? "")
+        if (!source || !target) { reply(res, 400, { ok: false, error: "source and target required", code: "BAD_REQUEST" }); return }
+        const result = await controller.drag(source, target)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") { reply(res, 404, result); return }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "upload": {
+        try { await host.ensureAttached() } catch { reply(res, 503, { ok: false, error: "BROWSER_UNAVAILABLE", code: "BROWSER_UNAVAILABLE" }); return }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const files = Array.isArray(body.files) ? body.files.map(String) : []
+        if (!files.length) { reply(res, 400, { ok: false, error: "files required", code: "BAD_REQUEST" }); return }
+        const result = await controller.upload(refOrSelector, files)
+        if (!result.ok && result.error === "ELEMENT_NOT_FOUND") { reply(res, 404, result); return }
+        if (!result.ok && result.code === "FILE_NOT_FOUND") { reply(res, 404, result); return }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+```
+
+> 注：`check/uncheck` 返回 `{ok, data:{checked: boolean}}`；`NOT_CHECKABLE` 用 422（语义错误）以与 404（元素不存在）区分。`upload` 的 `FILE_NOT_FOUND` 也映 404。
 
 - [ ] **Step 3: 在 `browserctl/src/index.js` 的 `parseFlags` 加新 flag**
 
@@ -823,11 +913,23 @@ Expected: 全 PASS。
 
 ```bash
 cd d:\code\company\digital-employe-client-web-main
+# 先把下方 `.git/COMMIT_MSG_B1 内容` 写入临时文件（PowerShell 无 heredoc，用 Write-Output + Set-Content -Encoding utf8）
+Write-Output @"
+feat(browserctl): Batch 1 交互命令对齐 agent-browser（hover/dblclick/focus/type/check/uncheck/drag/upload + fill 升级 insertText）
+
+- fill 输入段改用 Input.insertText（保留 clearElement 原型 setter 清空，非破坏性）
+- 新增 8 条交互命令，controller 显式带 code 字段
+- bridge errorCode() 扩展 FILE_NOT_FOUND / NOT_CHECKABLE
+- CLI 加命令分支 + flag 解析 + help
+- 文档同步 reference.md / SKILL.md / README ×2
+- 单测覆盖关键路径（insertText、mouseMoved、clickCount:2、focus、type printable/\\n、check 三步法、drag 10 步、upload FILE_NOT_FOUND）
+"@ | Set-Content -Encoding utf8 .git/COMMIT_MSG_B1
 git add packages/browser-sdk/src/controller.ts packages/browser-sdk/src/bridge.ts packages/browser-sdk/test/controller.test.ts
 git add packages/browserctl/src/index.js packages/browserctl/test/index.test.js
 git add apps/server/build-in-skills/browser-runtime/reference.md apps/server/build-in-skills/browser-runtime/SKILL.md
 git add packages/browserctl/README.md packages/browserctl-cli/README.md
 git commit -F .git/COMMIT_MSG_B1
+Remove-Item .git/COMMIT_MSG_B1
 ```
 
 `.git/COMMIT_MSG_B1` 内容：
@@ -869,8 +971,8 @@ test("事件多路复用：addMessageListener pred 命中后 cb 调用，dispose
   }
   const c = new BrowserController(t)
   let hit = 0
-  const dispose = (c as unknown as { addMessageListener: (pred: (m: string, p: unknown) => boolean, cb: () => void) => () => void }).addMessageListener(
-    (m) => m === "Page.lifecycleEvent",
+  const dispose = c.addMessageListener(
+    (m: string, _p: unknown) => m === "Page.lifecycleEvent",
     () => { hit++ }
   )
   t.emit("Page.lifecycleEvent", { name: "networkIdle" })
@@ -881,7 +983,7 @@ test("事件多路复用：addMessageListener pred 命中后 cb 调用，dispose
 })
 ```
 
-> 注：`addMessageListener` 是 private 方法，测试用 `as unknown` 访问。或可改为 `public`（本计划允许为可测性暴露此方法）。
+> 注：`addMessageListener` 声明为 `public`（为可测性暴露，与 spec 一致）。测试直接 `c.addMessageListener(...)` 调用，无需 `as unknown` 强转。
 
 - [ ] **Step 2: 跑测试确认失败** → FAIL（无 `addMessageListener`）。
 
@@ -967,8 +1069,35 @@ test("waitForNetworkIdle：事件等待——发 networkIdle 后成功", async (
 })
 
 test("waitForNetworkIdle：监听器移除——第二个事件不触发已 resolve 的 stale 回调", async () => {
-  // 同上 setup；resolve 后再 emit，断言无异常 / listener 已从 Set 移除
-  // （通过 addMessageListener 的 disposer 语义间接验证：再 emit 不再调用 cb）
+  let onCb: ((m: string, params: unknown) => void) | null = null
+  const t: Transport & { emit: (m: string, p: unknown) => void } = {
+    calls: [], attach: async () => {}, detach: async () => {}, isAttached: () => true,
+    on: (_e, cb) => { onCb = cb },
+    sendCommand: async (method, params) => {
+      (t as { calls: Array<[string, unknown]> }).calls.push([method, params])
+      // 第一次 evaluate（idle 探测）返回 false，强制走事件路径
+      if (method === "Runtime.evaluate") return { result: { value: false } }
+      return {}
+    },
+    emit: (m, p) => { onCb?.(m, p) },
+  }
+  const c = new BrowserController(t)
+  // 监听 disposer 语义：用一个独立 listener 记录 networkIdle 命中次数
+  let outerHits = 0
+  const outerDispose = c.addMessageListener(
+    (m: string, p: unknown) => m === "Page.lifecycleEvent" && (p as { name?: string }).name === "networkIdle",
+    () => { outerHits++ }
+  )
+  const r = c.waitForNetworkIdle(5000)
+  await new Promise((r) => setTimeout(r, 30))
+  t.emit("Page.lifecycleEvent", { name: "networkIdle" })   // 触发 waitForNetworkIdle resolve
+  await r
+  // waitForNetworkIdle 内部 listener 应已自移除；再 emit 一次，外部 listener 仍会响应（证明 dispatcher 未被破坏）但不应有 stale 内部回调
+  t.emit("Page.lifecycleEvent", { name: "networkIdle" })
+  assert.equal(outerHits, 2, "外部 listener 应两次响应")
+  outerDispose()
+  t.emit("Page.lifecycleEvent", { name: "networkIdle" })
+  assert.equal(outerHits, 2, "外部 disposer 后不再响应")
 })
 ```
 
@@ -1240,11 +1369,22 @@ test("wait --fn-file 归一到 flags.fn", async () => { /* 写临时 JS 文件�
 - [ ] **Step 4: 提交**
 
 ```bash
+Write-Output @"
+feat(browserctl): Batch 2 wait 增强（--url/--load networkidle/--fn/--state hidden）+ 事件多路复用基础设施
+
+- controller 构造时注册总 transport.on("message", dispatcher)，addMessageListener(pred, cb) 返回 disposer
+- waitForNetworkIdle：已就绪 JS 启发式短路 + Page.lifecycleEvent networkIdle 事件路径
+- waitForUrl（glob）/ waitForFunction（轮询）/ waitForState（visible|hidden）
+- bridge wait 路由扩展，CLI guard 扩为 --url|--load|--fn，--state 需 --selector
+- fn 源归一：--fn-file > --fn-stdin > --fn（guard 之前）
+- 单测：事件多路复用 disposer 语义、networkidle 已 idle 短路 + 事件等待 + 监听器移除、3 个 wait 变体
+"@ | Set-Content -Encoding utf8 .git/COMMIT_MSG_B2
 git add packages/browser-sdk/src/controller.ts packages/browser-sdk/src/bridge.ts packages/browser-sdk/test/controller.test.ts
 git add packages/browserctl/src/index.js packages/browserctl/test/index.test.js
 git add apps/server/build-in-skills/browser-runtime/reference.md apps/server/build-in-skills/browser-runtime/SKILL.md
 git add packages/browserctl/README.md packages/browserctl-cli/README.md
 git commit -F .git/COMMIT_MSG_B2
+Remove-Item .git/COMMIT_MSG_B2
 ```
 
 `COMMIT_MSG_B2`：
@@ -1378,8 +1518,25 @@ test("snapshot scope 用 Accessibility.getChildAXTree", async () => {
   assert.ok(t.calls.some(([m]) => m === "Accessibility.getChildAXTree"))
 })
 
-test("snapshot scope 回退：getChildAXTree 抛错 → getFullAXTree + 过滤", async () => {
-  // 让 getChildAXTree 抛错，断言回退路径
+test("snapshot scope 回退：getChildAXTree 抛错 → getFullAXTree", async () => {
+  const t = mockTransport({
+    "DOM.querySelector": { nodeId: 100 },
+    "Accessibility.getFullAXTree": { nodes: [{ nodeId: "1", role: { value: "RootWebArea" }, childIds: [] }] },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  // 让 getChildAXTree 抛错，强制走 getFullAXTree 回退
+  const orig = t.sendCommand
+  t.sendCommand = async (method, params) => {
+    t.calls.push([method, params])
+    if (method === "Accessibility.getChildAXTree") throw new Error("not supported")
+    if (method === "Accessibility.getFullAXTree") return { nodes: [{ nodeId: "1", role: { value: "RootWebArea" }, childIds: [] }] }
+    return {}
+  }
+  const c = new BrowserController(t)
+  const r = await c.snapshot(200, { scopeSelector: "#modal" })
+  assert.equal(r.ok, true)
+  assert.ok(t.calls.some(([m]) => m === "Accessibility.getChildAXTree"))
+  assert.ok(t.calls.some(([m]) => m === "Accessibility.getFullAXTree"), "回退到 getFullAXTree")
 })
 ```
 
@@ -1414,8 +1571,8 @@ test("snapshot scope 回退：getChildAXTree 抛错 → getFullAXTree + 过滤",
           framesNodes.push(r.nodes ?? [])
         }
       } else {
-        // 原有逻辑：主 frame 惰性轮询 + 子 frame 收集（保留不动）
-        // ... 现有 snapshot 主体
+        // 原有逻辑抽成 helper，避免重复（主 frame 惰性轮询 + 子 frame 收集）
+        framesNodes = await this.collectFullSnapshotFrames()
       }
 
       const refs = buildRefs(framesNodes, maxNodes, opts)
@@ -1427,7 +1584,7 @@ test("snapshot scope 回退：getChildAXTree 抛错 → getFullAXTree + 过滤",
   }
 ```
 
-> 注：重构时把现有 snapshot 主体抽成内部 helper 避免重复。`-s` 仅作用于主 frame，iframe 子树仍按现有逻辑收集（scope 分支不收集子 frame，与 spec 一致）。
+> 注：`collectFullSnapshotFrames()` 是把现有 `snapshot` 主体（主 frame 惰性轮询 RootWebArea 子节点 + `Page.getFrameTree` 收集子 frame、跨源 OOPIF 静默跳过）抽出的 `private async collectFullSnapshotFrames(): Promise<unknown[][]>`，返回各 frame 的 nodes 数组。`-s` 仅作用于主 frame，iframe 子树仍按现有逻辑收集（scope 分支不收集子 frame，与 spec 一致）。
 
 - [ ] **Step 4: 跑测试确认通过** → PASS。
 
@@ -1488,13 +1645,23 @@ test("snapshot scope 回退：getChildAXTree 抛错 → getFullAXTree + 过滤",
 - [ ] **Step 2: 更新 `SKILL.md` + 两个 README**。
 - [ ] **Step 3: 提交**
 
-```
-feat(browserctl): Batch 3 snapshot 过滤（--compact/-c、--depth/-d、--scope/-s）
+```bash
+cd d:\code\company\digital-employe-client-web-main
+Write-Output @"
+feat(browserctl): Batch 3 snapshot 过滤 (--compact/-c、--depth/-d、--scope/-s)
 
 - buildRefs 加 compact/maxDepth 选项（compact 丢弃 null name/value）
 - snapshot scope 用 DOM.querySelector + Accessibility.getChildAXTree，失败回退 getFullAXTree
 - bridge + CLI 传新参数，--max-nodes 与 -c/-d/-s 可组合
-- 单测：compact 裁剪、maxDepth 限深、scope getChildAXTree + 回退
+- 单测：compact 裁剣、maxDepth 限深、scope getChildAXTree + 回退
+"@ | Set-Content -Encoding utf8 .git/COMMIT_MSG_B3
+git add packages/browser-sdk/src/ax-tree.ts packages/browser-sdk/src/controller.ts packages/browser-sdk/src/bridge.ts
+git add packages/browser-sdk/test/ax-tree.test.ts packages/browser-sdk/test/controller.test.ts
+git add packages/browserctl/src/index.js packages/browserctl/test/index.test.js
+git add apps/server/build-in-skills/browser-runtime/reference.md apps/server/build-in-skills/browser-runtime/SKILL.md
+git add packages/browserctl/README.md packages/browserctl-cli/README.md
+git commit -F .git/COMMIT_MSG_B3
+Remove-Item .git/COMMIT_MSG_B3
 ```
 
 ---
@@ -1537,7 +1704,44 @@ test("screenshot --annotate：注入 overlay、captureBeyondViewport:true、移�
 })
 
 test("screenshot --annotate：OOPIF ref 抛错时静默跳过", async () => {
-  // 让某个 ref 的 DOM.resolveNode 抛错，断言不中断、其他 ref 仍标注
+  // 两个 ref：@e0(RootWebArea, resolveNode OK) @e1(OOPIF, DOM.resolveNode 抛错)
+  const t = mockTransport({
+    "DOM.getBoxModel": { model: { content: [0, 0, 100, 0, 100, 50, 0, 50] } },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+    "Runtime.callFunctionOn": { result: { value: { x: 0, y: 0, width: 100, height: 50 } } },
+    "Runtime.evaluate": { result: { value: true } },
+    "Page.captureScreenshot": { data: "iVBOR" },
+  })
+  let resolveCount = 0
+  t.sendCommand = async (method, params) => {
+    t.calls.push([method, params])
+    if (method === "Accessibility.getFullAXTree") {
+      return { nodes: [
+        { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"], backendDOMNodeId: 1 },
+        { nodeId: "2", role: { value: "button" }, name: { value: "OK" }, backendDOMNodeId: 2 },
+      ] }
+    }
+    if (method === "DOM.resolveNode") {
+      resolveCount++
+      // 第二次（@e1, backendNodeId 2）抛错模拟 OOPIF
+      if (resolveCount === 2) throw new Error("Cannot find object for given backendNodeId")
+      return { object: { objectId: "obj-1" } }
+    }
+    if (method === "Runtime.callFunctionOn") return { result: { value: { x: 0, y: 0, width: 100, height: 50 } } }
+    if (method === "Runtime.evaluate") return { result: { value: true } }
+    if (method === "Page.captureScreenshot") return { data: "iVBOR" }
+    return {}
+  }
+  const c = new BrowserController(t)
+  await c.snapshot(200)              // 填 refCache（@e0, @e1）
+  const r = await c.screenshot({ annotate: true })
+  assert.equal(r.ok, true, "OOPIF 抛错不应中断整个 annotate")
+  const anns = (r.data as { annotations?: Array<{ ref: string }> }).annotations ?? []
+  assert.ok(anns.some((a) => a.ref === "@e0"), "@e0 仍被标注")
+  assert.ok(!anns.some((a) => a.ref === "@e1"), "@e1(OOPIF) 应被跳过")
+  // overlay 仍注入并移除
+  const evals = t.calls.filter(([m]) => m === "Runtime.evaluate")
+  assert.ok(evals.some(([, p]) => String((p as { expression?: string }).expression).includes("__browserctl_annotations__")))
 })
 ```
 
@@ -1666,8 +1870,10 @@ test("screenshot --annotate：OOPIF ref 抛错时静默跳过", async () => {
 - [ ] **Step 2: 更新 `SKILL.md` + 两个 README**。
 - [ ] **Step 3: 提交**
 
-```
-feat(browserctl): Batch 4 screenshot --annotate（CSS overlay 注入法）
+```bash
+cd d:\code\company\digital-employe-client-web-main
+Write-Output @"
+feat(browserctl): Batch 4 screenshot --annotate (CSS overlay 注入法)
 
 - controller screenshot 加 annotate 选项：逐 ref try/catch 取 bbox（OOPIF 静默跳过）
 - 注入 __browserctl_annotations__ overlay，Page.captureScreenshot captureBeyondViewport:true，再移除 overlay
@@ -1675,6 +1881,13 @@ feat(browserctl): Batch 4 screenshot --annotate（CSS overlay 注入法）
 - bridge + CLI 传 annotate，落盘后返回 annotations 数组
 - 单测：overlay 注入/移除调用序列、captureBeyondViewport:true、OOPIF ref 静默跳过
 - reference.md 注明 OOPIF 跨源 iframe 的 @eN 不参与 annotate
+"@ | Set-Content -Encoding utf8 .git/COMMIT_MSG_B4
+git add packages/browser-sdk/src/controller.ts packages/browser-sdk/src/bridge.ts packages/browser-sdk/test/controller.test.ts
+git add packages/browserctl/src/index.js packages/browserctl/test/index.test.js
+git add apps/server/build-in-skills/browser-runtime/reference.md apps/server/build-in-skills/browser-runtime/SKILL.md
+git add packages/browserctl/README.md packages/browserctl-cli/README.md
+git commit -F .git/COMMIT_MSG_B4
+Remove-Item .git/COMMIT_MSG_B4
 ```
 
 ---
@@ -1695,20 +1908,20 @@ pnpm --filter digital-employee dev:app
 - [ ] **Step 2: 跑 baidu 冒烟**
 
 ```bash
-node packages/browserctl/bin/browserctl.js open https://www.baidu.com
-node packages/browserctl/bin/browserctl.js snapshot --interactive
+node packages/browserctl/src/index.js open https://www.baidu.com
+node packages/browserctl/src/index.js snapshot --interactive
 # 用 @eN 跑：fill / type / hover / dblclick / check / screenshot --annotate
-node packages/browserctl/bin/browserctl.js fill @eN "关键词"
-node packages/browserctl/bin/browserctl.js get value @eN   # 期望 "关键词"
-node packages/browserctl/bin/browserctl.js screenshot --annotate --out baidu.png
+node packages/browserctl/src/index.js fill @eN "关键词"
+node packages/browserctl/src/index.js get value @eN   # 期望 "关键词"
+node packages/browserctl/src/index.js screenshot --annotate --out baidu.png
 # 检查 baidu.png 有红色标注框 + 数字标签
 ```
 
 - [ ] **Step 3: 跑 wait --load networkidle 在慢页面**
 
 ```bash
-node packages/browserctl/bin/browserctl.js open https://www.taobao.com
-node packages/browserctl/bin/browserctl.js wait --load networkidle --timeout 30000
+node packages/browserctl/src/index.js open https://www.taobao.com
+node packages/browserctl/src/index.js wait --load networkidle --timeout 30000
 # 期望 ok:true
 ```
 
