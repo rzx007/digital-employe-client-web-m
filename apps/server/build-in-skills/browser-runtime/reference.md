@@ -112,6 +112,32 @@ browserctl close                       # 关闭内嵌浏览器并收起右栏（
 pnpm --filter @workspace/browserctl browserctl health
 ```
 
+## 独立后端（开发 / CI，可选）
+
+`browserctl` 的命令逻辑已抽成与宿主无关的 SDK（`@workspace/browser-sdk`），除桌面端 Electron 内嵌浏览器外，**同一套命令也能驱动一个独立的 Chrome/Edge**——用于脱离桌面端的自动化（CI、批处理、本地调试 OA 流程）。**数字员工员工日常用桌面端裸命令即可，无需关心这一节。**
+
+启动独立 daemon（它会 launch 一个持久 profile 的 Chrome/Edge，并在 bridge 端口监听）：
+
+```bash
+# 默认 chrome、有头、端口 34555、持久 profile 在 ~/.browserctl/profile-chrome
+node packages/browserctl-daemon/src/index.ts --browser chrome
+# 选项：--browser edge | --headless | --port 34556 | --user-data-dir <path> | --executable <path>
+# 连接已在调试端口运行的浏览器（不 launch）：--cdp <port>
+```
+
+再把 CLI 指向该 daemon（端口与 daemon 一致），命令完全一样：
+
+```bash
+BROWSER_RUNTIME_BRIDGE_URL=http://127.0.0.1:34555 browserctl open https://oa.example.com
+BROWSER_RUNTIME_BRIDGE_URL=http://127.0.0.1:34555 browserctl snapshot --interactive
+```
+
+与桌面端的差异：
+
+- `--confirm` 敏感动作在独立后端**自动放行 + 审计日志**（无人值守，无确认 UI）；
+- 无右栏可视化 / 会话归属 / `open-artifact`（桌面端专属，独立模式 `open-artifact` 返回 404）；
+- 登录态靠**持久 profile** 复用：首次在该 profile 登录一次（如 OA 的 SSO），cookie 存进 `--user-data-dir`，之后无人值守自动化直接复用，不用重登。
+
 ## 元素引用
 
 `browserctl snapshot` 返回来自可访问性树的 `@eN` 引用。页面跳转、刷新、弹窗、表单联动后引用可能失效，需要重新 snapshot。
