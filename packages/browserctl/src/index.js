@@ -53,6 +53,9 @@ Usage:
   browserctl get attr <@eN|selector> <name> [--pretty]
   browserctl is visible|enabled|checked <@eN|selector> [--pretty]
   browserctl find role <role> <action> [value] [--name <accessibleName>] [--exact] [--pretty]
+  browserctl find <action> --role <role> [--name <name>] [--exact]   # flag 模式（action 在前）
+  browserctl find <action> --first|--last|--nth <n> --selector <css> [value] [--pretty]
+  browserctl find <action> --text|--label|--placeholder|--testid|--alt|--title <query> [value] [--exact]
   browserctl find text|label <text> <action> [value] [--exact] [--pretty]
   browserctl find placeholder|testid|alt|title <query> <action> [value] [--pretty]
   browserctl find first|last <selector> <action> [value] [--pretty]
@@ -143,6 +146,22 @@ export function parseFlags(argv) {
       flags.name = argv[++i] || ""
     } else if (value === "--exact") {
       flags.exact = true
+    } else if (value === "--role") {
+      flags.role = argv[++i] || ""
+    } else if (value === "--first") {
+      flags.first = true
+    } else if (value === "--last") {
+      flags.last = true
+    } else if (value === "--nth") {
+      flags.nth = Number(argv[++i])
+    } else if (value === "--placeholder") {
+      flags.placeholder = argv[++i] || ""
+    } else if (value === "--alt") {
+      flags.alt = argv[++i] || ""
+    } else if (value === "--title") {
+      flags.title = argv[++i] || ""
+    } else if (value === "--testid") {
+      flags.testid = argv[++i] || ""
     } else if (value === "--bail") {
       flags.bail = true
     } else if (value === "--interactive" || value === "-i") {
@@ -156,6 +175,136 @@ export function parseFlags(argv) {
     }
   }
   return { args, flags }
+}
+
+const FIND_STRATEGIES = [
+  "role",
+  "text",
+  "label",
+  "placeholder",
+  "alt",
+  "title",
+  "testid",
+  "first",
+  "last",
+  "nth",
+]
+
+const FIND_ACTIONS = [
+  "click",
+  "fill",
+  "type",
+  "hover",
+  "focus",
+  "check",
+  "uncheck",
+  "text",
+]
+
+/** @returns {{ strategy: string, query: string, action: string, valueRest: string[], nth?: number }} */
+export function parseFindRequest(rest, flags) {
+  if (!rest.length) {
+    throw new Error("find requires strategy or action")
+  }
+  if (FIND_STRATEGIES.includes(rest[0])) {
+    return parseFindPositional(rest)
+  }
+  if (FIND_ACTIONS.includes(rest[0])) {
+    return parseFindFlagMode(rest, flags)
+  }
+  throw new Error(
+    `find must start with strategy (${FIND_STRATEGIES.join("|")}) or action (${FIND_ACTIONS.join("|")})`,
+  )
+}
+
+function parseFindPositional(rest) {
+  const strategy = rest[0]
+  let query
+  let action
+  let valueRest
+  let nth
+  if (strategy === "nth") {
+    nth = Number(rest[1])
+    if (!Number.isFinite(nth) || nth < 1) {
+      throw new Error("find nth requires 1-based positive integer")
+    }
+    query = rest[2]
+    action = rest[3]
+    valueRest = rest.slice(4)
+  } else {
+    query = rest[1]
+    action = rest[2]
+    valueRest = rest.slice(3)
+  }
+  if (!query) throw new Error("find query required")
+  if (!FIND_ACTIONS.includes(action)) {
+    throw new Error(`find action must be one of: ${FIND_ACTIONS.join("|")}`)
+  }
+  return { strategy, query, action, valueRest, nth }
+}
+
+function parseFindFlagMode(rest, flags) {
+  const action = rest[0]
+  const valueRest = rest.slice(1)
+  const modes = []
+  if (flags.role) modes.push("role")
+  if (flags.first) modes.push("first")
+  if (flags.last) modes.push("last")
+  if (flags.nth != null && !Number.isNaN(flags.nth)) modes.push("nth")
+  if (flags.text) modes.push("text")
+  if (flags.label) modes.push("label")
+  if (flags.placeholder) modes.push("placeholder")
+  if (flags.alt) modes.push("alt")
+  if (flags.title) modes.push("title")
+  if (flags.testid) modes.push("testid")
+  if (modes.length !== 1) {
+    throw new Error(
+      "find flag mode requires exactly one of: --role, --first, --last, --nth, --text, --label, --placeholder, --alt, --title, --testid",
+    )
+  }
+  const strategy = modes[0]
+  let query
+  let nth
+  switch (strategy) {
+    case "role":
+      query = flags.role
+      break
+    case "first":
+    case "last":
+      query = flags.selector
+      if (!query) throw new Error("--selector required with --first/--last")
+      break
+    case "nth":
+      nth = flags.nth
+      if (!Number.isFinite(nth) || nth < 1) {
+        throw new Error("--nth requires 1-based positive integer")
+      }
+      query = flags.selector
+      if (!query) throw new Error("--selector required with --nth")
+      break
+    case "text":
+      query = flags.text
+      break
+    case "label":
+      query = flags.label
+      break
+    case "placeholder":
+      query = flags.placeholder
+      break
+    case "alt":
+      query = flags.alt
+      break
+    case "title":
+      query = flags.title
+      break
+    case "testid":
+      query = flags.testid
+      break
+    default:
+      throw new Error("unsupported find strategy")
+  }
+  if (!query) throw new Error("find query required")
+  return { strategy, query, action, valueRest, nth }
 }
 
 export function normalizeUrl(input) {
@@ -630,70 +779,25 @@ async function execute(argv, baseUrl, opts = {}) {
   }
 
   if (command === "find") {
-    const FIND_STRATEGIES = [
-      "role",
-      "text",
-      "label",
-      "placeholder",
-      "alt",
-      "title",
-      "testid",
-      "first",
-      "last",
-      "nth",
-    ]
-    const FIND_ACTIONS = [
-      "click",
-      "fill",
-      "type",
-      "hover",
-      "focus",
-      "check",
-      "uncheck",
-      "text",
-    ]
-    const strategy = rest[0]
-    if (!FIND_STRATEGIES.includes(strategy)) {
-      throw new Error(
-        `find strategy must be one of: ${FIND_STRATEGIES.join("|")}`
-      )
-    }
-    let query
-    let action
-    let valueRest
-    let nth
-    if (strategy === "nth") {
-      nth = Number(rest[1])
-      if (!Number.isFinite(nth) || nth < 1) {
-        throw new Error("find nth requires 1-based positive integer")
-      }
-      query = rest[2]
-      action = rest[3]
-      valueRest = rest.slice(4)
-    } else {
-      query = rest[1]
-      action = rest[2]
-      valueRest = rest.slice(3)
-    }
-    if (!query) throw new Error("find query required")
-    if (!FIND_ACTIONS.includes(action)) {
-      throw new Error(`find action must be one of: ${FIND_ACTIONS.join("|")}`)
-    }
-    const needsValue = action === "fill" || action === "type"
+    const parsed = parseFindRequest(rest, flags)
+    const needsValue =
+      parsed.action === "fill" || parsed.action === "type"
     const value = needsValue
-      ? await resolveFillText(["_", ...valueRest], flags)
+      ? await resolveFillText(["_", ...parsed.valueRest], flags)
       : undefined
     if (needsValue && !value) {
-      throw new Error(`${action} requires value, --text-file, or --text-stdin`)
+      throw new Error(
+        `${parsed.action} requires value, --text-file, or --text-stdin`,
+      )
     }
     return await postAction("find", {
-      strategy,
-      query,
-      action,
+      strategy: parsed.strategy,
+      query: parsed.query,
+      action: parsed.action,
       value,
       name: flags.name,
       exact: Boolean(flags.exact),
-      nth,
+      nth: parsed.nth,
     })
   }
 

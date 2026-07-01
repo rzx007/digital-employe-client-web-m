@@ -51,9 +51,14 @@ function resolveExecutable(args: Args): string | undefined {
   return undefined // chrome: chrome-launcher 自动探测
 }
 
+type LaunchedChrome = {
+  kill: () => void
+  process?: NodeJS.EventEmitter
+}
+
 export async function startDaemon(args: Args): Promise<void> {
   let cdpPort: number
-  let chrome: { kill: () => void } | null = null
+  let chrome: LaunchedChrome | null = null
 
   if (args.cdp) {
     cdpPort = args.cdp
@@ -86,13 +91,12 @@ export async function startDaemon(args: Args): Promise<void> {
   await transport.attach()
   const host = new StandaloneHost({})
   const controller = new BrowserController(transport)
-  createBridge(controller, host, { port: args.port })
-  console.error(
-    `[browserctl-daemon] bridge listening on 127.0.0.1:${args.port} — point browserctl at it (BROWSER_RUNTIME_BRIDGE_URL=http://127.0.0.1:${args.port})`,
-  )
 
+  let shuttingDown = false
   // 退出时清理（launch 模式关浏览器；cdp 模式不关，归用户）
   const shutdown = async () => {
+    if (shuttingDown) return
+    shuttingDown = true
     try {
       await transport.detach()
     } catch {
@@ -107,6 +111,39 @@ export async function startDaemon(args: Args): Promise<void> {
     }
     process.exit(0)
   }
+
+  // Chrome 关窗/崩溃 → daemon 自退，避免 HTTP 还在但 CDP 已断的僵尸态
+  if (chrome?.process) {
+    chrome.process.on("exit", (code, signal) => {
+      console.error(
+        `[browserctl-daemon] Chrome exited (code=${code ?? "?"}, signal=${signal ?? "-"}), shutting down daemon`,
+      )
+      void shutdown()
+    })
+  }
+
+  createBridge(controller, host, {
+    port: args.port,
+    health: async () => {
+      if (!transport.isAttached()) {
+        throw new Error("CDP not attached")
+      }
+      await transport.sendCommand("Browser.getVersion", {})
+      return {
+        ok: true,
+        data: {
+          cdp_ready: true,
+          standalone: true,
+          browser: args.browser,
+          bridge_port: args.port,
+        },
+      }
+    },
+  })
+  console.error(
+    `[browserctl-daemon] bridge listening on 127.0.0.1:${args.port} — point browserctl at it (BROWSER_RUNTIME_BRIDGE_URL=http://127.0.0.1:${args.port})`,
+  )
+
   process.on("SIGINT", shutdown)
   process.on("SIGTERM", shutdown)
 }

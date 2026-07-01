@@ -30,7 +30,9 @@
 | `BRIDGE_CONNECT_FAILED` | 无法连接 Electron bridge |
 | `BRIDGE_TIMEOUT` | 请求超时（默认 60s，`BROWSER_RUNTIME_TIMEOUT_MS` 可调） |
 | `BROWSER_UNAVAILABLE` | 内嵌浏览器实例不可用 |
+| `BROWSER_ERROR` | CDP/浏览器底层错误（如 WebSocket 断开、会话失效） |
 | `BROWSER_VIEWPORT_NOT_READY` | 右栏视口尚未完成布局 |
+| `DIALOG_NOT_PENDING` | `dialog accept`/`dismiss` 时无待处理 confirm/prompt |
 | `ELEMENT_NOT_FOUND` | 元素引用或选择器未找到 |
 | `OPTION_NOT_FOUND` | `select` 下拉项按 value/label 都未匹配到 |
 | `NOT_CHECKABLE` | `check`/`uncheck` 目标非 checkbox/radio，无法勾选 |
@@ -174,14 +176,35 @@ browserctl close                       # 关闭内嵌浏览器并收起右栏（
 
 无需先 `snapshot`；在主 frame 内定位后直接走 objectId 路径（**不**转成 `@eN`）。
 
-| strategy | 示例 | 说明 |
-|----------|------|------|
-| `first`/`last`/`nth` | `find first #kw click` | CSS `querySelector(All)`；`nth` 为 **1-based** |
-| `testid` | `find testid submit-btn click` | `[data-testid]` 精确匹配 |
-| `placeholder` | `find placeholder 关键词 fill "text"` | placeholder contains（忽略大小写） |
-| `role` | `find role button click --name 百度一下` | 隐式 role + `--name` contains；`--exact` 全匹配 |
-| `text`/`label` | `find text 登录 click` | 最小包含元素 / label→control；`--exact` 全匹配 |
-| `alt`/`title` | `find title 帮助 hover` | 属性 contains |
+**positional 模式（strategy 在前）：**
+
+```bash
+browserctl find role button click --name "百度一下"
+browserctl find first "#kw" fill "关键词"
+browserctl find nth 2 ".item" click
+```
+
+**flag 模式（action 在前，减少参数顺序错误）：**
+
+```bash
+browserctl find click --role button --name "提交"
+browserctl find fill --first --selector "#kw" "关键词"
+browserctl find click --nth 2 --selector ".item"
+browserctl find click --text "登录" [--exact]
+browserctl find hover --label "帮助"
+browserctl find click --testid submit-btn
+```
+
+flag 模式须**恰好一个**定位 flag：`--role`、`--first`、`--last`、`--nth`（配 `--selector`）、`--text`、`--label`、`--placeholder`、`--alt`、`--title`、`--testid`。
+
+| strategy | positional 示例 | flag 模式 |
+|----------|-----------------|-----------|
+| `first`/`last`/`nth` | `find first #kw click` | `find click --first --selector "#kw"` |
+| `testid` | `find testid submit-btn click` | `find click --testid submit-btn` |
+| `placeholder` | `find placeholder 关键词 fill "text"` | `find fill --placeholder 关键词 "text"` |
+| `role` | `find role button click --name 百度一下` | `find click --role button --name "百度一下"` |
+| `text`/`label` | `find text 登录 click` | `find click --text "登录"` |
+| `alt`/`title` | `find title 帮助 hover` | `find hover --title "帮助"` |
 
 **action**：`click` \| `fill` \| `type` \| `hover` \| `focus` \| `check` \| `uncheck` \| `text`（不含 `select`）。`fill`/`type` 支持 `--text-file`/`--text-stdin`。
 

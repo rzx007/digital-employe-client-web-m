@@ -13,6 +13,7 @@ import {
   formatSnapshotText,
   resolveArtifactRealPath,
   resolveSession,
+  parseFindRequest,
 } from "../src/index.js"
 
 const CLI = fileURLToPath(new URL("../src/index.js", import.meta.url))
@@ -1080,6 +1081,60 @@ test("find role --name 传 name", async () => {
   } finally {
     await closeServer(srv)
   }
+})
+
+test("find flag 模式 click --role button --name", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(
+      ["find", "click", "--role", "button", "--name", "提交"],
+      { env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) } },
+    )
+    assert.equal(received.strategy, "role")
+    assert.equal(received.query, "button")
+    assert.equal(received.action, "click")
+    assert.equal(received.name, "提交")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("find flag 模式 fill --first --selector", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(
+      ["find", "fill", "--first", "--selector", "#kw", "hello"],
+      { env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) } },
+    )
+    assert.equal(received.strategy, "first")
+    assert.equal(received.query, "#kw")
+    assert.equal(received.action, "fill")
+    assert.equal(received.value, "hello")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("parseFindRequest flag 模式解析", () => {
+  const { args, flags } = parseFlags([
+    "click",
+    "--role",
+    "button",
+    "--name",
+    "Go",
+  ])
+  const parsed = parseFindRequest(args, flags)
+  assert.equal(parsed.action, "click")
+  assert.equal(parsed.strategy, "role")
+  assert.equal(parsed.query, "button")
 })
 
 test("back 命中 /back 路由", async () => {

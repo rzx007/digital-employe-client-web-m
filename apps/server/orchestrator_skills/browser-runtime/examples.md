@@ -156,3 +156,62 @@ echo "包含 & 和 \"引号\" 的内容" | browserctl fill @e5 --text-stdin
 ```
 
 `--text-file` / `--text-stdin` 会去掉单个尾随换行；优先级：`--text-file` > `--text-stdin` > 位置参数。`wait --fn` 同理支持 `--fn-file` / `--fn-stdin`。
+
+## find 语义定位（无需 snapshot）
+
+固定布局页可直接定位 + 动作，省去 snapshot 往返：
+
+```bash
+browserctl open https://www.baidu.com
+browserctl find role button click --name "百度一下"
+browserctl find first "#kw" fill "数字员工"
+browserctl wait --selector "#content_left"
+browserctl get text "#content_left"
+```
+
+## eval 与 load 等待
+
+```bash
+browserctl open https://example.com
+browserctl eval "document.title"
+browserctl wait --load domcontentloaded
+browserctl wait --load load --timeout 15000
+browserctl is visible "#main"
+```
+
+## 历史导航
+
+```bash
+browserctl open https://www.baidu.com
+browserctl find first "#kw" fill "test"
+browserctl find role button click --name "百度一下"
+browserctl wait --load networkidle
+browserctl back
+browserctl reload
+browserctl get url
+```
+
+## JavaScript 弹窗（confirm / prompt）
+
+`alert`/`beforeunload` 自动 accept；`confirm`/`prompt` 需显式处理：
+
+```bash
+browserctl click @e5                    # 触发 confirm
+browserctl dialog status                # { pending: true, type, message? }
+browserctl dialog accept                # 或 dialog dismiss
+browserctl wait --ms 300
+browserctl snapshot --interactive
+```
+
+## batch（少 shell 往返）
+
+```bash
+browserctl batch --bail \
+  "open https://www.baidu.com" \
+  "find first \"#kw\" fill \"数字员工\"" \
+  "find role button click --name \"百度一下\"" \
+  "wait --selector \"#content_left\"" \
+  "get url"
+```
+
+`--bail`：首条 `ok:false` 即停；不可嵌套 `batch`。

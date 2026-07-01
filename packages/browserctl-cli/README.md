@@ -121,6 +121,8 @@ The daemon process manages the browser session in the background.
 
 **Auto-start** — the first browser command automatically starts the daemon (default: Chrome, headed, persistent profile at `~/.browserctl/profile-chrome`). No explicit step needed.
 
+**Chrome window closed** — if you close the browser window, the daemon exits automatically; the next `browserctl` command starts a fresh daemon and Chrome (login state is kept in the persistent profile). You do not need `browserctl quit` in this case.
+
 **Explicit start with non-default config** — runs in the foreground; press `Ctrl+C` to stop:
 ```bash
 browserctl serve --browser edge --headless

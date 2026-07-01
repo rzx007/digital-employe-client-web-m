@@ -13,13 +13,27 @@ export interface DaemonState {
   startedAt: number
 }
 
-const STATE_DIR = path.join(os.homedir(), ".browserctl")
-export const defaultStateFile = path.join(STATE_DIR, "daemon.json")
-const DAEMON_LOG = path.join(STATE_DIR, "daemon.log")
+const STATE_DIR = () =>
+  process.env.BROWSERCTL_STATE_DIR
+    ? path.resolve(process.env.BROWSERCTL_STATE_DIR)
+    : path.join(os.homedir(), ".browserctl")
 
-export function readState(file = defaultStateFile): DaemonState | null {
+export function getStateDir(): string {
+  return STATE_DIR()
+}
+
+export function getDefaultStateFile(): string {
+  return path.join(STATE_DIR(), "daemon.json")
+}
+
+function daemonLogPath(): string {
+  return path.join(STATE_DIR(), "daemon.log")
+}
+
+export function readState(file?: string): DaemonState | null {
+  const f = file ?? getDefaultStateFile()
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as DaemonState
+    return JSON.parse(fs.readFileSync(f, "utf8")) as DaemonState
   } catch {
     return null
   }
@@ -49,7 +63,11 @@ export function pickFreePort(): Promise<number> {
   })
 }
 
-function pingHealth(port: number, timeoutMs = 1000): Promise<boolean> {
+/** GET /health 且校验 body：CDP 不可用（含 cdp_ready:false 或 5xx）视为不健康 */
+export async function isDaemonHealthy(
+  port: number,
+  timeoutMs = 1000,
+): Promise<boolean> {
   return new Promise((resolve) => {
     const req = http.get(
       {
@@ -59,8 +77,29 @@ function pingHealth(port: number, timeoutMs = 1000): Promise<boolean> {
         timeout: timeoutMs,
       },
       (res) => {
-        res.resume()
-        resolve(res.statusCode === 200)
+        let body = ""
+        res.on("data", (chunk: Buffer | string) => {
+          body += chunk
+        })
+        res.on("end", () => {
+          if (res.statusCode !== 200) {
+            resolve(false)
+            return
+          }
+          try {
+            const parsed = JSON.parse(body) as {
+              ok?: boolean
+              data?: { cdp_ready?: boolean }
+            }
+            resolve(
+              parsed.ok === true &&
+                (parsed.data?.cdp_ready === undefined ||
+                  parsed.data.cdp_ready === true),
+            )
+          } catch {
+            resolve(false)
+          }
+        })
       },
     )
     req.on("error", () => resolve(false))
@@ -91,42 +130,55 @@ function readLogTail(file: string, max = 2000): string {
   }
 }
 
+function clearStateFile(): void {
+  try {
+    fs.rmSync(getDefaultStateFile(), { force: true })
+  } catch {
+    /* ignore */
+  }
+}
+
 // 确保 daemon 在跑，返回 baseUrl。无则 detached spawn dist/daemon.js 并等就绪。
-//
-// 改进点（暂缓项落地）：
-// - 空闲端口自动选：不再硬编码 34555，避免与已占端口（如 Electron 内嵌桥）冲突。
-// - daemon 启动失败可观测：把 daemon stderr 重定向到 ~/.browserctl/daemon.log；
-//   子进程在健康前退出则立即读取日志尾部抛出真实原因，不再干等 15s。
-// - 复用前校验 state.pid 存活：避免状态文件指向早已死掉的 daemon（或被别的服务占了端口）。
 export async function ensureDaemon(
-  opts: { browser?: string } = {},
+  opts: { browser?: string; headless?: boolean } = {},
 ): Promise<string> {
   const state = readState()
-  if (state && isPidAlive(state.pid) && (await pingHealth(state.port))) {
-    return `http://127.0.0.1:${state.port}`
+  if (state) {
+    if (isPidAlive(state.pid)) {
+      if (await isDaemonHealthy(state.port)) {
+        return `http://127.0.0.1:${state.port}`
+      }
+      // pid 在但 CDP/health 失败 → 杀僵尸 daemon 再起
+      quitDaemon()
+    } else {
+      clearStateFile()
+    }
   }
+
   const port = await pickFreePort()
-  const daemonPath = fileURLToPath(new URL("./daemon.js", import.meta.url)) // 与 cli.js 同目录
-  fs.mkdirSync(STATE_DIR, { recursive: true })
-  // 每次 ensureDaemon 启动覆盖一次日志（仅后台 daemon 的 stderr；前台 serve 不走这里）
-  const logFd = fs.openSync(DAEMON_LOG, "w")
-  const child = spawn(
-    process.execPath,
-    [daemonPath, "--browser", opts.browser ?? "chrome", "--port", String(port)],
-    { detached: true, stdio: ["ignore", "ignore", logFd] },
+  const { exec, args: daemonArgs } = resolveDaemonSpawnArgs(
+    opts.browser ?? "chrome",
+    port,
+    opts.headless,
   )
+  fs.mkdirSync(STATE_DIR(), { recursive: true })
+  const logPath = daemonLogPath()
+  const logFd = fs.openSync(logPath, "w")
+  const child = spawn(exec, daemonArgs, {
+    detached: true,
+    stdio: ["ignore", "ignore", logFd],
+  })
   child.unref()
   const deadline = Date.now() + 15000
   while (Date.now() < deadline) {
-    // 子进程在健康前就退出 → 立刻抛真实原因（如 EADDRINUSE / Chrome 不可用）
     if (child.exitCode !== null || child.signalCode) {
-      const tail = readLogTail(DAEMON_LOG)
+      const tail = readLogTail(logPath)
       throw new Error(
         `daemon 启动后立即退出（port=${port}, exitCode=${child.exitCode}, signal=${child.signalCode ?? "-"}）。日志：\n${tail}\n——也可用 \`browserctl serve\` 前台启动看完整输出`,
       )
     }
-    if (await pingHealth(port)) {
-      writeState(defaultStateFile, {
+    if (await isDaemonHealthy(port)) {
+      writeState(getDefaultStateFile(), {
         port,
         pid: child.pid ?? 0,
         browser: opts.browser ?? "chrome",
@@ -136,7 +188,7 @@ export async function ensureDaemon(
     }
     await new Promise((r) => setTimeout(r, 300))
   }
-  const tail = readLogTail(DAEMON_LOG)
+  const tail = readLogTail(logPath)
   throw new Error(
     `daemon 启动超时(15s, port=${port})。日志：\n${tail}\n——检查 Chrome 是否可用，或用 \`browserctl serve\` 前台启动看日志`,
   )
@@ -153,9 +205,31 @@ export function quitDaemon(): void {
       }
     }
   }
-  try {
-    fs.rmSync(defaultStateFile, { force: true })
-  } catch {
-    /* ignore */
+  clearStateFile()
+}
+
+/** dist/daemon.js（发布）或 monorepo 内 tsx 入口（开发/测试） */
+function resolveDaemonSpawnArgs(
+  browser: string,
+  port: number,
+  headless?: boolean,
+): { exec: string; args: string[] } {
+  const bundled = fileURLToPath(new URL("./daemon.js", import.meta.url))
+  const flags = [
+    "--browser",
+    browser,
+    "--port",
+    String(port),
+    ...(headless ? ["--headless"] : []),
+  ]
+  if (fs.existsSync(bundled)) {
+    return { exec: process.execPath, args: [bundled, ...flags] }
+  }
+  const devEntry = fileURLToPath(
+    new URL("../../browserctl-daemon/src/index.ts", import.meta.url),
+  )
+  return {
+    exec: process.execPath,
+    args: ["--import", "tsx", devEntry, ...flags],
   }
 }
