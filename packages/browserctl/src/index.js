@@ -52,6 +52,15 @@ Usage:
   browserctl get text <@eN|selector> [--pretty]
   browserctl get attr <@eN|selector> <name> [--pretty]
   browserctl is visible|enabled|checked <@eN|selector> [--pretty]
+  browserctl find role <role> <action> [value] [--name <accessibleName>] [--exact] [--pretty]
+  browserctl find text|label <text> <action> [value] [--exact] [--pretty]
+  browserctl find placeholder|testid|alt|title <query> <action> [value] [--pretty]
+  browserctl find first|last <selector> <action> [value] [--pretty]
+  browserctl find nth <n> <selector> <action> [value] [--pretty]
+  browserctl back|forward|reload [--pretty]
+  browserctl scrollintoview|scroll-into-view <@eN|selector> [--pretty]
+  browserctl dialog status|accept [text]|dismiss [--pretty]
+  browserctl batch [--bail] [--json] "<cmd>" "<cmd>" ...   # 顺序执行多条子命令（同进程，仍逐条 HTTP）
   browserctl get-url [--pretty]
   browserctl get-title [--pretty]
   browserctl extract-text [--pretty]
@@ -130,6 +139,12 @@ export function parseFlags(argv) {
       flags.alt = true
     } else if (value === "--meta") {
       flags.meta = true
+    } else if (value === "--name") {
+      flags.name = argv[++i] || ""
+    } else if (value === "--exact") {
+      flags.exact = true
+    } else if (value === "--bail") {
+      flags.bail = true
     } else if (value === "--interactive" || value === "-i") {
       flags.interactive = true
     } else if (value === "--help" || value === "-h") {
@@ -344,30 +359,33 @@ function print(result, pretty = false) {
   process.exitCode = result && result.ok === false ? 1 : 0
 }
 
-async function run(argv, baseUrl) {
+async function execute(argv, baseUrl, opts = {}) {
+  const batchMode = Boolean(opts.batchMode)
   if (baseUrl) activeBaseUrl = baseUrl
   const { args, flags } = parseFlags(argv)
   const [command, ...rest] = args
 
   if (flags.version) {
-    process.stdout.write(`${VERSION}\n`)
-    return
+    if (!batchMode) process.stdout.write(`${VERSION}\n`)
+    return undefined
   }
   if (flags.help || !command) {
-    process.stdout.write(`${usage()}\n`)
-    return
+    if (!batchMode) process.stdout.write(`${usage()}\n`)
+    return undefined
+  }
+
+  if (command === "batch") {
+    throw new Error("nested batch not allowed")
   }
 
   if (command === "health") {
-    print(await requestJson("GET", "/internal/browser/health"), flags.pretty)
-    return
+    return await requestJson("GET", "/internal/browser/health")
   }
 
   if (command === "open" || command === "navigate") {
     const url = normalizeUrl(rest[0])
     if (!url) throw new Error("url required")
-    print(await postAction("navigate", { url }), flags.pretty)
-    return
+    return await postAction("navigate", { url })
   }
 
   if (command === "open-artifact") {
@@ -375,39 +393,29 @@ async function run(argv, baseUrl) {
     if (!rawPath) throw new Error("path required")
     const conversationId = process.env.CONVERSATION_ID
     if (!conversationId) {
-      print(
-        {
-          ok: false,
-          error:
-            "CONVERSATION_ID env not set; cannot resolve which conversation's artifacts to open",
-          code: "MISSING_CONVERSATION_ID",
-        },
-        flags.pretty
-      )
-      return
+      return {
+        ok: false,
+        error:
+          "CONVERSATION_ID env not set; cannot resolve which conversation's artifacts to open",
+        code: "MISSING_CONVERSATION_ID",
+      }
     }
     const realPath = resolveArtifactRealPath(rawPath)
     if (!realPath) {
-      print(
-        {
-          ok: false,
-          error:
-            "cannot resolve path: pass an absolute disk path, or a bare filename with $ARTIFACTS_DIR set",
-          code: "CANNOT_RESOLVE_PATH",
-        },
-        flags.pretty
-      )
-      return
+      return {
+        ok: false,
+        error:
+          "cannot resolve path: pass an absolute disk path, or a bare filename with $ARTIFACTS_DIR set",
+        code: "CANNOT_RESOLVE_PATH",
+      }
     }
     const backendBase = (
       process.env.BROWSER_RUNTIME_BACKEND_URL || "http://127.0.0.1:34567"
     ).replace(/\/$/, "")
-    // 后端静态服务按真实路径 + 会话根沙箱校验（路径在会话根外时返回 404）
     const url = `${backendBase}/chat/conversations/${conversationId}/resources/static?path=${encodeURIComponent(
       realPath
     )}`
-    print(await postAction("navigate", { url }), flags.pretty)
-    return
+    return await postAction("navigate", { url })
   }
 
   if (command === "snapshot") {
@@ -423,121 +431,85 @@ async function run(argv, baseUrl) {
       result.data &&
       Array.isArray(result.data.refs)
     ) {
-      process.stdout.write(
-        `${formatSnapshotText(result.data.refs, Boolean(flags.interactive))}\n`
-      )
-      return
+      const text = formatSnapshotText(result.data.refs, Boolean(flags.interactive))
+      if (batchMode) {
+        return { ok: true, data: { format: "text", text } }
+      }
+      process.stdout.write(`${text}\n`)
+      return undefined
     }
-    print(result, flags.pretty)
-    return
+    return result
   }
 
   if (command === "click") {
     const refOrSelector = rest[0]
     if (!refOrSelector) throw new Error("ref or selector required")
-    print(
-      await postAction("click", {
-        ref_or_selector: refOrSelector,
-        confirmation_required: Boolean(flags.confirm),
-        confirmation_message: flags.confirm || undefined,
-      }),
-      flags.pretty
-    )
-    return
+    return await postAction("click", {
+      ref_or_selector: refOrSelector,
+      confirmation_required: Boolean(flags.confirm),
+      confirmation_message: flags.confirm || undefined,
+    })
   }
 
   if (command === "hover") {
     const refOrSelector = rest[0]
     if (!refOrSelector) throw new Error("ref or selector required")
-    print(
-      await postAction("hover", { ref_or_selector: refOrSelector }),
-      flags.pretty
-    )
-    return
+    return await postAction("hover", { ref_or_selector: refOrSelector })
   }
   if (command === "dblclick") {
     const refOrSelector = rest[0]
     if (!refOrSelector) throw new Error("ref or selector required")
-    print(
-      await postAction("dblclick", { ref_or_selector: refOrSelector }),
-      flags.pretty
-    )
-    return
+    return await postAction("dblclick", { ref_or_selector: refOrSelector })
   }
   if (command === "focus") {
     const refOrSelector = rest[0]
     if (!refOrSelector) throw new Error("ref or selector required")
-    print(
-      await postAction("focus", { ref_or_selector: refOrSelector }),
-      flags.pretty
-    )
-    return
+    return await postAction("focus", { ref_or_selector: refOrSelector })
   }
   if (command === "type") {
     const refOrSelector = rest[0]
     if (!refOrSelector) throw new Error("ref or selector required")
     const text = await resolveFillText(rest, flags)
-    print(
-      await postAction("type", { ref_or_selector: refOrSelector, text }),
-      flags.pretty
-    )
-    return
+    return await postAction("type", { ref_or_selector: refOrSelector, text })
   }
   if (command === "check" || command === "uncheck") {
     const refOrSelector = rest[0]
     if (!refOrSelector) throw new Error("ref or selector required")
-    print(
-      await postAction(command, { ref_or_selector: refOrSelector }),
-      flags.pretty
-    )
-    return
+    return await postAction(command, { ref_or_selector: refOrSelector })
   }
   if (command === "drag") {
     const source = rest[0],
       target = rest[1]
     if (!source || !target) throw new Error("source and target required")
-    print(await postAction("drag", { source, target }), flags.pretty)
-    return
+    return await postAction("drag", { source, target })
   }
   if (command === "upload") {
     const refOrSelector = rest[0]
     if (!refOrSelector) throw new Error("ref or selector required")
     const files = rest.slice(1)
     if (!files.length) throw new Error("at least one file path required")
-    print(
-      await postAction("upload", { ref_or_selector: refOrSelector, files }),
-      flags.pretty
-    )
-    return
+    return await postAction("upload", { ref_or_selector: refOrSelector, files })
   }
 
   if (command === "fill") {
     const refOrSelector = rest[0]
     if (!refOrSelector) throw new Error("ref or selector required")
     const text = await resolveFillText(rest, flags)
-    print(
-      await postAction("fill", {
-        ref_or_selector: refOrSelector,
-        text,
-      }),
-      flags.pretty
-    )
-    return
+    return await postAction("fill", {
+      ref_or_selector: refOrSelector,
+      text,
+    })
   }
 
   if (command === "select") {
     const refOrSelector = rest[0]
     if (!refOrSelector) throw new Error("ref or selector required")
     const value = rest[1]
-    print(
-      await postAction("select", {
-        ref_or_selector: refOrSelector,
-        value,
-        label: flags.label,
-      }),
-      flags.pretty
-    )
-    return
+    return await postAction("select", {
+      ref_or_selector: refOrSelector,
+      value,
+      label: flags.label,
+    })
   }
 
   if (command === "press") {
@@ -549,52 +521,37 @@ async function run(argv, baseUrl) {
     if (flags.shift) modifiers.shift = true
     if (flags.alt) modifiers.alt = true
     if (flags.meta) modifiers.meta = true
-    print(
-      await postAction("press", {
-        key,
-        ref_or_selector: refOrSelector,
-        modifiers,
-      }),
-      flags.pretty
-    )
-    return
+    return await postAction("press", {
+      key,
+      ref_or_selector: refOrSelector,
+      modifiers,
+    })
   }
 
   if (command === "scroll") {
     const refOrSelector =
       rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined
-    print(
-      await postAction("scroll", {
-        ref_or_selector: refOrSelector,
-        to: flags.to,
-        by: Number.isFinite(flags.by) ? flags.by : undefined,
-      }),
-      flags.pretty
-    )
-    return
+    return await postAction("scroll", {
+      ref_or_selector: refOrSelector,
+      to: flags.to,
+      by: Number.isFinite(flags.by) ? flags.by : undefined,
+    })
   }
 
   if (command === "eval") {
     const js = await resolveJsSource(rest, flags)
     if (!js) throw new Error("js expression required")
-    print(
-      await postAction("eval", {
-        js,
-        timeout_ms: Number.isFinite(flags.timeout) ? flags.timeout : 10_000,
-      }),
-      flags.pretty
-    )
-    return
+    return await postAction("eval", {
+      js,
+      timeout_ms: Number.isFinite(flags.timeout) ? flags.timeout : 10_000,
+    })
   }
 
   if (command === "wait") {
-    // --ms：纯客户端固定等待，不经 bridge
     if (Number.isFinite(flags.ms)) {
       await sleep(Math.max(0, flags.ms))
-      print({ ok: true, data: { waitedMs: flags.ms } }, flags.pretty)
-      return
+      return { ok: true, data: { waitedMs: flags.ms } }
     }
-    // fn 源归一：--fn-file > --fn-stdin > --fn（guard 之前完成）
     if (typeof flags.fnFile === "string" && flags.fnFile) {
       try {
         flags.fn = fs.readFileSync(flags.fnFile, "utf8").replace(/\r?\n$/, "")
@@ -606,7 +563,6 @@ async function run(argv, baseUrl) {
     } else if (flags.fnStdin) {
       flags.fn = (await readStdin()).replace(/\r?\n$/, "")
     }
-    // --state 必须配 --selector
     if (flags.state && !flags.selector) {
       throw new Error("--state requires --selector")
     }
@@ -621,62 +577,44 @@ async function run(argv, baseUrl) {
         "wait requires one of --selector, --text, --ms, --url, --load or --fn"
       )
     }
-    print(
-      await postAction("wait", {
-        selector: flags.selector,
-        text: flags.text,
-        url: flags.url || undefined,
-        load: flags.load || undefined,
-        fn: flags.fn || undefined,
-        state: flags.state || undefined,
-        timeout_ms: Number.isFinite(flags.timeout) ? flags.timeout : 10000,
-      }),
-      flags.pretty
-    )
-    return
+    return await postAction("wait", {
+      selector: flags.selector,
+      text: flags.text,
+      url: flags.url || undefined,
+      load: flags.load || undefined,
+      fn: flags.fn || undefined,
+      state: flags.state || undefined,
+      timeout_ms: Number.isFinite(flags.timeout) ? flags.timeout : 10000,
+    })
   }
 
   if (command === "get") {
     const target = rest[0]
     if (target === "url") {
-      print(await postAction("get-url", {}), flags.pretty)
-      return
+      return await postAction("get-url", {})
     }
     if (target === "title") {
-      print(await postAction("get-title", {}), flags.pretty)
-      return
+      return await postAction("get-title", {})
     }
     if (target === "value") {
       const refOrSelector = rest[1]
       if (!refOrSelector) throw new Error("ref or selector required")
-      print(
-        await postAction("get-value", { ref_or_selector: refOrSelector }),
-        flags.pretty
-      )
-      return
+      return await postAction("get-value", { ref_or_selector: refOrSelector })
     }
     if (target === "text") {
       const refOrSelector = rest[1]
       if (!refOrSelector) throw new Error("ref or selector required")
-      print(
-        await postAction("get-text", { ref_or_selector: refOrSelector }),
-        flags.pretty
-      )
-      return
+      return await postAction("get-text", { ref_or_selector: refOrSelector })
     }
     if (target === "attr" || target === "attribute") {
       const refOrSelector = rest[1],
         name = rest[2]
       if (!refOrSelector || !name)
         throw new Error("ref/selector and attribute name required")
-      print(
-        await postAction("get-attribute", {
-          ref_or_selector: refOrSelector,
-          name,
-        }),
-        flags.pretty
-      )
-      return
+      return await postAction("get-attribute", {
+        ref_or_selector: refOrSelector,
+        name,
+      })
     }
     throw new Error("get target must be url|title|value|text|attr")
   }
@@ -688,26 +626,115 @@ async function run(argv, baseUrl) {
       throw new Error("is kind must be visible|enabled|checked")
     }
     if (!refOrSelector) throw new Error("ref or selector required")
-    print(
-      await postAction("is", { kind, ref_or_selector: refOrSelector }),
-      flags.pretty
-    )
-    return
+    return await postAction("is", { kind, ref_or_selector: refOrSelector })
+  }
+
+  if (command === "find") {
+    const FIND_STRATEGIES = [
+      "role",
+      "text",
+      "label",
+      "placeholder",
+      "alt",
+      "title",
+      "testid",
+      "first",
+      "last",
+      "nth",
+    ]
+    const FIND_ACTIONS = [
+      "click",
+      "fill",
+      "type",
+      "hover",
+      "focus",
+      "check",
+      "uncheck",
+      "text",
+    ]
+    const strategy = rest[0]
+    if (!FIND_STRATEGIES.includes(strategy)) {
+      throw new Error(
+        `find strategy must be one of: ${FIND_STRATEGIES.join("|")}`
+      )
+    }
+    let query
+    let action
+    let valueRest
+    let nth
+    if (strategy === "nth") {
+      nth = Number(rest[1])
+      if (!Number.isFinite(nth) || nth < 1) {
+        throw new Error("find nth requires 1-based positive integer")
+      }
+      query = rest[2]
+      action = rest[3]
+      valueRest = rest.slice(4)
+    } else {
+      query = rest[1]
+      action = rest[2]
+      valueRest = rest.slice(3)
+    }
+    if (!query) throw new Error("find query required")
+    if (!FIND_ACTIONS.includes(action)) {
+      throw new Error(`find action must be one of: ${FIND_ACTIONS.join("|")}`)
+    }
+    const needsValue = action === "fill" || action === "type"
+    const value = needsValue
+      ? await resolveFillText(["_", ...valueRest], flags)
+      : undefined
+    if (needsValue && !value) {
+      throw new Error(`${action} requires value, --text-file, or --text-stdin`)
+    }
+    return await postAction("find", {
+      strategy,
+      query,
+      action,
+      value,
+      name: flags.name,
+      exact: Boolean(flags.exact),
+      nth,
+    })
+  }
+
+  if (command === "back" || command === "forward" || command === "reload") {
+    return await postAction(command, {})
+  }
+
+  if (command === "scrollintoview" || command === "scroll-into-view") {
+    const refOrSelector = rest[0]
+    if (!refOrSelector) throw new Error("ref or selector required")
+    return await postAction("scrollintoview", {
+      ref_or_selector: refOrSelector,
+    })
+  }
+
+  if (command === "dialog") {
+    const sub = rest[0]
+    if (sub === "status") {
+      return await postAction("dialog-status", {})
+    }
+    if (sub === "accept") {
+      return await postAction("dialog-accept", {
+        prompt_text: rest.slice(1).join(" ") || undefined,
+      })
+    }
+    if (sub === "dismiss") {
+      return await postAction("dialog-dismiss", {})
+    }
+    throw new Error("dialog subcommand must be status|accept|dismiss")
   }
 
   if (command === "get-url" || command === "get-title") {
-    print(await postAction(command, {}), flags.pretty)
-    return
+    return await postAction(command, {})
   }
 
   if (command === "extract-text") {
-    print(await postAction(command, {}), flags.pretty)
-    return
+    return await postAction(command, {})
   }
 
   if (command === "close") {
-    print(await postAction("close", {}), flags.pretty)
-    return
+    return await postAction("close", {})
   }
 
   if (command === "screenshot") {
@@ -715,16 +742,15 @@ async function run(argv, baseUrl) {
       annotate: Boolean(flags.annotate),
     })
     if (!result.ok) {
-      print(result, flags.pretty)
-      return
+      return result
     }
     const base64 = result.data && result.data.base64 ? result.data.base64 : ""
     if (!base64) {
-      print(
-        { ok: false, error: "empty screenshot data", code: "EMPTY_SCREENSHOT" },
-        flags.pretty
-      )
-      return
+      return {
+        ok: false,
+        error: "empty screenshot data",
+        code: "EMPTY_SCREENSHOT",
+      }
     }
     const outPath = flags.out
       ? path.resolve(flags.out)
@@ -732,34 +758,84 @@ async function run(argv, baseUrl) {
     try {
       fs.writeFileSync(outPath, Buffer.from(base64, "base64"))
     } catch (error) {
-      print(
-        {
-          ok: false,
-          error: `cannot write screenshot to ${outPath}: ${error.message}`,
-          code: "WRITE_FAILED",
-        },
-        flags.pretty
-      )
-      return
+      return {
+        ok: false,
+        error: `cannot write screenshot to ${outPath}: ${error.message}`,
+        code: "WRITE_FAILED",
+      }
     }
-    print(
-      {
-        ok: true,
-        data: {
-          path: outPath,
-          bytes: fs.statSync(outPath).size,
-          annotations: result.data.annotations || [],
-        },
+    return {
+      ok: true,
+      data: {
+        path: outPath,
+        bytes: fs.statSync(outPath).size,
+        annotations: result.data.annotations || [],
       },
-      flags.pretty
-    )
-    return
+    }
   }
 
   throw new Error(`unknown command: ${command}`)
 }
 
-export { run }
+function splitBatchLine(line) {
+  const argv = []
+  const re = /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|[^\s]+/g
+  let m
+  while ((m = re.exec(line)) !== null) {
+    let token = m[0]
+    if (
+      (token.startsWith('"') && token.endsWith('"')) ||
+      (token.startsWith("'") && token.endsWith("'"))
+    ) {
+      token = token.slice(1, -1)
+    }
+    argv.push(token)
+  }
+  return argv
+}
+
+async function run(argv, baseUrl) {
+  const { args, flags } = parseFlags(argv)
+  const [command, ...rest] = args
+
+  if (command === "batch") {
+    if (rest.some((line) => String(line).trim().startsWith("batch"))) {
+      throw new Error("nested batch not allowed")
+    }
+    const commands = flags.json
+      ? JSON.parse(await readStdin())
+      : rest
+    const results = []
+    for (let i = 0; i < commands.length; i++) {
+      const item = commands[i]
+      const subArgv = Array.isArray(item) ? item : splitBatchLine(String(item))
+      if (subArgv[0] === "batch") throw new Error("nested batch not allowed")
+      let result
+      try {
+        result = await execute(subArgv, baseUrl, { batchMode: true })
+      } catch (e) {
+        result = { ok: false, error: e.message, code: "CLI_USAGE_ERROR" }
+      }
+      results.push(result ?? { ok: true })
+      if (flags.bail && result && result.ok === false) {
+        print({ ok: false, data: { failedAt: i, results } }, flags.pretty)
+        return
+      }
+    }
+    const allOk = results.every((r) => r && r.ok !== false)
+    print({ ok: allOk, data: { results } }, flags.pretty)
+    return
+  }
+
+  try {
+    const result = await execute(argv, baseUrl)
+    if (result !== undefined) print(result, flags.pretty)
+  } catch (error) {
+    print({ ok: false, error: error.message, code: "CLI_USAGE_ERROR" })
+  }
+}
+
+export { run, execute }
 
 // 仅当作为可执行入口直接运行时才执行（被测试 import 时不触发）
 // __CLI_BUNDLE__ 由 browserctl-cli 的 tsup build 注入，打包时跳过此自调用——

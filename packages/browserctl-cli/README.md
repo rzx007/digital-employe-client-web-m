@@ -102,6 +102,8 @@ browserctl get text @eN
 browserctl is visible @eN
 browserctl is enabled @eN
 browserctl is checked @eN
+browserctl find role button click --name "Submit"
+browserctl find first "#kw" fill "keywords"
 
 # Save a screenshot to a file
 browserctl screenshot --out shot.png

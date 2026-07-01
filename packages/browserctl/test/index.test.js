@@ -1025,3 +1025,151 @@ test("is 非法 kind 抛 CLI 错误", async () => {
     await closeServer(srv)
   }
 })
+
+test("find first click 命中 /find", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["find", "first", "#kw", "click"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.strategy, "first")
+    assert.equal(received.query, "#kw")
+    assert.equal(received.action, "click")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("find nth 解析 1-based n", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["find", "nth", "2", ".item", "click"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.strategy, "nth")
+    assert.equal(received.nth, 2)
+    assert.equal(received.query, ".item")
+    assert.equal(received.action, "click")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("find role --name 传 name", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(
+      ["find", "role", "button", "click", "--name", "百度一下"],
+      { env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) } }
+    )
+    assert.equal(received.strategy, "role")
+    assert.equal(received.name, "百度一下")
+    assert.equal(received.action, "click")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("back 命中 /back 路由", async () => {
+  let path
+  const srv = await startServer(async (req, res) => {
+    path = req.url
+    res.end(JSON.stringify({ ok: true, data: { url: "https://x/", title: "T" } }))
+  })
+  try {
+    await runCli(["back"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.match(path, /\/back$/)
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("scrollintoview 命中 /scrollintoview", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true }))
+  })
+  try {
+    await runCli(["scrollintoview", "@e3"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.ref_or_selector, "@e3")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("dialog status 命中 /dialog-status", async () => {
+  let path
+  const srv = await startServer(async (req, res) => {
+    path = req.url
+    res.end(JSON.stringify({ ok: true, data: { pending: false } }))
+  })
+  try {
+    await runCli(["dialog", "status"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.match(path, /\/dialog-status$/)
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("batch 顺序执行两条子命令", async () => {
+  let count = 0
+  const srv = await startServer(async (req, res) => {
+    count++
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    const { stdout } = await runCli(
+      ["batch", "get-url", "get-title"],
+      { env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) } }
+    )
+    assert.equal(count, 2)
+    const j = JSON.parse(stdout)
+    assert.equal(j.ok, true)
+    assert.equal(j.data.results.length, 2)
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("batch --bail 第二条失败停止", async () => {
+  let count = 0
+  const srv = await startServer(async (req, res) => {
+    count++
+    if (count === 1) {
+      res.end(JSON.stringify({ ok: true, data: { url: "https://x/" } }))
+    } else {
+      res.end(JSON.stringify({ ok: false, error: "fail", code: "BROWSER_ERROR" }))
+    }
+  })
+  try {
+    const { stdout } = await runCli(
+      ["batch", "--bail", "get-url", "get-title"],
+      { env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) } }
+    )
+    assert.equal(count, 2)
+    const j = JSON.parse(stdout)
+    assert.equal(j.ok, false)
+    assert.equal(j.data.failedAt, 1)
+  } finally {
+    await closeServer(srv)
+  }
+})

@@ -36,6 +36,7 @@ browserctl get url|title
 browserctl get value <@eN|selector>
 browserctl get text <@eN|selector>
 browserctl is visible|enabled|checked <@eN|selector>
+browserctl find role|text|label|placeholder|alt|title|testid|first|last|nth ...
 browserctl extract-text
 browserctl screenshot [--annotate] [--out <path>]  # 落盘返回 { path, bytes, annotations? }，不输出 base64
 browserctl close                      # 关闭内嵌浏览器并收起右栏

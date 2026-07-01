@@ -88,6 +88,8 @@ browserctl get text @e3                  # 读元素可见文本（innerText/tex
 browserctl get attr @e3 href             # 读元素属性（href/src/aria-* 等）
 browserctl is visible @e3                # 断言元素可见（hidden 时 result:false，不存在则报错）
 browserctl is checked @e5                # 断言 checkbox/radio 勾选状态
+browserctl find role button click --name "百度一下"   # 语义定位，无需先 snapshot
+browserctl find first "#kw" fill "关键词"           # CSS 首匹配 + fill
 browserctl get url
 browserctl extract-text
 browserctl screenshot [--annotate]         # 截图落盘；--annotate 在图上标 @eN 红框编号并返回 annotations
