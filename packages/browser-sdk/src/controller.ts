@@ -14,12 +14,70 @@ export interface CdpResult<T = unknown> {
   code?: string
 }
 
+export type FindStrategy =
+  | "role"
+  | "text"
+  | "label"
+  | "placeholder"
+  | "alt"
+  | "title"
+  | "testid"
+  | "first"
+  | "last"
+  | "nth"
+
+export type FindAction =
+  | "click"
+  | "fill"
+  | "type"
+  | "hover"
+  | "focus"
+  | "check"
+  | "uncheck"
+  | "text"
+
+export interface FindOpts {
+  name?: string
+  exact?: boolean
+  nth?: number
+}
+
 // no-op logger so diagnostic call sites compile without a logger dependency
 const logger = {
   info: (..._a: unknown[]) => {},
   debug: (..._a: unknown[]) => {},
   warn: (..._a: unknown[]) => {},
 }
+
+/** isChecked / checkOnObjectId 共用（runOnElement 已注入 el=this，勿再声明 el）。 */
+const IS_CHECKED_JS = `
+if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return !!el.checked;
+const role = el.getAttribute('role');
+if (['checkbox','radio','switch','menuitemcheckbox','menuitemradio','option','treeitem'].includes(role)) {
+  return el.getAttribute('aria-checked') === 'true';
+}
+const label = el.closest('label');
+if (label && label.control) return !!label.control.checked;
+const inner = el.querySelector('input[type=checkbox],input[type=radio]');
+if (inner) return !!inner.checked;
+return null;
+`
+
+const CLEAR_ELEMENT_JS = `
+el.focus();
+const tag = el.tagName;
+if (tag === 'INPUT' || tag === 'TEXTAREA') {
+  const proto = tag === 'TEXTAREA'
+    ? window.HTMLTextAreaElement.prototype
+    : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+  setter.call(el, '');
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+} else if (el.isContentEditable) {
+  el.textContent = '';
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+`
 
 const KEY_MAP: Record<string, { key: string; code: string; keyCode: number }> =
   {
@@ -64,6 +122,7 @@ export class BrowserController {
     pred: (m: string, p: unknown, sessionId?: string) => boolean
     cb: () => void
   }> = []
+  private pendingDialog: { type: string; message: string } | null = null
 
   // 纯命令逻辑：只依赖 transport(CDP 收发)。宿主集成(confirm/ensureBrowser/
   // afterClick/close/会话/产物路径)由 createBridge 持有的 Host 负责，不进 controller。
@@ -71,10 +130,69 @@ export class BrowserController {
     // 事件多路复用：单条 transport.on("message") 总分发，多个 listener 各自 pred 过滤。
     // 避免每处等待逻辑各自注册 transport.on（Electron webContents.debugger 仅一个 listener 槽）。
     transport.on("message", (method, params, sessionId) => {
+      if (method === "Page.javascriptDialogOpening") {
+        const p = params as { type?: string; message?: string }
+        const type = p.type ?? "alert"
+        if (type === "alert" || type === "beforeunload") {
+          void this.sendCommand("Page.handleJavaScriptDialog", {
+            accept: true,
+          })
+          this.pendingDialog = null
+        } else {
+          this.pendingDialog = { type, message: p.message ?? "" }
+        }
+      }
       for (const l of this.messageListeners) {
         if (l.pred(method, params, sessionId)) l.cb()
       }
     })
+  }
+
+  getPendingDialog(): { type: string; message: string } | null {
+    return this.pendingDialog
+  }
+
+  getDialogStatus(): CdpResult<{
+    pending: boolean
+    type?: string
+    message?: string
+  }> {
+    if (!this.pendingDialog) return { ok: true, data: { pending: false } }
+    return {
+      ok: true,
+      data: {
+        pending: true,
+        type: this.pendingDialog.type,
+        message: this.pendingDialog.message,
+      },
+    }
+  }
+
+  async dialogAccept(promptText?: string): Promise<CdpResult> {
+    if (!this.pendingDialog)
+      return {
+        ok: false,
+        error: "no dialog pending",
+        code: "DIALOG_NOT_PENDING",
+      }
+    await this.sendCommand("Page.handleJavaScriptDialog", {
+      accept: true,
+      promptText: promptText ?? "",
+    })
+    this.pendingDialog = null
+    return { ok: true }
+  }
+
+  async dialogDismiss(): Promise<CdpResult> {
+    if (!this.pendingDialog)
+      return {
+        ok: false,
+        error: "no dialog pending",
+        code: "DIALOG_NOT_PENDING",
+      }
+    await this.sendCommand("Page.handleJavaScriptDialog", { accept: false })
+    this.pendingDialog = null
+    return { ok: true }
   }
 
   /**
@@ -110,6 +228,69 @@ export class BrowserController {
       return { ok: true, data: { url, title } }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  async back(): Promise<CdpResult<{ url: string; title: string }>> {
+    try {
+      await this.sendCommand("Page.enable")
+      await this.sendCommand("Page.goBack")
+      await this.waitForLoadComplete(30_000)
+      const urlR = await this.getUrl()
+      const title = await this.getTitle()
+      return {
+        ok: true,
+        data: { url: urlR.data?.url ?? "", title },
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      return {
+        ok: false,
+        error: msg,
+        code: msg === "TIMEOUT" ? "TIMEOUT" : "BROWSER_ERROR",
+      }
+    }
+  }
+
+  async forward(): Promise<CdpResult<{ url: string; title: string }>> {
+    try {
+      await this.sendCommand("Page.enable")
+      await this.sendCommand("Page.goForward")
+      await this.waitForLoadComplete(30_000)
+      const urlR = await this.getUrl()
+      const title = await this.getTitle()
+      return {
+        ok: true,
+        data: { url: urlR.data?.url ?? "", title },
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      return {
+        ok: false,
+        error: msg,
+        code: msg === "TIMEOUT" ? "TIMEOUT" : "BROWSER_ERROR",
+      }
+    }
+  }
+
+  async reload(): Promise<CdpResult<{ url: string; title: string }>> {
+    try {
+      await this.sendCommand("Page.enable")
+      await this.sendCommand("Page.reload")
+      await this.waitForLoadComplete(30_000)
+      const urlR = await this.getUrl()
+      const title = await this.getTitle()
+      return {
+        ok: true,
+        data: { url: urlR.data?.url ?? "", title },
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      return {
+        ok: false,
+        error: msg,
+        code: msg === "TIMEOUT" ? "TIMEOUT" : "BROWSER_ERROR",
+      }
     }
   }
 
@@ -262,25 +443,87 @@ export class BrowserController {
   }
 
   // 把目标滚进视口中心。@eN 走 DOM.resolveNode → callFunctionOn；
-  // selector 走 Runtime.evaluate。失败静默（调用方据 resolveNode 已有兜底）。
-  async scrollIntoView(refOrSelector: string): Promise<void> {
-    const node = await this.resolveNode(refOrSelector)
-    if (!node?.backendNodeId) {
-      const escaped = refOrSelector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
-      await this.sendCommand("Runtime.evaluate", {
-        expression: `document.querySelector('${escaped}')?.scrollIntoView({block:'center',inline:'center'})`,
-      })
-      return
-    }
-    const resolved = (await this.sendCommand("DOM.resolveNode", {
-      backendNodeId: node.backendNodeId,
-    })) as { object?: { objectId?: string } }
-    if (resolved.object?.objectId) {
+  // selector 走 Runtime.evaluate。找不到 → ELEMENT_NOT_FOUND（不再静默）。
+  async scrollIntoView(refOrSelector: string): Promise<CdpResult> {
+    if (refOrSelector.startsWith("@e")) {
+      const node = await this.resolveNode(refOrSelector)
+      if (!node?.backendNodeId) {
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      }
+      const resolved = (await this.sendCommand("DOM.resolveNode", {
+        backendNodeId: node.backendNodeId,
+      })) as { object?: { objectId?: string } }
+      if (!resolved.object?.objectId) {
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      }
       await this.sendCommand("Runtime.callFunctionOn", {
         objectId: resolved.object.objectId,
         functionDeclaration:
           "function(){ this.scrollIntoView({block:'center',inline:'center'}) }",
       })
+      return { ok: true }
+    }
+    const escaped = refOrSelector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+    const evalResult = (await this.sendCommand("Runtime.evaluate", {
+      expression: `(() => {
+        const el = document.querySelector('${escaped}');
+        if (!el) return null;
+        el.scrollIntoView({block:'center',inline:'center'});
+        return true;
+      })()`,
+      returnByValue: true,
+    })) as { result?: { value?: boolean | null } }
+    if (!evalResult.result?.value) {
+      return {
+        ok: false,
+        error: "ELEMENT_NOT_FOUND",
+        code: "ELEMENT_NOT_FOUND",
+      }
+    }
+    return { ok: true }
+  }
+
+  /** 在视口坐标 (x,y) 派发左键 click（默认 clickCount=1）。 */
+  async clickAt(x: number, y: number, clickCount = 1): Promise<void> {
+    await this.sendCommand("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x,
+      y,
+      button: "left",
+      clickCount,
+    })
+    await this.sendCommand("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x,
+      y,
+      button: "left",
+      clickCount,
+    })
+  }
+
+  /** find 路径：objectId 上 scrollIntoView。 */
+  async scrollIntoViewOnObjectId(objectId: string): Promise<CdpResult> {
+    try {
+      await this.sendCommand("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration:
+          "function(){ this.scrollIntoView({block:'center',inline:'center'}) }",
+      })
+      return { ok: true }
+    } catch (e) {
+      return {
+        ok: false,
+        error: (e as Error).message,
+        code: "BROWSER_ERROR",
+      }
     }
   }
 
@@ -292,8 +535,7 @@ export class BrowserController {
   }): Promise<CdpResult> {
     try {
       if (opts.refOrSelector) {
-        await this.scrollIntoView(opts.refOrSelector)
-        return { ok: true }
+        return await this.scrollIntoView(opts.refOrSelector)
       }
       if (opts.to === "bottom") {
         await this.sendCommand("Runtime.evaluate", {
@@ -317,37 +559,30 @@ export class BrowserController {
   async click(refOrSelector: string): Promise<CdpResult> {
     try {
       const nodeInfo = await this.resolveNode(refOrSelector)
-      if (!nodeInfo) return { ok: false, error: "ELEMENT_NOT_FOUND" }
+      if (!nodeInfo) {
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      }
 
-      // 先把元素滚进视口，再重新取一次坐标：滚动会改变 getBoundingClientRect，
-      // 若沿用滚动前的 center，点击会落到视口外的旧位置（off-screen click 失效）。
-      // 重取若为 null（极端时序）则回退到滚动前坐标，绝不因此把已找到的元素判失败。
-      await this.scrollIntoView(refOrSelector)
+      const scrollR = await this.scrollIntoView(refOrSelector)
+      if (!scrollR.ok) return scrollR
+
       const fresh = await this.resolveNode(refOrSelector)
       const { x, y } = (fresh ?? nodeInfo).center
-      await this.sendCommand("Input.dispatchMouseEvent", {
-        type: "mousePressed",
-        x,
-        y,
-        button: "left",
-        clickCount: 1,
-      })
-      await this.sendCommand("Input.dispatchMouseEvent", {
-        type: "mouseReleased",
-        x,
-        y,
-        button: "left",
-        clickCount: 1,
-      })
+      await this.clickAt(x, y)
       return { ok: true }
     } catch (e) {
-      return { ok: false, error: (e as Error).message }
+      return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
     }
   }
 
   async hover(refOrSelector: string): Promise<CdpResult> {
     try {
-      await this.scrollIntoView(refOrSelector)
+      const scrollR = await this.scrollIntoView(refOrSelector)
+      if (!scrollR.ok) return scrollR
       const fresh = await this.resolveNode(refOrSelector)
       if (!fresh)
         return {
@@ -355,11 +590,10 @@ export class BrowserController {
           error: "ELEMENT_NOT_FOUND",
           code: "ELEMENT_NOT_FOUND",
         }
-      const { x, y } = fresh.center
       await this.sendCommand("Input.dispatchMouseEvent", {
         type: "mouseMoved",
-        x,
-        y,
+        x: fresh.center.x,
+        y: fresh.center.y,
       })
       return { ok: true }
     } catch (e) {
@@ -369,7 +603,8 @@ export class BrowserController {
 
   async dblclick(refOrSelector: string): Promise<CdpResult> {
     try {
-      await this.scrollIntoView(refOrSelector)
+      const scrollR = await this.scrollIntoView(refOrSelector)
+      if (!scrollR.ok) return scrollR
       const fresh = await this.resolveNode(refOrSelector)
       if (!fresh)
         return {
@@ -378,20 +613,7 @@ export class BrowserController {
           code: "ELEMENT_NOT_FOUND",
         }
       const { x, y } = fresh.center
-      await this.sendCommand("Input.dispatchMouseEvent", {
-        type: "mousePressed",
-        x,
-        y,
-        button: "left",
-        clickCount: 2,
-      })
-      await this.sendCommand("Input.dispatchMouseEvent", {
-        type: "mouseReleased",
-        x,
-        y,
-        button: "left",
-        clickCount: 2,
-      })
+      await this.clickAt(x, y, 2)
       return { ok: true }
     } catch (e) {
       return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
@@ -509,25 +731,7 @@ export class BrowserController {
   // 注意：runOnElement 已把 funcBody 包成 `function(){ const el=this; <body> }`，
   // 这里 body 不得再声明 el（否则重复声明 SyntaxError）。
   private async isChecked(refOrSelector: string): Promise<boolean | null> {
-    const v = await this.runOnElement(
-      refOrSelector,
-      `
-      // level 1: native checkbox/radio
-      if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return !!el.checked;
-      // level 2: ARIA role
-      const role = el.getAttribute('role');
-      if (['checkbox','radio','switch','menuitemcheckbox','menuitemradio','option','treeitem'].includes(role)) {
-        return el.getAttribute('aria-checked') === 'true';
-      }
-      // level 3: label.control
-      const label = el.closest('label');
-      if (label && label.control) return !!label.control.checked;
-      // level 4 (best-effort, first match): 嵌套 input
-      const inner = el.querySelector('input[type=checkbox],input[type=radio]');
-      if (inner) return !!inner.checked;
-      return null;
-      `
-    )
+    const v = await this.runOnElement(refOrSelector, IS_CHECKED_JS)
     return typeof v === "boolean" ? v : null
   }
 
@@ -608,7 +812,8 @@ export class BrowserController {
 
   async drag(sourceRef: string, targetRef: string): Promise<CdpResult> {
     try {
-      await this.scrollIntoView(sourceRef)
+      const scrollSrc = await this.scrollIntoView(sourceRef)
+      if (!scrollSrc.ok) return scrollSrc
       const src = await this.resolveNode(sourceRef)
       if (!src)
         return {
@@ -616,7 +821,8 @@ export class BrowserController {
           error: "ELEMENT_NOT_FOUND",
           code: "ELEMENT_NOT_FOUND",
         }
-      await this.scrollIntoView(targetRef)
+      const scrollTgt = await this.scrollIntoView(targetRef)
+      if (!scrollTgt.ok) return scrollTgt
       const tgt = await this.resolveNode(targetRef)
       if (!tgt)
         return {
@@ -789,21 +995,6 @@ export class BrowserController {
     refOrSelector: string,
     backendNodeId: number
   ): Promise<void> {
-    const clearBody = `
-      el.focus();
-      const tag = el.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') {
-        const proto = tag === 'TEXTAREA'
-          ? window.HTMLTextAreaElement.prototype
-          : window.HTMLInputElement.prototype;
-        const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
-        setter.call(el, '');
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      } else if (el.isContentEditable) {
-        el.textContent = '';
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    `
     try {
       if (backendNodeId) {
         const resolved = (await this.sendCommand("DOM.resolveNode", {
@@ -811,20 +1002,470 @@ export class BrowserController {
         })) as { object?: { objectId?: string } }
         const objectId = resolved.object?.objectId
         if (!objectId) return
-        await this.sendCommand("Runtime.callFunctionOn", {
-          objectId,
-          functionDeclaration: `function() { const el = this; ${clearBody} }`,
-        })
+        await this.clearElementOnObjectId(objectId)
       } else {
         const escaped = refOrSelector
           .replace(/\\/g, "\\\\")
           .replace(/'/g, "\\'")
         await this.sendCommand("Runtime.evaluate", {
-          expression: `(() => { const el = document.querySelector('${escaped}'); if (!el) return; ${clearBody} })()`,
+          expression: `(() => { const el = document.querySelector('${escaped}'); if (!el) return; ${CLEAR_ELEMENT_JS} })()`,
         })
       }
     } catch {
       /* 清空失败不阻断后续输入 */
+    }
+  }
+
+  /** find 路径：在 objectId 元素上执行 JS（this=el）。 */
+  private async runOnObjectId(
+    objectId: string,
+    funcBody: string,
+    returnByValue = true
+  ): Promise<unknown> {
+    const r = (await this.sendCommand("Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: `function(){ const el=this; ${funcBody} }`,
+      returnByValue,
+    })) as { result?: { value?: unknown } }
+    return r.result?.value
+  }
+
+  private async getCenterFromObjectId(
+    objectId: string
+  ): Promise<{ x: number; y: number } | null> {
+    const v = (await this.runOnObjectId(
+      objectId,
+      `
+      const r = el.getBoundingClientRect();
+      return { x: r.x + r.width/2, y: r.y + r.height/2 };
+      `
+    )) as { x?: number; y?: number } | null | undefined
+    if (v == null || typeof v.x !== "number" || typeof v.y !== "number")
+      return null
+    return { x: v.x, y: v.y }
+  }
+
+  private async clearElementOnObjectId(objectId: string): Promise<void> {
+    try {
+      await this.sendCommand("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function() { const el = this; ${CLEAR_ELEMENT_JS} }`,
+      })
+    } catch {
+      /* 清空失败不阻断后续输入 */
+    }
+  }
+
+  async focusOnObjectId(objectId: string): Promise<CdpResult> {
+    try {
+      await this.sendCommand("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: "function(){ this.focus(); }",
+      })
+      return { ok: true }
+    } catch (e) {
+      return {
+        ok: false,
+        error: (e as Error).message,
+        code: "BROWSER_ERROR",
+      }
+    }
+  }
+
+  async hoverOnObjectId(objectId: string): Promise<CdpResult> {
+    try {
+      const center = await this.getCenterFromObjectId(objectId)
+      if (!center)
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      await this.sendCommand("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x: center.x,
+        y: center.y,
+      })
+      return { ok: true }
+    } catch (e) {
+      return {
+        ok: false,
+        error: (e as Error).message,
+        code: "BROWSER_ERROR",
+      }
+    }
+  }
+
+  async fillOnObjectId(objectId: string, text: string): Promise<CdpResult> {
+    try {
+      const focusR = await this.focusOnObjectId(objectId)
+      if (!focusR.ok) return focusR
+      await this.clearElementOnObjectId(objectId)
+      await this.sendCommand("Input.insertText", { text })
+      return { ok: true }
+    } catch (e) {
+      return {
+        ok: false,
+        error: (e as Error).message,
+        code: "BROWSER_ERROR",
+      }
+    }
+  }
+
+  async typeOnObjectId(objectId: string, raw: string): Promise<CdpResult> {
+    try {
+      const focusR = await this.focusOnObjectId(objectId)
+      if (!focusR.ok) return focusR
+      const text = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+      for (const ch of text) {
+        if (ch === "\n") {
+          const k = resolveKey("Enter")
+          await this.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: k.key,
+            code: k.code,
+            windowsVirtualKeyCode: k.keyCode,
+          })
+          await this.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: k.key,
+            code: k.code,
+            windowsVirtualKeyCode: k.keyCode,
+          })
+        } else if (ch === "\t") {
+          const k = resolveKey("Tab")
+          await this.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: k.key,
+            code: k.code,
+            windowsVirtualKeyCode: k.keyCode,
+          })
+          await this.sendCommand("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: k.key,
+            code: k.code,
+            windowsVirtualKeyCode: k.keyCode,
+          })
+        } else {
+          await this.sendCommand("Input.insertText", { text: ch })
+        }
+      }
+      return { ok: true }
+    } catch (e) {
+      return {
+        ok: false,
+        error: (e as Error).message,
+        code: "BROWSER_ERROR",
+      }
+    }
+  }
+
+  private async isCheckedOnObjectId(
+    objectId: string
+  ): Promise<boolean | null> {
+    const v = await this.runOnObjectId(objectId, IS_CHECKED_JS)
+    return typeof v === "boolean" ? v : null
+  }
+
+  async checkOnObjectId(
+    objectId: string
+  ): Promise<CdpResult<{ checked: boolean }>> {
+    return this.setCheckedOnObjectId(objectId, true)
+  }
+
+  async uncheckOnObjectId(
+    objectId: string
+  ): Promise<CdpResult<{ checked: boolean }>> {
+    return this.setCheckedOnObjectId(objectId, false)
+  }
+
+  private async setCheckedOnObjectId(
+    objectId: string,
+    expect: boolean
+  ): Promise<CdpResult<{ checked: boolean }>> {
+    try {
+      let cur = await this.isCheckedOnObjectId(objectId)
+      if (cur === null)
+        return { ok: false, error: "not checkable", code: "NOT_CHECKABLE" }
+      if (cur === expect) return { ok: true, data: { checked: cur } }
+      const center = await this.getCenterFromObjectId(objectId)
+      if (center) await this.clickAt(center.x, center.y)
+      cur = await this.isCheckedOnObjectId(objectId)
+      if (cur === expect) return { ok: true, data: { checked: cur } }
+      await this.runOnObjectId(
+        objectId,
+        `
+        const label = el.closest('label');
+        const target = (label && label.control) ? label.control : el;
+        target.click();
+        `,
+        false
+      )
+      cur = await this.isCheckedOnObjectId(objectId)
+      if (cur === expect) return { ok: true, data: { checked: cur } }
+      return { ok: false, error: "not checkable", code: "NOT_CHECKABLE" }
+    } catch (e) {
+      return {
+        ok: false,
+        error: (e as Error).message,
+        code: "BROWSER_ERROR",
+      }
+    }
+  }
+
+  /** find 路径：scrollIntoView → 坐标 click。 */
+  async clickOnObjectId(objectId: string): Promise<CdpResult> {
+    try {
+      const scrollR = await this.scrollIntoViewOnObjectId(objectId)
+      if (!scrollR.ok) return scrollR
+      const center = await this.getCenterFromObjectId(objectId)
+      if (!center)
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      await this.clickAt(center.x, center.y)
+      return { ok: true }
+    } catch (e) {
+      return {
+        ok: false,
+        error: (e as Error).message,
+        code: "BROWSER_ERROR",
+      }
+    }
+  }
+
+  /** 主 frame 内语义/选择器定位，返回 objectId（不在 refCache）。 */
+  async locateInMainFrame(
+    strategy: FindStrategy,
+    query: string,
+    opts: FindOpts = {}
+  ): Promise<{ objectId: string } | null> {
+    const expression = this.buildLocateExpression(strategy, query, opts)
+    const result = (await this.sendCommand("Runtime.evaluate", {
+      expression,
+    })) as {
+      result?: { objectId?: string }
+      exceptionDetails?: { text?: string }
+    }
+    if (result.exceptionDetails?.text)
+      throw new Error(`EVAL_ERROR: ${result.exceptionDetails.text}`)
+    const objectId = result.result?.objectId
+    return objectId ? { objectId } : null
+  }
+
+  private buildLocateExpression(
+    strategy: FindStrategy,
+    query: string,
+    opts: FindOpts = {}
+  ): string {
+    const q = JSON.stringify(query)
+    const exact = opts.exact ? "true" : "false"
+    const name = JSON.stringify(opts.name ?? "")
+    switch (strategy) {
+      case "first":
+        return `(() => document.querySelector(${q}))()`
+      case "last":
+        return `(() => { const els = document.querySelectorAll(${q}); return els.length ? els[els.length - 1] : null; })()`
+      case "nth": {
+        const n = opts.nth ?? 1
+        return `(() => { const els = document.querySelectorAll(${q}); return els[${n - 1}] ?? null; })()`
+      }
+      case "testid":
+        return `(() => document.querySelector('[data-testid=' + ${q} + ']'))()`
+      case "placeholder":
+        return `(() => {
+          const ph = ${q}.toLowerCase();
+          for (const el of document.querySelectorAll('input[placeholder],textarea[placeholder]')) {
+            if ((el.getAttribute('placeholder') || '').toLowerCase().includes(ph)) return el;
+          }
+          return null;
+        })()`
+      case "alt":
+        return `(() => {
+          const needle = ${q};
+          for (const el of document.querySelectorAll('[alt]')) {
+            if ((el.getAttribute('alt') || '').includes(needle)) return el;
+          }
+          return null;
+        })()`
+      case "title":
+        return `(() => {
+          const needle = ${q};
+          for (const el of document.querySelectorAll('[title]')) {
+            if ((el.getAttribute('title') || '').includes(needle)) return el;
+          }
+          return null;
+        })()`
+      case "label":
+        return `(() => {
+          const labelText = ${q};
+          const exact = ${exact};
+          for (const label of document.querySelectorAll('label')) {
+            const t = (label.innerText || label.textContent || '').replace(/\\s+/g, ' ').trim();
+            if (exact ? t === labelText : t.includes(labelText)) {
+              if (label.control) return label.control;
+              const forId = label.getAttribute('for');
+              if (forId) {
+                const el = document.getElementById(forId);
+                if (el) return el;
+              }
+            }
+          }
+          return null;
+        })()`
+      case "text":
+        return `(() => {
+          const needle = ${q};
+          const exact = ${exact};
+          function norm(s) { return s.replace(/\\s+/g, ' ').trim(); }
+          function textOf(el) { return norm(el.innerText || el.textContent || ''); }
+          function matches(el) {
+            const t = textOf(el);
+            return exact ? t === needle : t.includes(needle);
+          }
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+          let best = null;
+          let bestLen = Infinity;
+          while (walker.nextNode()) {
+            const el = walker.currentNode;
+            if (!matches(el)) continue;
+            const len = textOf(el).length;
+            if (len < bestLen) { best = el; bestLen = len; }
+          }
+          return best;
+        })()`
+      case "role":
+        return `(() => {
+          const role = ${q}.toLowerCase();
+          const nameFilter = ${name};
+          const exact = ${exact};
+          const IMPLICIT = {
+            button: 'button,input[type=button],input[type=submit],input[type=reset]',
+            link: 'a[href]',
+            textbox: 'input:not([type]),input[type=text],input[type=search],input[type=email],input[type=url],input[type=tel],input[type=password],textarea',
+            checkbox: 'input[type=checkbox]',
+            radio: 'input[type=radio]',
+            heading: 'h1,h2,h3,h4,h5,h6',
+            img: 'img',
+            combobox: 'select',
+          };
+          function accessibleName(el) {
+            const aria = el.getAttribute('aria-label');
+            if (aria) return aria.trim();
+            const labelledBy = el.getAttribute('aria-labelledby');
+            if (labelledBy) {
+              const parts = labelledBy.split(/\\s+/).map(id => {
+                const n = document.getElementById(id);
+                return n ? (n.innerText || n.textContent || '').trim() : '';
+              }).filter(Boolean);
+              if (parts.length) return parts.join(' ');
+            }
+            const title = el.getAttribute('title');
+            if (title) return title.trim();
+            return (el.innerText || '').trim();
+          }
+          function nameMatches(el) {
+            if (!nameFilter) return true;
+            const n = accessibleName(el);
+            return exact ? n === nameFilter : n.includes(nameFilter);
+          }
+          const seen = new Set();
+          const candidates = [];
+          for (const el of document.querySelectorAll('[role]')) {
+            if (el.getAttribute('role').toLowerCase() === role && !seen.has(el)) {
+              seen.add(el);
+              candidates.push(el);
+            }
+          }
+          const implicit = IMPLICIT[role];
+          if (implicit) {
+            for (const el of document.querySelectorAll(implicit)) {
+              if (seen.has(el)) continue;
+              const explicit = el.getAttribute('role');
+              if (!explicit || explicit.toLowerCase() === role) {
+                seen.add(el);
+                candidates.push(el);
+              }
+            }
+          }
+          for (const el of candidates) {
+            if (nameMatches(el)) return el;
+          }
+          return null;
+        })()`
+      default:
+        return `(() => null)()`
+    }
+  }
+
+  /** find 定位后按 action 走 objectId 路径（不经过 refCache/@eN）。 */
+  async findAndAct(
+    strategy: FindStrategy,
+    query: string,
+    action: FindAction,
+    value?: string,
+    opts: FindOpts = {}
+  ): Promise<CdpResult> {
+    try {
+      const located = await this.locateInMainFrame(strategy, query, opts)
+      if (!located)
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      const { objectId } = located
+      switch (action) {
+        case "click":
+          return await this.clickOnObjectId(objectId)
+        case "hover": {
+          const scrollR = await this.scrollIntoViewOnObjectId(objectId)
+          if (!scrollR.ok) return scrollR
+          return await this.hoverOnObjectId(objectId)
+        }
+        case "focus":
+          return await this.focusOnObjectId(objectId)
+        case "fill":
+          if (value == null)
+            return {
+              ok: false,
+              error: "value required for fill",
+              code: "CLI_USAGE_ERROR",
+            }
+          return await this.fillOnObjectId(objectId, value)
+        case "type":
+          if (value == null)
+            return {
+              ok: false,
+              error: "value required for type",
+              code: "CLI_USAGE_ERROR",
+            }
+          return await this.typeOnObjectId(objectId, value)
+        case "check":
+          return await this.checkOnObjectId(objectId)
+        case "uncheck":
+          return await this.uncheckOnObjectId(objectId)
+        case "text": {
+          const v = await this.runOnObjectId(
+            objectId,
+            "return (el.innerText ?? el.textContent ?? '').trim();"
+          )
+          return { ok: true, data: { text: String(v ?? "") } }
+        }
+        default:
+          return {
+            ok: false,
+            error: `unknown find action: ${action}`,
+            code: "CLI_USAGE_ERROR",
+          }
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg.startsWith("EVAL_ERROR"))
+        return { ok: false, error: msg, code: "EVAL_ERROR" }
+      return { ok: false, error: msg, code: "BROWSER_ERROR" }
     }
   }
 

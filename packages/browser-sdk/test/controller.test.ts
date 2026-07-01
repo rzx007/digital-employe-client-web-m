@@ -644,7 +644,10 @@ test("upload 多文件：uploaded 计数与 setFileInputFiles 收到两个绝对
 
 function eventTransport(
   sendCommand: (method: string, params: Record<string, unknown>) => Promise<unknown>
-): Transport & { emit: (m: string, p: unknown) => void } {
+): Transport & {
+  emit: (m: string, p: unknown) => void
+  calls: Array<[string, unknown]>
+} {
   let onCb: ((m: string, p: unknown, sessionId?: string) => void) | null = null
   const calls: Array<[string, unknown]> = []
   const t: Transport & {
@@ -1269,4 +1272,228 @@ test("queryIs checked：已勾选 → result true", async () => {
   const r = await c.queryIs("checked", "@e0")
   assert.equal(r.ok, true)
   assert.equal((r.data as { result: boolean }).result, true)
+})
+
+test("clickAt 派发 pressed+released", async () => {
+  const t = mockTransport({})
+  const c = new BrowserController(t)
+  await c.clickAt(50, 60)
+  const types = t.calls
+    .filter(([m]) => m === "Input.dispatchMouseEvent")
+    .map(([, p]) => (p as { type: string }).type)
+  assert.deepEqual(types, ["mousePressed", "mouseReleased"])
+})
+
+test("scrollIntoView 选择器找不到 → ELEMENT_NOT_FOUND", async () => {
+  const t = mockTransport({
+    "Runtime.evaluate": { result: { value: null } },
+  })
+  const c = new BrowserController(t)
+  const r = await c.scrollIntoView("#missing")
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "ELEMENT_NOT_FOUND")
+})
+
+test("scrollIntoView @eN 不存在 → ELEMENT_NOT_FOUND", async () => {
+  const t = mockTransport({
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: [],
+          backendDOMNodeId: 1,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  await c.snapshot(50)
+  const r = await c.scrollIntoView("@e99")
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "ELEMENT_NOT_FOUND")
+})
+
+test("fillOnObjectId focus + clear + insertText", async () => {
+  const t = mockTransport({
+    "Runtime.callFunctionOn": { result: { value: undefined } },
+  })
+  const c = new BrowserController(t)
+  const r = await c.fillOnObjectId("obj-1", "hello")
+  assert.equal(r.ok, true)
+  const insert = t.calls.filter(([m]) => m === "Input.insertText")
+  assert.equal(insert.length, 1)
+  assert.equal((insert[0][1] as { text?: string }).text, "hello")
+})
+
+test("checkOnObjectId 已勾选短路", async () => {
+  let callN = 0
+  const t = mockTransport({})
+  t.sendCommand = async (method) => {
+    if (method === "Runtime.callFunctionOn") {
+      callN++
+      return { result: { value: true } }
+    }
+    return {}
+  }
+  const c = new BrowserController(t)
+  const r = await c.checkOnObjectId("obj-1")
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { checked: boolean }).checked, true)
+  assert.equal(callN, 1, "已勾选时不应 clickAt")
+})
+
+test("findAndAct first + click 走 objectId 路径", async () => {
+  let evalN = 0
+  const t = mockTransport({})
+  t.sendCommand = async (method, params) => {
+    t.calls.push([method, params])
+    if (method === "Runtime.evaluate") {
+      evalN++
+      return { result: { objectId: "obj-find" } }
+    }
+    if (method === "Runtime.callFunctionOn") {
+      return { result: { value: { x: 50, y: 60 } } }
+    }
+    return {}
+  }
+  const c = new BrowserController(t)
+  const r = await c.findAndAct("first", "#btn", "click")
+  assert.equal(r.ok, true)
+  assert.equal(evalN, 1)
+  const types = t.calls
+    .filter(([m]) => m === "Input.dispatchMouseEvent")
+    .map(([, p]) => (p as { type: string }).type)
+  assert.ok(types.includes("mousePressed"))
+})
+
+test("findAndAct nth 2 使用 1-based 索引", async () => {
+  let expr = ""
+  const t = mockTransport({})
+  t.sendCommand = async (method, params) => {
+    if (method === "Runtime.evaluate") {
+      expr = (params as { expression: string }).expression
+      return { result: { objectId: "obj-nth" } }
+    }
+    if (method === "Runtime.callFunctionOn") {
+      return { result: { value: { x: 10, y: 10 } } }
+    }
+    return {}
+  }
+  const c = new BrowserController(t)
+  await c.findAndAct("nth", ".item", "click", undefined, { nth: 2 })
+  assert.match(expr, /\[1\]/)
+})
+
+test("findAndAct role --name 定位表达式含 role 与 name", async () => {
+  let expr = ""
+  const t = mockTransport({})
+  t.sendCommand = async (method, params) => {
+    if (method === "Runtime.evaluate") {
+      expr = (params as { expression: string }).expression
+      return { result: { objectId: "obj-role" } }
+    }
+    if (method === "Runtime.callFunctionOn") {
+      return { result: { value: { x: 10, y: 10 } } }
+    }
+    return {}
+  }
+  const c = new BrowserController(t)
+  await c.findAndAct("role", "button", "click", undefined, {
+    name: "提交",
+  })
+  assert.match(expr, /button/)
+  assert.match(expr, /提交/)
+})
+
+test("findAndAct text --exact 定位表达式含 exact", async () => {
+  let expr = ""
+  const t = mockTransport({})
+  t.sendCommand = async (method, params) => {
+    if (method === "Runtime.evaluate") {
+      expr = (params as { expression: string }).expression
+      return { result: { objectId: "obj-text" } }
+    }
+    return {}
+  }
+  const c = new BrowserController(t)
+  const r = await c.findAndAct("text", "登录", "text", undefined, {
+    exact: true,
+  })
+  assert.equal(r.ok, true)
+  assert.match(expr, /exact/)
+})
+
+test("findAndAct 未匹配 → ELEMENT_NOT_FOUND", async () => {
+  const t = mockTransport({
+    "Runtime.evaluate": { result: {} },
+  })
+  const c = new BrowserController(t)
+  const r = await c.findAndAct("first", "#missing", "click")
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "ELEMENT_NOT_FOUND")
+})
+
+test("back 调 Page.goBack 并返回 getUrl/getTitle", async () => {
+  let evalN = 0
+  const t = mockTransport({
+    "Page.goBack": {},
+  })
+  t.sendCommand = async (method) => {
+    t.calls.push([method, {}])
+    if (method === "Page.goBack") return {}
+    if (method === "Runtime.evaluate") {
+      evalN++
+      if (evalN === 1) return { result: { value: "complete" } }
+      if (evalN === 2) return { result: { value: "https://prev.example/" } }
+      return { result: { value: "Prev Title" } }
+    }
+    if (method === "Page.enable") return {}
+    return {}
+  }
+  const c = new BrowserController(t)
+  const r = await c.back()
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { url: string }).url, "https://prev.example/")
+  assert.ok(t.calls.some(([m]) => m === "Page.goBack"))
+})
+
+test("alert 弹窗自动 accept 且 pending 为 null", async () => {
+  const t = eventTransport(async (method) => {
+    if (method === "Page.handleJavaScriptDialog") return {}
+    return {}
+  })
+  const c = new BrowserController(t)
+  t.emit("Page.javascriptDialogOpening", {
+    type: "alert",
+    message: "hello",
+  })
+  await new Promise((r) => setTimeout(r, 0))
+  assert.ok(
+    t.calls.some(([m]) => m === "Page.handleJavaScriptDialog"),
+    "alert 应自动 handleJavaScriptDialog"
+  )
+  const status = c.getDialogStatus()
+  assert.equal((status.data as { pending: boolean }).pending, false)
+})
+
+test("confirm 弹窗置 pending", async () => {
+  const t = eventTransport(async () => ({}))
+  const c = new BrowserController(t)
+  t.emit("Page.javascriptDialogOpening", {
+    type: "confirm",
+    message: "sure?",
+  })
+  await new Promise((r) => setTimeout(r, 0))
+  const status = c.getDialogStatus()
+  assert.equal((status.data as { pending: boolean }).pending, true)
+  assert.equal((status.data as { message: string }).message, "sure?")
+})
+
+test("dialogAccept 无 pending → DIALOG_NOT_PENDING", async () => {
+  const c = new BrowserController(mockTransport({}))
+  const r = await c.dialogAccept()
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "DIALOG_NOT_PENDING")
 })

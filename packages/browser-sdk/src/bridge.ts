@@ -2,6 +2,7 @@ import http from "node:http"
 import type { IncomingMessage, ServerResponse } from "node:http"
 
 import { BrowserController } from "./controller.js"
+import type { FindAction, FindStrategy } from "./controller.js"
 import type { Host } from "./host.js"
 
 const DEFAULT_PORT = 34555
@@ -12,7 +13,10 @@ type BrowserResponse<T = unknown> = {
   data?: T
   error?: string
   code?: string
+  warning?: string
 }
+
+let activeReplyController: BrowserController | undefined
 
 function errorCode(message: unknown, fallback = "BROWSER_ERROR"): string {
   const raw = String(message || fallback)
@@ -21,6 +25,7 @@ function errorCode(message: unknown, fallback = "BROWSER_ERROR"): string {
   if (raw.includes("FILE_NOT_FOUND")) return "FILE_NOT_FOUND"
   if (raw.includes("NOT_CHECKABLE")) return "NOT_CHECKABLE"
   if (raw.includes("EVAL_ERROR")) return "EVAL_ERROR"
+  if (raw.includes("DIALOG_NOT_PENDING")) return "DIALOG_NOT_PENDING"
   if (raw.includes("USER_CANCELLED")) return "USER_CANCELLED"
   if (raw.includes("TIMEOUT")) return "TIMEOUT"
   if (raw.includes("BROWSER_VIEWPORT_NOT_READY")) {
@@ -67,7 +72,16 @@ function normalizeBody(status: number, body: unknown): BrowserResponse {
 }
 
 function reply(res: ServerResponse, status: number, body: unknown): void {
-  const normalized = normalizeBody(status, body)
+  let normalized = normalizeBody(status, body)
+  if (activeReplyController) {
+    const pending = activeReplyController.getPendingDialog()
+    if (pending) {
+      normalized = {
+        ...normalized,
+        warning: `JavaScript dialog pending: ${pending.type} — ${pending.message}`,
+      }
+    }
+  }
 
   if (res.headersSent) return
   const payload = JSON.stringify(normalized)
@@ -124,6 +138,8 @@ async function handleBridgeRequest(
   host: Host,
   healthFn?: () => Promise<unknown>
 ): Promise<void> {
+  activeReplyController = controller
+  try {
   const path = req.url?.split("?")[0] ?? ""
 
   if (path === "/internal/browser/health") {
@@ -759,6 +775,176 @@ async function handleBridgeRequest(
         reply(res, result.ok ? 200 : 502, result)
         return
       }
+      case "find": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const strategy = String(body.strategy ?? "")
+        const query = String(body.query ?? "")
+        const action = String(body.action ?? "")
+        const value =
+          body.value != null ? String(body.value) : undefined
+        const validStrategies = [
+          "role",
+          "text",
+          "label",
+          "placeholder",
+          "alt",
+          "title",
+          "testid",
+          "first",
+          "last",
+          "nth",
+        ]
+        const validActions = [
+          "click",
+          "fill",
+          "type",
+          "hover",
+          "focus",
+          "check",
+          "uncheck",
+          "text",
+        ]
+        if (!validStrategies.includes(strategy)) {
+          reply(res, 400, {
+            ok: false,
+            error: "invalid find strategy",
+            code: "CLI_USAGE_ERROR",
+          })
+          return
+        }
+        if (!validActions.includes(action)) {
+          reply(res, 400, {
+            ok: false,
+            error: "invalid find action",
+            code: "CLI_USAGE_ERROR",
+          })
+          return
+        }
+        const result = await controller.findAndAct(
+          strategy as FindStrategy,
+          query,
+          action as FindAction,
+          value,
+          {
+            name: body.name != null ? String(body.name) : undefined,
+            exact: Boolean(body.exact),
+            nth:
+              body.nth != null ? Number(body.nth) : undefined,
+          }
+        )
+        if (!result.ok && result.code === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "back":
+      case "forward":
+      case "reload": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const result =
+          action === "back"
+            ? await controller.back()
+            : action === "forward"
+              ? await controller.forward()
+              : await controller.reload()
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "scrollintoview":
+      case "scroll-into-view": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.scrollIntoView(refOrSelector)
+        if (!result.ok && result.code === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "dialog-status": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        reply(res, 200, controller.getDialogStatus())
+        return
+      }
+      case "dialog-accept": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const result = await controller.dialogAccept(
+          body.prompt_text != null ? String(body.prompt_text) : undefined
+        )
+        if (!result.ok && result.code === "DIALOG_NOT_PENDING") {
+          reply(res, 409, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "dialog-dismiss": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const result = await controller.dialogDismiss()
+        if (!result.ok && result.code === "DIALOG_NOT_PENDING") {
+          reply(res, 409, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
       case "close": {
         await host.close()
         reply(res, 200, { ok: true, data: { closed: true } })
@@ -770,6 +956,9 @@ async function handleBridgeRequest(
   } catch (e) {
     console.warn(`[browser-http] ${action} failed`, String(e))
     reply(res, 500, { ok: false, error: String(e) })
+  }
+  } finally {
+    activeReplyController = undefined
   }
 }
 
