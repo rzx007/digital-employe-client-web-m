@@ -4,4 +4,5 @@ export const modelKeys = {
   registry: () => [...modelKeys.all, "registry"] as const,
   catalog: () => [...modelKeys.all, "catalog"] as const,
   availableCatalog: () => [...modelKeys.all, "available-catalog"] as const,
+  speechConfig: () => [...modelKeys.all, "speech-config"] as const,
 }

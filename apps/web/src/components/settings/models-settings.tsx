@@ -38,7 +38,9 @@ import { cn } from "@workspace/ui/lib/utils"
 import {
   fetchAvailableCatalogIds,
   fetchLlmRegistry,
+  fetchSpeechConfig,
   syncModelFromRemote,
+  updateSpeechConfig,
   type LlmRegistry,
 } from "@/api/model"
 import { getConfigKv, setManyConfigKv } from "@/api/config-kv"
@@ -106,6 +108,13 @@ export function ModelsSettings() {
     React.useState<PromptCacheModeSetting>("")
   const [savingTokens, setSavingTokens] = React.useState(false)
   const [thinkingDisabled, setThinkingDisabled] = React.useState(false)
+  const [speechOpen, setSpeechOpen] = React.useState(false)
+  const [speechUrl, setSpeechUrl] = React.useState("")
+  const [speechLanguage, setSpeechLanguage] = React.useState("zh")
+  const [speechApiKey, setSpeechApiKey] = React.useState("")
+  const [speechKeyPresent, setSpeechKeyPresent] = React.useState(false)
+  const [speechKeyMasked, setSpeechKeyMasked] = React.useState("")
+  const [savingSpeech, setSavingSpeech] = React.useState(false)
 
   const registryQuery = useQuery({
     queryKey: modelKeys.registry(),
@@ -116,6 +125,21 @@ export function ModelsSettings() {
     queryKey: modelKeys.availableCatalog(),
     queryFn: fetchAvailableCatalogIds,
   })
+
+  const speechConfigQuery = useQuery({
+    queryKey: modelKeys.speechConfig(),
+    queryFn: fetchSpeechConfig,
+  })
+
+  React.useEffect(() => {
+    const cfg = speechConfigQuery.data
+    if (!cfg) return
+    setSpeechUrl(cfg.transcription_url)
+    setSpeechLanguage(cfg.transcription_language || "zh")
+    setSpeechKeyPresent(cfg.api_key_present)
+    setSpeechKeyMasked(cfg.api_key_masked || "")
+    setSpeechApiKey("")
+  }, [speechConfigQuery.data])
 
   React.useEffect(() => {
     void Promise.all([
@@ -182,6 +206,34 @@ export function ModelsSettings() {
       toast.error("保存失败")
     } finally {
       setSavingTokens(false)
+    }
+  }
+
+  const handleSaveSpeechConfig = async () => {
+    if (!speechUrl.trim()) {
+      toast.error("请填写转写接口地址")
+      return
+    }
+    setSavingSpeech(true)
+    try {
+      const keyTrimmed = speechApiKey.trim()
+      const next = await updateSpeechConfig({
+        use_active_provider: false,
+        transcription_url: speechUrl.trim(),
+        transcription_model: "",
+        transcription_language: speechLanguage.trim() || "zh",
+        transcription_api_key: keyTrimmed || undefined,
+        api_key_unchanged: keyTrimmed === "",
+      })
+      queryClient.setQueryData(modelKeys.speechConfig(), next)
+      setSpeechKeyPresent(next.api_key_present)
+      setSpeechKeyMasked(next.api_key_masked || "")
+      setSpeechApiKey("")
+      toast.success("语音转写配置已保存")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "保存失败")
+    } finally {
+      setSavingSpeech(false)
     }
   }
 
@@ -300,6 +352,91 @@ export function ModelsSettings() {
             正在切换模型…
           </p>
         )}
+
+        <Separator />
+
+        <Collapsible open={speechOpen} onOpenChange={setSpeechOpen}>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <IconChevronDown
+                className={cn(
+                  "size-4 shrink-0 transition-transform duration-200 ease-out",
+                  speechOpen && "rotate-180"
+                )}
+              />
+              语音转写（ASR）
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-3 pt-4">
+            <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
+              聊天与桌面宠物语音会先经 Finch（或兼容接口）转写为文字。与上方
+              LLM 聊天模型无关，只需填写转写服务地址与凭证。
+            </p>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="speech-transcription-url" className="text-sm">
+                转写接口 URL
+              </Label>
+              <Input
+                id="speech-transcription-url"
+                placeholder="http://192.168.2.125:8082/finch/v1/audio/transcriptions"
+                className="font-mono text-sm"
+                value={speechUrl}
+                onChange={(e) => setSpeechUrl(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="speech-transcription-key" className="text-sm">
+                API Key
+              </Label>
+              <Input
+                id="speech-transcription-key"
+                type="password"
+                autoComplete="new-password"
+                placeholder={
+                  speechKeyPresent
+                    ? "输入新 Key 可覆盖；留空则保留已保存的 Key"
+                    : "Bearer Token"
+                }
+                className="max-w-md font-mono text-sm"
+                value={speechApiKey}
+                onChange={(e) => setSpeechApiKey(e.target.value)}
+              />
+              {speechKeyPresent && !speechApiKey && speechKeyMasked ? (
+                <p className="text-xs text-muted-foreground">
+                  已保存：
+                  <span className="ml-1 font-mono text-foreground">
+                    {speechKeyMasked}
+                  </span>
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="speech-transcription-language" className="text-sm">
+                语言
+              </Label>
+              <Input
+                id="speech-transcription-language"
+                placeholder="zh"
+                className="max-w-xs font-mono text-sm"
+                value={speechLanguage}
+                onChange={(e) => setSpeechLanguage(e.target.value)}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              disabled={savingSpeech || speechConfigQuery.isLoading}
+              onClick={() => void handleSaveSpeechConfig()}
+            >
+              {savingSpeech ? "保存中…" : "保存语音转写配置"}
+            </Button>
+          </CollapsibleContent>
+        </Collapsible>
 
         <Separator />
 

@@ -225,6 +225,46 @@ export interface SyncFromRemoteResult {
   registry: LlmRegistry
 }
 
+export interface SpeechConfig {
+  use_active_provider: boolean
+  transcription_url: string
+  transcription_model: string
+  transcription_language: string
+  api_key_masked: string
+  api_key_present: boolean
+  is_default?: boolean
+}
+
+export interface UpdateSpeechConfigPayload {
+  use_active_provider: boolean
+  transcription_url: string
+  transcription_model: string
+  transcription_language: string
+  transcription_api_key?: string
+  api_key_unchanged?: boolean
+}
+
+export async function fetchSpeechConfig(): Promise<SpeechConfig> {
+  const res = await request<ApiResponse<SpeechConfig>>("/model/speech-config")
+  if (!res.data) {
+    throw new Error(res.msg || "加载语音转写配置失败")
+  }
+  return res.data
+}
+
+export async function updateSpeechConfig(
+  payload: UpdateSpeechConfigPayload
+): Promise<SpeechConfig> {
+  const res = await request<ApiResponse<SpeechConfig>>("/model/speech-config", {
+    method: "PUT",
+    body: payload,
+  })
+  if (!res.data) {
+    throw new Error(res.msg || "保存语音转写配置失败")
+  }
+  return res.data
+}
+
 export async function syncModelFromRemote(): Promise<SyncFromRemoteResult> {
   const res = await request<ApiResponse<SyncFromRemoteResult>>(
     "/model/sync-from-remote",
