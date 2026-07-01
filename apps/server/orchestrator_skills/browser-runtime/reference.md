@@ -33,6 +33,8 @@
 | `BROWSER_VIEWPORT_NOT_READY` | 右栏视口尚未完成布局 |
 | `ELEMENT_NOT_FOUND` | 元素引用或选择器未找到 |
 | `OPTION_NOT_FOUND` | `select` 下拉项按 value/label 都未匹配到 |
+| `NOT_CHECKABLE` | `check`/`uncheck` 目标非 checkbox/radio，无法勾选 |
+| `FILE_NOT_FOUND` | `upload` 给定的文件路径不存在 |
 | `USER_CANCELLED` | 用户取消确认 |
 | `TIMEOUT` | 操作超时（含 `wait` 超时） |
 | `EMPTY_SCREENSHOT` | 截图数据为空 |
@@ -67,14 +69,29 @@ browserctl health
 browserctl open <url>
 browserctl navigate <url>
 browserctl open-artifact <文件名或真实路径>   # 打开会话产物目录里的 HTML（纯文件名按 $ARTIFACTS_DIR 解析，自动识别会话，支持相对资源），无文件卡片时用
-browserctl snapshot [--max-nodes 200] [--tree|--interactive]   # 文本模式省 token；--interactive 仅可交互节点平铺，--tree 全量缩进树，默认 JSON
+browserctl snapshot [--max-nodes 200] [--compact|-c] [--depth N|-d N] [--scope <sel>|-s <sel>] [--tree|--interactive]   # 文本模式省 token；--interactive 仅可交互节点平铺，--tree 全量缩进树，默认 JSON；-c 裁剪 null 字段，-d 限深，-s 限定子树
 browserctl click <@eN|selector> [--confirm "确认文案"]
-browserctl wait --selector <css>     # 等元素出现（默认超时 10s，--timeout 改）
+browserctl wait --selector <css> [--state visible|hidden]  # 等元素出现/隐藏（默认超时 10s，--timeout 改）
 browserctl wait --text <文本>        # 等文本出现在页面
+browserctl wait --url <glob>         # 等 URL 匹配 glob（* 通配）
+browserctl wait --load networkidle   # 等网络空闲（JS 启发式 + Page.lifecycleEvent）
+browserctl wait --fn <js>            # 等 JS 表达式返回 true
+browserctl wait --fn-file <path>       # 从文件读取 JS 表达式（含特殊字符时优先）
+browserctl wait --fn-stdin             # 从管道读取 JS 表达式
 browserctl wait --ms <毫秒>          # 固定等待（无明确目标时兜底）
 browserctl fill <@eN|selector> <text>
 browserctl fill <@eN|selector> --text-file <path>   # 文本含引号/&/|/空格/换行等特殊字符时优先用
 browserctl fill <@eN|selector> --text-stdin          # 从管道读取文本（echo ... | browserctl fill ...）
+browserctl hover <@eN|selector>                       # 鼠标悬停到元素中心（单次 mouseMoved，不点击）
+browserctl dblclick <@eN|selector>                    # 双击（clickCount:2 的 pressed+released）
+browserctl focus <@eN|selector>                       # 调用元素 this.focus() 获取焦点
+browserctl type <@eN|selector> <text>                 # 在当前焦点处追加输入（不清空；printable 走 insertText，\n 走 keyDown+keyUp）
+browserctl type <@eN|selector> --text-file <path>     # 同 fill，文本含特殊字符时优先用文件
+browserctl type <@eN|selector> --text-stdin           # 同 fill，从管道读取文本
+browserctl check <@eN|selector>                       # 勾选 checkbox/radio（未勾选时点击，已勾选保持；非 checkbox/radio 返回 NOT_CHECKABLE）
+browserctl uncheck <@eN|selector>                     # 取消勾选 checkbox（已勾选时点击，未勾选保持；非 checkbox/radio 返回 NOT_CHECKABLE）
+browserctl drag <@eN|selector> <@eN|selector>         # 从 source 元素中心拖拽到 target 元素中心（10 步插值 mouseMoved + pressed/released）
+browserctl upload <@eN|selector> <file...>            # 给 <input type=file> 设置文件（多文件按位置参数顺序；文件不存在返回 FILE_NOT_FOUND）
 browserctl press <key> [@eN|selector] [--ctrl|--shift|--alt|--meta]   # 按键；不带元素则发到当前焦点
 browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>]        # 滚动到元素/顶底/指定距离
 browserctl select <@eN|selector> (<value> | --label <文本>)          # 选原生 <select> 项（value 精确匹配 / label 按文本）
@@ -85,13 +102,41 @@ browserctl get attr <@eN|selector> <name>    # 读元素属性（href/src/aria-*
 browserctl get-url
 browserctl get-title
 browserctl extract-text
-browserctl screenshot [--out <path>]   # 截图落盘到产物目录，返回 { path, bytes }，不输出 base64
+browserctl screenshot [--annotate] [--out <path>]   # 截图落盘，返回 { path, bytes, annotations? }；--annotate 在图上标 @eN 红框编号
 browserctl close                       # 关闭内嵌浏览器并收起右栏（任务结束释放资源）
 ```
 
+### 交互命令详解（Batch 1 新增）
+
+下列 8 条命令与 `agent-browser` 对齐，均接收 `ref_or_selector`（`@eN` 引用或 CSS 选择器），返回统一 envelope `{ ok: true, data: {...} }` 或 `{ ok: false, error, code }`。
+
+| 命令 | 语法 | 参数 | 返回 data | 错误码 |
+|------|------|------|-----------|--------|
+| `hover` | `browserctl hover <ref_or_selector>` | `ref_or_selector` | `{}` | `ELEMENT_NOT_FOUND` / `BROWSER_UNAVAILABLE` |
+| `dblclick` | `browserctl dblclick <ref_or_selector>` | `ref_or_selector` | `{}` | 同上 |
+| `focus` | `browserctl focus <ref_or_selector>` | `ref_or_selector` | `{}` | 同上 |
+| `type` | `browserctl type <ref_or_selector> <text>` | `ref_or_selector`, `text` | `{}` | 同上 |
+| `check` | `browserctl check <ref_or_selector>` | `ref_or_selector` | `{ checked: true/false }` | `NOT_CHECKABLE` / `ELEMENT_NOT_FOUND` |
+| `uncheck` | `browserctl uncheck <ref_or_selector>` | `ref_or_selector` | `{ checked: false }` | `NOT_CHECKABLE` / `ELEMENT_NOT_FOUND` |
+| `drag` | `browserctl drag <source> <target>` | `source`, `target`（均为 `@eN`/选择器） | `{}` | `ELEMENT_NOT_FOUND` |
+| `upload` | `browserctl upload <ref_or_selector> <file...>` | `ref_or_selector`, `files`（路径数组） | `{ uploaded: number }` | `FILE_NOT_FOUND` / `ELEMENT_NOT_FOUND` |
+
+返回示例：
+
+```json
+{ "ok": true, "data": {} }
+{ "ok": false, "error": "file not found: <path>", "code": "FILE_NOT_FOUND" }
+```
+
+> `type` 与 `fill` 区别：`fill` 先清空再输入；`type` 在当前焦点处追加，不清空。两者文本参数均支持 `--text-file` / `--text-stdin`。
+>
+> `fill` 输入段已改用 CDP `Input.insertText` 一次性注入（保留 `clearElement` 原型 setter 清空步骤，非破坏性），避免逐字符 `dispatchKeyEvent` 在中文/复合输入场景下的丢字问题。
+
+> `screenshot --annotate`：先取 refCache（无则自动 `snapshot`），对每个 `@eN` 取 `getBoundingClientRect`，注入 `__browserctl_annotations__` 红框 overlay → `Page.captureScreenshot{captureBeyondViewport:true}` → 移除 overlay。返回 `{ path, bytes, annotations:[{ref,number,role,name?,box:{x,y,width,height}}] }`。**OOPIF 跨源 iframe 的 @eN 不参与 annotate**（主 session 上 `DOM.resolveNode` 会失败，静默跳过）。
+
 > `snapshot` 会自动遍历同源 iframe：iframe 内的元素也会出现在 `@eN` 列表里，可直接 `click`/`fill`/`select`/`get`/`scroll`。跨源 iframe（不同域，走独立进程）会被静默跳过、不影响主页面。**iframe 内只能用 `@eN` 定位，CSS 选择器不跨 frame**（选择器只在主文档生效），优先用 `@eN`。
 
-> `screenshot` 默认写到当前会话产物目录 `browser-screenshot-<时间戳>.png`，或用 `--out` 指定路径。返回文件路径后，如需让模型查看可再 `read` 该图片。
+> `screenshot` 默认写到当前会话产物目录 `browser-screenshot-<时间戳>.png`，或用 `--out` 指定路径。stdout 不含 base64；返回文件路径后，如需让模型查看可再 `read` 该图片。
 
 ## 调用方式
 

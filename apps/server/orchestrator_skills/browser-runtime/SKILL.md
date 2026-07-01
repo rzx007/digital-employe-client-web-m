@@ -68,10 +68,18 @@ browserctl health
 ```bash
 browserctl open https://example.com
 browserctl open-artifact report.html   # 打开产物目录里的 HTML（cwd 即产物目录，纯文件名即可；无文件卡片时用）
-browserctl snapshot --max-nodes 200   # 自动含同源 iframe 内元素；跨源 iframe 跳过
+browserctl snapshot [--interactive] [-c] [-d N] [-s <sel>]   # 自动含同源 iframe；-c 裁剪 null 字段，-d 限深，-s 限定子树
 browserctl click @e3
 browserctl click @e8 --confirm "确认提交申请？"
 browserctl fill @e4 "输入内容"
+browserctl hover @e3                      # 鼠标悬停（不点击）
+browserctl dblclick @e3                   # 双击
+browserctl focus @e3                      # 聚焦元素
+browserctl type @e4 "追加文本"            # 在当前焦点处追加输入（不清空）
+browserctl check @e5                      # 勾选 checkbox/radio
+browserctl uncheck @e5                    # 取消勾选 checkbox
+browserctl drag @e6 @e7                   # 从 @e6 拖到 @e7
+browserctl upload @e8 file1.png file2.pdf # 给 <input type=file> 设置文件
 browserctl press Enter @e4                # 按键（Enter/Tab/Escape/方向键等）；可带 --ctrl/--shift/--alt/--meta
 browserctl scroll --to bottom            # 滚动到底部/顶部；或 scroll @e3 滚到元素、--by <px> 滚指定距离
 browserctl select @e5 --label "北京"     # 选原生 <select> 下拉项（--label 按文本 / 位置参数按 value）
@@ -79,8 +87,11 @@ browserctl get value @e4                 # 读元素当前值，校验 fill/sele
 browserctl get attr @e3 href             # 读元素属性（href/src/aria-* 等）
 browserctl get url
 browserctl extract-text
-browserctl screenshot                    # 截图落盘，返回文件路径（非 base64）
-browserctl wait --selector "#result"     # 操作后等目标元素，再 snapshot
+browserctl screenshot [--annotate]         # 截图落盘；--annotate 在图上标 @eN 红框编号并返回 annotations
+browserctl wait --selector "#result" [--state visible|hidden]  # 操作后等目标元素/状态，再 snapshot
+browserctl wait --url "https://example.com/*"                  # 等 URL 匹配 glob
+browserctl wait --load networkidle                             # 等网络空闲
+browserctl wait --fn "document.querySelector('.ready') !== null"  # 等 JS 条件
 browserctl close                         # 任务结束关闭内嵌浏览器、收起右栏
 ```
 
