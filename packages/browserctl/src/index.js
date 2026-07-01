@@ -35,7 +35,7 @@ Usage:
   browserctl click <@eN|selector> [--confirm "message"] [--pretty]
   browserctl press <key> [@eN|selector] [--ctrl|--shift|--alt|--meta] [--pretty]
   browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>] [--pretty]
-  browserctl wait (--selector <css> | --text <text> | --ms <n>) [--timeout 10000] [--pretty]
+  browserctl wait (--selector <css> [--state visible|hidden] | --text <text> | --url <glob> | --load networkidle | --fn <js> | --fn-file <path> | --fn-stdin | --ms <n>) [--timeout 10000] [--pretty]
   browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin) [--pretty]
   browserctl hover <@eN|selector> [--pretty]
   browserctl dblclick <@eN|selector> [--pretty]
@@ -554,13 +554,35 @@ async function run(argv, baseUrl) {
       print({ ok: true, data: { waitedMs: flags.ms } }, flags.pretty)
       return
     }
-    if (!flags.selector && !flags.text) {
-      throw new Error("wait requires --selector, --text or --ms")
+    // fn 源归一：--fn-file > --fn-stdin > --fn（guard 之前完成）
+    if (typeof flags.fnFile === "string" && flags.fnFile) {
+      try {
+        flags.fn = fs.readFileSync(flags.fnFile, "utf8").replace(/\r?\n$/, "")
+      } catch (error) {
+        throw new Error(
+          `cannot read --fn-file ${flags.fnFile}: ${error.message}`
+        )
+      }
+    } else if (flags.fnStdin) {
+      flags.fn = (await readStdin()).replace(/\r?\n$/, "")
+    }
+    // --state 必须配 --selector
+    if (flags.state && !flags.selector) {
+      throw new Error("--state requires --selector")
+    }
+    if (!flags.selector && !flags.text && !flags.url && !flags.load && !flags.fn) {
+      throw new Error(
+        "wait requires one of --selector, --text, --ms, --url, --load or --fn"
+      )
     }
     print(
       await postAction("wait", {
         selector: flags.selector,
         text: flags.text,
+        url: flags.url || undefined,
+        load: flags.load || undefined,
+        fn: flags.fn || undefined,
+        state: flags.state || undefined,
         timeout_ms: Number.isFinite(flags.timeout) ? flags.timeout : 10000,
       }),
       flags.pretty

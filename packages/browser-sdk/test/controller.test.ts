@@ -639,3 +639,170 @@ test("upload 多文件：uploaded 计数与 setFileInputFiles 收到两个绝对
     fs.unlinkSync(tmp2)
   }
 })
+
+// ---- Batch 2: 事件多路复用 + wait 增强 ----
+
+function eventTransport(
+  sendCommand: (method: string, params: Record<string, unknown>) => Promise<unknown>
+): Transport & { emit: (m: string, p: unknown) => void } {
+  let onCb: ((m: string, p: unknown, sessionId?: string) => void) | null = null
+  const calls: Array<[string, unknown]> = []
+  const t: Transport & {
+    calls: Array<[string, unknown]>
+    emit: (m: string, p: unknown) => void
+  } = {
+    calls,
+    attach: async () => {},
+    detach: async () => {},
+    isAttached: () => true,
+    on: (_ev, cb) => {
+      onCb = cb
+    },
+    sendCommand: async (method, params) => {
+      calls.push([method, params])
+      return sendCommand(method, params as Record<string, unknown>)
+    },
+    emit: (m, p) => {
+      onCb?.(m, p)
+    },
+  }
+  return t
+}
+
+test("事件多路复用：addMessageListener pred 命中后 cb 调用，disposer 移除后不再触发", async () => {
+  const t = eventTransport(async () => ({}))
+  const c = new BrowserController(t)
+  let hit = 0
+  const dispose = c.addMessageListener(
+    (m) => m === "Page.lifecycleEvent",
+    () => {
+      hit++
+    }
+  )
+  t.emit("Page.lifecycleEvent", { name: "networkIdle" })
+  assert.equal(hit, 1)
+  dispose()
+  t.emit("Page.lifecycleEvent", { name: "networkIdle" })
+  assert.equal(hit, 1, "disposer 后不再触发")
+})
+
+test("waitForNetworkIdle：已 idle 短路（不依赖事件直接成功）", async () => {
+  const t = eventTransport(async (method) => {
+    if (method === "Runtime.evaluate") {
+      return { result: { value: true } }
+    }
+    return {}
+  })
+  const c = new BrowserController(t)
+  const r = await c.waitForNetworkIdle(5000)
+  assert.equal(r.ok, true)
+})
+
+test("waitForNetworkIdle：未 idle 时等 networkIdle 事件后成功", async () => {
+  const t = eventTransport(async (method) => {
+    if (method === "Runtime.evaluate") {
+      return { result: { value: false } }
+    }
+    return {}
+  })
+  const c = new BrowserController(t)
+  const r = c.waitForNetworkIdle(5000)
+  await new Promise((res) => setTimeout(res, 50))
+  t.emit("Page.lifecycleEvent", { name: "networkIdle" })
+  const result = await r
+  assert.equal(result.ok, true)
+})
+
+test("waitForNetworkIdle：resolve 后内部 listener 自移除，外部 listener 不受影响", async () => {
+  const t = eventTransport(async (method) => {
+    if (method === "Runtime.evaluate") {
+      return { result: { value: false } }
+    }
+    return {}
+  })
+  const c = new BrowserController(t)
+  let outerHits = 0
+  const outerDispose = c.addMessageListener(
+    (m, p) =>
+      m === "Page.lifecycleEvent" &&
+      (p as { name?: string }).name === "networkIdle",
+    () => {
+      outerHits++
+    }
+  )
+  const r = c.waitForNetworkIdle(5000)
+  await new Promise((res) => setTimeout(res, 30))
+  t.emit("Page.lifecycleEvent", { name: "networkIdle" })
+  await r
+  // waitForNetworkIdle 内部 listener 应已自移除；再 emit 一次，外部 listener 仍响应
+  t.emit("Page.lifecycleEvent", { name: "networkIdle" })
+  assert.equal(outerHits, 2, "外部 listener 应两次响应")
+  outerDispose()
+  t.emit("Page.lifecycleEvent", { name: "networkIdle" })
+  assert.equal(outerHits, 2, "外部 disposer 后不再响应")
+})
+
+test("waitForNetworkIdle：超时返回 TIMEOUT", async () => {
+  const t = eventTransport(async (method) => {
+    if (method === "Runtime.evaluate") {
+      return { result: { value: false } }
+    }
+    return {}
+  })
+  const c = new BrowserController(t)
+  const r = await c.waitForNetworkIdle(100)
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "TIMEOUT")
+})
+
+test("waitForUrl：glob 匹配成功", async () => {
+  let evalCount = 0
+  const t = eventTransport(async (method) => {
+    if (method === "Runtime.evaluate") {
+      evalCount++
+      return {
+        result: {
+          value:
+            evalCount === 1
+              ? "https://example.com/login"
+              : "https://example.com/dashboard",
+        },
+      }
+    }
+    return {}
+  })
+  const c = new BrowserController(t)
+  const r = await c.waitForUrl("https://example.com/dashboard", 5000)
+  assert.equal(r.ok, true)
+})
+
+test("waitForFunction：return true 即满足", async () => {
+  let evalCount = 0
+  const t = eventTransport(async (method) => {
+    if (method === "Runtime.evaluate") {
+      evalCount++
+      return { result: { value: evalCount === 1 ? false : true } }
+    }
+    return {}
+  })
+  const c = new BrowserController(t)
+  const r = await c.waitForFunction(
+    "document.querySelector('.ready') !== null",
+    5000
+  )
+  assert.equal(r.ok, true)
+})
+
+test("waitForState hidden：元素 display:none 即满足", async () => {
+  let evalCount = 0
+  const t = eventTransport(async (method) => {
+    if (method === "Runtime.evaluate") {
+      evalCount++
+      return { result: { value: evalCount === 1 ? false : true } }
+    }
+    return {}
+  })
+  const c = new BrowserController(t)
+  const r = await c.waitForState("#modal", "hidden", 5000)
+  assert.equal(r.ok, true)
+})

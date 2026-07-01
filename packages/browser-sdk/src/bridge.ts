@@ -544,9 +544,24 @@ async function handleBridgeRequest(
         const selector =
           typeof body.selector === "string" ? body.selector : undefined
         const text = typeof body.text === "string" ? body.text : undefined
+        const url = typeof body.url === "string" ? body.url : undefined
+        const load = typeof body.load === "string" ? body.load : undefined
+        const fn = typeof body.fn === "string" ? body.fn : undefined
+        const state = typeof body.state === "string" ? body.state : undefined
         const timeoutMs =
           typeof body.timeout_ms === "number" ? body.timeout_ms : 10_000
-        const result = await controller.waitFor({ selector, text, timeoutMs })
+        let result
+        if (load === "networkidle") {
+          result = await controller.waitForNetworkIdle(timeoutMs)
+        } else if (url) {
+          result = await controller.waitForUrl(url, timeoutMs)
+        } else if (fn) {
+          result = await controller.waitForFunction(fn, timeoutMs)
+        } else if (selector && state) {
+          result = await controller.waitForState(selector, state, timeoutMs)
+        } else {
+          result = await controller.waitFor({ selector, text, timeoutMs })
+        }
         reply(res, result.ok ? 200 : 502, result)
         return
       }

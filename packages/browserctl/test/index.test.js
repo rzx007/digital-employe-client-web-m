@@ -257,6 +257,65 @@ test("wait --selector 发送正确 payload 与默认 timeout", async () => {
   }
 })
 
+test("wait --url 分发到 wait 路由且 body.url 存在", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: { matched: true } }))
+  })
+  try {
+    await runCli(["wait", "--url", "https://example.com/dashboard"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.url, "https://example.com/dashboard")
+    assert.equal(received.timeout_ms, 10000)
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("wait --state 无 --selector 抛 --state requires --selector", async () => {
+  let hit = false
+  const srv = await startServer((req, res) => {
+    hit = true
+    res.end(JSON.stringify({ ok: true }))
+  })
+  try {
+    const { stdout } = await runCli(["wait", "--state", "hidden"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(hit, false)
+    const j = JSON.parse(stdout)
+    assert.equal(j.ok, false)
+    assert.equal(j.code, "CLI_USAGE_ERROR")
+    assert.ok(j.error.includes("--state requires --selector"))
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("wait --fn-file 归一到 body.fn", async () => {
+  const tmp = path.join(os.tmpdir(), `browserctl-fn-${Date.now()}.js`)
+  fs.writeFileSync(tmp, "document.querySelector('.ready') !== null")
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: { matched: true } }))
+  })
+  try {
+    await runCli(["wait", "--fn-file", tmp], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(
+      received.fn,
+      "document.querySelector('.ready') !== null"
+    )
+  } finally {
+    fs.unlinkSync(tmp)
+    await closeServer(srv)
+  }
+})
+
 test("snapshot --interactive 输出紧凑文本", async () => {
   const refs = [
     { ref: "@e0", role: "RootWebArea", name: "百度", depth: 0 },

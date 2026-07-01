@@ -71,8 +71,13 @@ browserctl navigate <url>
 browserctl open-artifact <文件名或真实路径>   # 打开会话产物目录里的 HTML（纯文件名按 $ARTIFACTS_DIR 解析，自动识别会话，支持相对资源），无文件卡片时用
 browserctl snapshot [--max-nodes 200] [--tree|--interactive]   # 文本模式省 token；--interactive 仅可交互节点平铺，--tree 全量缩进树，默认 JSON
 browserctl click <@eN|selector> [--confirm "确认文案"]
-browserctl wait --selector <css>     # 等元素出现（默认超时 10s，--timeout 改）
+browserctl wait --selector <css> [--state visible|hidden]  # 等元素出现/隐藏（默认超时 10s，--timeout 改）
 browserctl wait --text <文本>        # 等文本出现在页面
+browserctl wait --url <glob>         # 等 URL 匹配 glob（* 通配）
+browserctl wait --load networkidle   # 等网络空闲（JS 启发式 + Page.lifecycleEvent）
+browserctl wait --fn <js>            # 等 JS 表达式返回 true
+browserctl wait --fn-file <path>       # 从文件读取 JS 表达式（含特殊字符时优先）
+browserctl wait --fn-stdin             # 从管道读取 JS 表达式
 browserctl wait --ms <毫秒>          # 固定等待（无明确目标时兜底）
 browserctl fill <@eN|selector> <text>
 browserctl fill <@eN|selector> --text-file <path>   # 文本含引号/&/|/空格/换行等特殊字符时优先用

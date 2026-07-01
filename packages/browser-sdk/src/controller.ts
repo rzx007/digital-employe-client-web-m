@@ -60,10 +60,37 @@ function modBits(m: Record<string, boolean>): number {
 
 export class BrowserController {
   private refCache: RefNode[] = []
+  private messageListeners: Array<{
+    pred: (m: string, p: unknown, sessionId?: string) => boolean
+    cb: () => void
+  }> = []
 
   // 纯命令逻辑：只依赖 transport(CDP 收发)。宿主集成(confirm/ensureBrowser/
   // afterClick/close/会话/产物路径)由 createBridge 持有的 Host 负责，不进 controller。
-  constructor(private transport: Transport) {}
+  constructor(private transport: Transport) {
+    // 事件多路复用：单条 transport.on("message") 总分发，多个 listener 各自 pred 过滤。
+    // 避免每处等待逻辑各自注册 transport.on（Electron webContents.debugger 仅一个 listener 槽）。
+    transport.on("message", (method, params, sessionId) => {
+      for (const l of this.messageListeners) {
+        if (l.pred(method, params, sessionId)) l.cb()
+      }
+    })
+  }
+
+  /**
+   * 注册一条 CDP 事件监听；pred 命中时调 cb。返回 disposer，调用即移除该 listener。
+   * 为可观测性暴露为 public（waitForNetworkIdle 等内部等待逻辑也复用它）。
+   */
+  public addMessageListener(
+    pred: (m: string, p: unknown, sessionId?: string) => boolean,
+    cb: () => void
+  ): () => void {
+    const entry = { pred, cb }
+    this.messageListeners.push(entry)
+    return () => {
+      this.messageListeners = this.messageListeners.filter((l) => l !== entry)
+    }
+  }
 
   private async sendCommand(
     method: string,
@@ -862,6 +889,138 @@ export class BrowserController {
       await new Promise((r) => setTimeout(r, 200))
     }
     return { ok: false, error: "TIMEOUT" }
+  }
+
+  /**
+   * 等待网络空闲：先 JS 启发式短路（readyState=complete 且最近资源 >500ms 前），
+   * 否则走 Page.lifecycleEvent name="networkIdle" 事件路径。
+   * 内部 listener 在 resolve/timeout 时自移除，避免 stale 回调。
+   */
+  async waitForNetworkIdle(timeoutMs = 10_000): Promise<CdpResult> {
+    try {
+      await this.sendCommand("Page.enable")
+      await this.sendCommand("Network.enable")
+      const probe = (await this.sendCommand("Runtime.evaluate", {
+        expression: `(() => {
+          if (document.readyState !== 'complete') return false;
+          const entries = performance.getEntriesByType('resource');
+          const last = entries.length ? entries[entries.length - 1].responseEnd : 0;
+          return (performance.now() - last) > 500;
+        })()`,
+        returnByValue: true,
+      })) as { result?: { value?: boolean } }
+      if (probe.result?.value === true) return { ok: true }
+      return await new Promise<CdpResult>((resolve) => {
+        let done = false
+        const timer = setTimeout(() => {
+          if (done) return
+          done = true
+          dispose()
+          resolve({ ok: false, error: "TIMEOUT", code: "TIMEOUT" })
+        }, timeoutMs)
+        const dispose = this.addMessageListener(
+          (m, p) =>
+            m === "Page.lifecycleEvent" &&
+            (p as { name?: string }).name === "networkIdle",
+          () => {
+            if (done) return
+            done = true
+            clearTimeout(timer)
+            dispose()
+            resolve({ ok: true })
+          }
+        )
+      })
+    } catch (e) {
+      return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
+    }
+  }
+
+  /** glob 匹配当前 URL（* → .*，? → .）；200ms 轮询。 */
+  async waitForUrl(
+    pattern: string,
+    timeoutMs = 10_000
+  ): Promise<CdpResult<{ matched: boolean; waitedMs: number }>> {
+    const re = new RegExp(
+      "^" +
+        pattern
+          .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+          .replace(/\*/g, ".*")
+          .replace(/\?/g, ".") +
+        "$"
+    )
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const r = (await this.sendCommand("Runtime.evaluate", {
+          expression: "window.location.href",
+          returnByValue: true,
+        })) as { result?: { value?: string } }
+        if (re.test(r.result?.value ?? "")) {
+          return { ok: true, data: { matched: true, waitedMs: Date.now() - start } }
+        }
+      } catch {
+        /* retry */
+      }
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    return { ok: false, error: "TIMEOUT", code: "TIMEOUT" }
+  }
+
+  /** 轮询 JS 表达式，返回 truthy 即满足；200ms 轮询。 */
+  async waitForFunction(
+    js: string,
+    timeoutMs = 10_000
+  ): Promise<CdpResult<{ matched: boolean; waitedMs: number }>> {
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const r = (await this.sendCommand("Runtime.evaluate", {
+          expression: js,
+          returnByValue: true,
+        })) as { result?: { value?: boolean } }
+        if (r.result?.value === true) {
+          return { ok: true, data: { matched: true, waitedMs: Date.now() - start } }
+        }
+      } catch {
+        /* retry */
+      }
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    return { ok: false, error: "TIMEOUT", code: "TIMEOUT" }
+  }
+
+  /**
+   * 等待元素可见/隐藏状态。
+   * visible：document.querySelector 命中即满足。
+   * hidden：元素不存在，或 getComputedStyle display:none / visibility:hidden。
+   */
+  async waitForState(
+    selector: string,
+    state: "visible" | "hidden",
+    timeoutMs = 10_000
+  ): Promise<CdpResult<{ matched: boolean; waitedMs: number }>> {
+    const escaped = selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+    const expr =
+      state === "hidden"
+        ? `(() => { const el = document.querySelector('${escaped}'); if (!el) return true; const cs = getComputedStyle(el); return cs.display === 'none' || cs.visibility === 'hidden'; })()`
+        : `!!document.querySelector('${escaped}')`
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const r = (await this.sendCommand("Runtime.evaluate", {
+          expression: expr,
+          returnByValue: true,
+        })) as { result?: { value?: boolean } }
+        if (r.result?.value === true) {
+          return { ok: true, data: { matched: true, waitedMs: Date.now() - start } }
+        }
+      } catch {
+        /* retry */
+      }
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    return { ok: false, error: "TIMEOUT", code: "TIMEOUT" }
   }
 
   async extractText(): Promise<CdpResult<{ text: string }>> {

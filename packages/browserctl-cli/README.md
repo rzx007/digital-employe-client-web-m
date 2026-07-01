@@ -79,6 +79,12 @@ browserctl drag @eN @eM
 # Upload files to an <input type="file">
 browserctl upload @eN file1.png file2.pdf
 
+# Wait for page conditions (selector, URL glob, network idle, JS expression)
+browserctl wait --selector "#result"
+browserctl wait --url "https://example.com/dashboard"
+browserctl wait --load networkidle
+browserctl wait --fn "document.querySelector('.ready') !== null"
+
 # Get the current page URL
 browserctl get url
 
