@@ -153,10 +153,28 @@ export function mapStoredMessagesToUIMessages(
         }
 
         if (message.streamState === "streaming") {
-          // 进行中且尚无结构化 parts：不渲染这条（不塞"正在执行…"假气泡、也不渲染脏 content）。
-          // 顶部"正在生成回复..."打字指示器负责 loading 态；resume SSE 重放 buffer 后会用
-          // 结构化 parts 接管并渲染真实内容。
-          return null
+          if (
+            message.content &&
+            shouldHideStaleQueuePlaceholder(
+              message.streamState,
+              message.content
+            )
+          ) {
+            // 队列占位提示仍不渲染：顶部指示器 + SSE 接管即可。
+            return null
+          }
+          // 进行中且尚无结构化 parts：保留空壳占位（id + streamState），供切回会话时
+          // resume / hydrateEmptyAssistantShellsFromDb 按 db id 对齐；不在 parts 里塞
+          // 脏 content（后端平铺 chunk 无结构）。可见内容由 SSE 或 DB message_parts 补全。
+          const uiMessage: UIMessage = {
+            id: message.id,
+            role: message.role,
+            parts: [],
+          }
+          ;(
+            uiMessage as UIMessage & { metadata?: Record<string, unknown> }
+          ).metadata = assistantMeta
+          return uiMessage
         }
 
         return null

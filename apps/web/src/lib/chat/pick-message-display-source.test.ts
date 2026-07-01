@@ -5,6 +5,7 @@ import {
   applyStoredPartsToInterruptedAssistants,
   hydrateEmptyAssistantShellsFromDb,
   pickMessageDisplaySource,
+  preferStoredStructuredPartsWhenLiveTextOnly,
 } from "./pick-message-display-source"
 
 describe("applyStoredPartsToInterruptedAssistants", () => {
@@ -113,6 +114,63 @@ describe("pickMessageDisplaySource", () => {
     })
   })
 
+  it("ready 期：live 仅 text、DB 同 id 含 tool parts → 用 DB 结构化 parts", () => {
+    const live: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "hi" }] },
+      {
+        id: "42",
+        role: "assistant",
+        parts: [{ type: "text", text: "只有文字" }],
+        metadata: { streamState: "streaming" },
+      },
+    ]
+    const stored: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "hi" }] },
+      {
+        id: "42",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "正文" },
+          {
+            type: "tool-submit_clarifying_questions",
+            toolCallId: "c1",
+            state: "input-available",
+          },
+        ],
+        metadata: { streamState: "streaming" },
+      },
+    ]
+    const out = pickMessageDisplaySource(live, stored, "ready")
+    const assistant = out.find((m) => m.id === "42")
+    expect(assistant?.parts).toHaveLength(2)
+    expect(assistant?.parts?.[1]?.type).toMatch(/^tool-/)
+  })
+
+  it("submitted 期(切回会话)：live 落后 DB → 用 DB 快照含 parts", () => {
+    const live: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "hi" }] },
+    ]
+    const stored: UIMessage[] = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "hi" }] },
+      {
+        id: "42",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "正在查员工" },
+          {
+            type: "tool-list_employees",
+            toolCallId: "t1",
+            state: "output-available",
+          },
+        ],
+        metadata: { streamState: "streaming" },
+      },
+    ]
+    const out = pickMessageDisplaySource(live, stored, "submitted")
+    const assistant = out.find((m) => m.id === "42")
+    expect(assistant?.parts?.length).toBe(2)
+  })
+
   it("ready 期(回调通知就地刷新)：等长 live 末条 assistant 空壳 + DB 同 id 已落内容 → 回退 DB", () => {
     // 服务端发起的总管增量汇报：resume 走 no_stream 后末条被清成空壳，
     // 随后 DB refetch 带回已完成正文(等长、completed、非 interrupted)，
@@ -139,6 +197,32 @@ describe("pickMessageDisplaySource", () => {
     const assistant = out.find((m) => m.id === "99")
     expect(assistant?.parts?.length).toBe(1)
     expect(assistant?.parts?.[0]).toMatchObject({ text: "回调汇报正文" })
+  })
+})
+
+describe("preferStoredStructuredPartsWhenLiveTextOnly", () => {
+  it("live 已有 tool parts 时不覆盖", () => {
+    const live: UIMessage[] = [
+      {
+        id: "42",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "a" },
+          { type: "tool-run", toolCallId: "t1", state: "input-available" },
+        ],
+      },
+    ]
+    const stored: UIMessage[] = [
+      {
+        id: "42",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "b" },
+          { type: "tool-run", toolCallId: "t2", state: "input-available" },
+        ],
+      },
+    ]
+    expect(preferStoredStructuredPartsWhenLiveTextOnly(live, stored)).toBe(live)
   })
 })
 

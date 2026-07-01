@@ -4,7 +4,7 @@ import { mapStoredMessagesToUIMessages } from "./message-utils"
 import type { Message } from "@/types/chat"
 
 describe("mapStoredMessagesToUIMessages queue placeholder", () => {
-  it("does not render a placeholder bubble while streaming with no structured parts", () => {
+  it("does not render a placeholder bubble while streaming with queue hint content", () => {
     const messages: Message[] = [
       {
         id: "db:99",
@@ -14,9 +14,25 @@ describe("mapStoredMessagesToUIMessages queue placeholder", () => {
       },
     ]
     const ui = mapStoredMessagesToUIMessages(messages)
-    // 不再塞"正在执行…"假气泡：流式无结构化 parts 时不渲染这条，
-    // 由顶部"正在生成回复..."指示器负责 loading，真内容由 SSE 接管。
+    // 队列占位仍不渲染：顶部指示器负责 loading。
     expect(ui).toHaveLength(0)
+  })
+
+  it("keeps streaming assistant shell when no structured parts yet", () => {
+    const messages: Message[] = [
+      {
+        id: "db:99",
+        role: "assistant",
+        content: "partial chunk text",
+        streamState: "streaming",
+      },
+    ]
+    const ui = mapStoredMessagesToUIMessages(messages)
+    expect(ui).toHaveLength(1)
+    expect(ui[0]?.parts).toEqual([])
+    expect(
+      (ui[0] as { metadata?: { streamState?: string } }).metadata?.streamState
+    ).toBe("streaming")
   })
 
   it("keeps queue hint when still queued", () => {

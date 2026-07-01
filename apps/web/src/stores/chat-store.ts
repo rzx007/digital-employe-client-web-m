@@ -129,23 +129,39 @@ export const useChatStore = create<ChatStore>()(
         })),
       setShowWorkbench: (show) => set({ showWorkbench: show }),
       setActiveTab: (tab) => {
-        if (tab === "chat") {
-          const state = get()
-          if (
-            !state.curatorNavigationReturn &&
-            isEmployeeContactId(state.selectedContactId)
-          ) {
-            const curatorId = findCuratorContactId(state.contacts)
-            if (curatorId) {
-              set({
-                selectedContactId: curatorId,
-                isDraftConversation: false,
-                activeTab: tab,
-              })
-              return
-            }
-          }
+        if (tab !== "chat") {
+          set({ activeTab: tab })
+          return
         }
+        const state = get()
+        const curatorId = findCuratorContactId(state.contacts)
+        const ctx = state.curatorNavigationReturn
+        const onEmployeeDeepLink = isEmployeeContactId(state.selectedContactId)
+
+        // 正在深链查看员工执行详情：navigateToEmployeeFromCurator 末尾会 setActiveTab("chat")，
+        // 此处不能打回总管，否则「查看」一点就失效。
+        if (onEmployeeDeepLink && ctx != null) {
+          set({ activeTab: tab })
+          return
+        }
+
+        // 从员工残留选中 / 工作台回「消息」Tab：归位总管并恢复总管会话 id
+        if (curatorId && (onEmployeeDeepLink || ctx != null)) {
+          set({
+            selectedContactId: curatorId,
+            selectedConversationId:
+              ctx?.curatorConversationId ??
+              state.workbenchCuratorConversationId ??
+              (isCuratorContactId(state.selectedContactId)
+                ? state.selectedConversationId
+                : null),
+            isDraftConversation: false,
+            activeTab: tab,
+            curatorNavigationReturn: null,
+          })
+          return
+        }
+
         set({ activeTab: tab })
       },
       setCompactMode: (compact) => set({ isCompactMode: compact }),

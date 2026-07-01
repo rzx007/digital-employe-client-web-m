@@ -225,7 +225,8 @@ export function ChatPanel({
 
   const displayMessages = isDraftMode ? EMPTY_MESSAGES : messages
   const hasCurrentTurnEnded =
-    status === "ready" || status === "error" || !!error
+    (status === "ready" || status === "error" || !!error) &&
+    storedAssistantStreamState !== "streaming"
   const showStreamingIndicator =
     !hideStreamingIndicator &&
     !isDraftMode &&
