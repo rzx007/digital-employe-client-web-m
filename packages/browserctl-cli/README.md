@@ -8,7 +8,7 @@ The command set is identical to the Electron-embedded `browserctl`; the differen
 
 ---
 
-## Install (npm)
+## Install
 
 ```bash
 npm install -g browserctl-cli
@@ -28,112 +28,48 @@ Global install registers the `browserctl` command (auto-starts a background daem
 
 ---
 
-## Build
-
-```bash
-pnpm --filter browserctl-cli build
-```
-
-Produces:
-- `dist/cli.js` — the CLI entry (handles all subcommands)
-- `dist/daemon.js` — the background daemon entry (auto-started by the CLI)
-
----
-
-## Global use
-
-### Option 1 — Add `bin` directory to PATH (no install step)
-
-**Windows** — add to your user `PATH` in System Settings:
-```
-packages\browserctl-cli\bin
-```
-
-**macOS / Linux** — add to your shell profile (`~/.bashrc`, `~/.zshrc`):
-```bash
-export PATH="/path/to/packages/browserctl-cli/bin:$PATH"
-```
-
-Then open a new terminal and run `browserctl --help`.
-
-> Note: on Windows the `bin/browserctl` POSIX wrapper is unused; `bin/browserctl.cmd` is picked up automatically by `cmd.exe` / PowerShell.
-
-### Option 2 — pnpm global link
-
-```bash
-pnpm --filter browserctl-cli link --global
-```
-
-After linking, `browserctl` is available system-wide via pnpm's global bin directory (no PATH editing needed).
-
----
-
 ## Usage
 
+Quick start:
+
 ```bash
-# Open a URL (auto-starts daemon + Chrome on first command)
 browserctl open https://www.baidu.com
-
-# Take a full-page snapshot and enter interactive element-picker mode
 browserctl snapshot --interactive
-
-# Compact snapshot with depth limit and scoped subtree
-browserctl snapshot -c -d 3 -s "#main"
-
-# Fill an input identified by element number
-browserctl fill @eN "search query"
-
-# Click an element identified by element number
-browserctl click @eN
-
-# Hover / double-click / focus an element
-browserctl hover @eN
-browserctl dblclick @eN
-browserctl focus @eN
-
-# Type (append, does not clear) into an input identified by element number
-browserctl type @eN "search query"
-
-# Check / uncheck a checkbox or radio
-browserctl check @eN
-browserctl uncheck @eN
-
-# Drag from one element to another
-browserctl drag @eN @eM
-
-# Upload files to an <input type="file">
-browserctl upload @eN file1.png file2.pdf
-
-# Wait for page conditions (selector, URL glob, network idle, JS expression)
-browserctl wait --selector "#result"
-browserctl wait --url "https://example.com/dashboard"
-browserctl wait --load networkidle
-browserctl wait --load load
-browserctl wait --load domcontentloaded
-browserctl wait --fn "document.querySelector('.ready') !== null"
-
-# Run JavaScript in the page context
-browserctl eval "document.title"
-browserctl eval --file ./script.js [--timeout 15000]
-
-# Get the current page URL
-browserctl get url
-
-# Read element text or state
-browserctl get text @eN
-browserctl is visible @eN
-browserctl is enabled @eN
-browserctl is checked @eN
-browserctl find role button click --name "Submit"
-browserctl find first "#kw" fill "keywords"
-
-# Save a screenshot to a file
-browserctl screenshot --out shot.png
-
-# Annotated screenshot with @eN labels (for HITL / vision models)
-browserctl snapshot --interactive
-browserctl screenshot --annotate --out shot-annotated.png
+browserctl fill @e1 "search query"
+browserctl click @e2
+browserctl screenshot --annotate --out shot.png
+browserctl quit
 ```
+
+Full command reference (same as desktop `browserctl`, minus Electron-only `open-artifact` / `close`):
+
+```bash
+browserctl health
+browserctl open <url>                 # = navigate
+browserctl snapshot [--max-nodes 200] [--compact|-c] [--depth N|-d N] [--scope <sel>|-s <sel>] [--tree | --interactive]
+browserctl wait (--selector <css> [--state visible|hidden] | --text <text> | --url <glob> | --load load|domcontentloaded|networkidle | --fn <js> | --fn-file <path> | --fn-stdin | --ms <n>) [--timeout 10000]
+browserctl eval (<js> | --file <path> | --stdin) [--timeout 10000]
+browserctl click <@eN|selector> [--confirm "确认文案"]
+browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin)
+browserctl hover|dblclick|focus|type|check|uncheck <@eN|selector>
+browserctl drag <@eN|selector> <@eN|selector>
+browserctl upload <@eN|selector> <file...>
+browserctl press <key> [@eN|selector] [--ctrl|--shift|--alt|--meta]
+browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>]
+browserctl select <@eN|selector> (<value> | --label <文本>)
+browserctl get url|title|value|text|attr <@eN|selector> [attrName]
+browserctl is visible|enabled|checked <@eN|selector>
+browserctl find role|text|…  # positional；或 find <action> --role|--selector|… flag 模式
+browserctl back|forward|reload
+browserctl scrollintoview|scroll-into-view <@eN|selector>
+browserctl dialog status|accept [text]|dismiss
+browserctl extract-text
+browserctl screenshot [--annotate] [--out <path>]
+browserctl batch [--bail] [--json] "<cmd>" …
+```
+
+Detailed syntax, `find` flag mode, `dialog` semantics, and `batch` examples:
+[command reference](./docs/reference.md).
 
 ---
 
@@ -146,11 +82,13 @@ The daemon process manages the browser session in the background.
 **Chrome window closed** — if you close the browser window, the daemon exits automatically; the next `browserctl` command starts a fresh daemon and Chrome (login state is kept in the persistent profile). You do not need `browserctl quit` in this case.
 
 **Explicit start with non-default config** — runs in the foreground; press `Ctrl+C` to stop:
+
 ```bash
 browserctl serve --browser edge --headless
 ```
 
 **Stop** — shuts down the daemon and closes the browser:
+
 ```bash
 browserctl quit
 ```
@@ -169,41 +107,25 @@ Subsequent daemon starts reuse the same profile, so login state is retained auto
 
 ---
 
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BROWSER_RUNTIME_BRIDGE_URL` | `http://127.0.0.1:34555` | Daemon bridge URL (auto-set by CLI) |
+| `BROWSER_RUNTIME_TIMEOUT_MS` | `60000` | Per-request socket timeout |
+| `BROWSERCTL_STATE_DIR` | `~/.browserctl` | Daemon PID/state directory |
+
+---
+
 ## Windows note: process cleanup
 
 `browserctl quit` writes a stop signal and cleans the state file, but `process.kill` may not reliably terminate the daemon process on Windows. If the daemon lingers after `quit`:
 
 1. Find the PID in `~/.browserctl/daemon.json`.
 2. Force-kill it:
+
    ```cmd
    taskkill /PID <pid> /F
    ```
 
 Chrome is closed indirectly by the daemon's shutdown handler; if Chrome also lingers, close it manually.
-
----
-
-## npm publish
-
-Maintainers（需先 `npm login`）：
-
-```bash
-# 推荐：自动 bump 版本 + 测试 + 发布（auto = npm 已有同版本则 patch+1）
-pnpm publish:browserctl-cli
-
-# 或在包目录指定 bump 级别
-pnpm --filter browserctl-cli release:patch
-pnpm --filter browserctl-cli release:minor
-pnpm --filter browserctl-cli release:major
-```
-
-| 命令 | 版本规则 |
-|------|----------|
-| `release` / `publish:browserctl-cli` | **auto**：npm 无包→用当前版本；npm 已有且 ≥ 本地→在 npm 最新上 patch+1 |
-| `release:patch` | 本地版本 patch+1 |
-| `release:minor` | 本地版本 minor+1 |
-| `release:major` | 本地版本 major+1 |
-
-发布后请 **commit** `packages/browserctl-cli/package.json` 的版本号变更。
-
-`prepublishOnly` 会在 publish 前自动 `tsup build`。Dry-run：`pnpm --filter browserctl-cli pack`

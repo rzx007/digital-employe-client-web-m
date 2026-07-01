@@ -6,22 +6,25 @@
 
 Agent 侧工作流与防误区见 [`apps/server/build-in-skills/browser-runtime/SKILL.md`](../../apps/server/build-in-skills/browser-runtime/SKILL.md)；命令全集见同目录 [`reference.md`](../../apps/server/build-in-skills/browser-runtime/reference.md)。
 
-## 三种调用场景
+## 调用场景
 
 | 场景 | 命令 | 说明 |
 |------|------|------|
 | **Agent（桌面端）** | `browserctl health` | 桌面端启动时 Electron 已把 `packages/browserctl/bin` 注入 `PATH`，裸命令直接可用（见 `apps/web/electron/features/backend/backend-process.ts`） |
 | **开发调试** | `pnpm --filter @workspace/browserctl browserctl health` | 脱离桌面端单独调 CLI |
-| **独立 Chrome（CI）** | `browserctl open …`（`browserctl-cli` 全局包） | 经 `BROWSER_RUNTIME_BRIDGE_URL` 指向 standalone daemon；见 `packages/browserctl-cli/README.md` |
-| **直接运行** | `node src/index.js health` 或 `bin/browserctl.cmd health` | 本地脚本 / wrapper |
+| **独立 Chrome** | 见 [`browserctl-cli` README](../browserctl-cli/README.md) | CI / 本地脚本，`npm install -g browserctl-cli` |
+| **直接运行** | `node src/index.js health` 或 `bin/browserctl.cmd health` | monorepo 内开发 |
 
 前置（桌面端）：Electron 已启动（`pnpm --filter web dev:app`），否则返回 `BRIDGE_CONNECT_FAILED`。
+
+> **不要用 `health` 当门禁**：`browser_available: false` 只表示内嵌浏览器尚未创建（离屏派单等场景正常）。应直接 `open` → `wait` → `snapshot`；仅当 `open` 本身失败才说明不可用。详见 [`reference.md`](../../apps/server/build-in-skills/browser-runtime/reference.md#-关键约定不要把-health-当门禁)。
 
 ## 命令
 
 ```bash
 browserctl health
 browserctl open <url>                 # = navigate，自动等到 readyState=complete
+browserctl navigate <url>             # open 别名
 browserctl open-artifact <文件名或路径>  # 打开会话产物目录 HTML（桌面端专属）
 browserctl snapshot [--max-nodes 200] [--compact|-c] [--depth N|-d N] [--scope <sel>|-s <sel>] [--tree | --interactive]
 browserctl wait (--selector <css> [--state visible|hidden] | --text <text> | --url <glob> | --load load|domcontentloaded|networkidle | --fn <js> | --fn-file <path> | --fn-stdin | --ms <n>) [--timeout 10000]
@@ -70,7 +73,7 @@ browserctl close                      # 桌面端：关闭内嵌浏览器并收�
 
 ## 错误码
 
-`BRIDGE_CONNECT_FAILED` / `BRIDGE_TIMEOUT` / `BROWSER_UNAVAILABLE` / `BROWSER_ERROR` / `BROWSER_VIEWPORT_NOT_READY` / `ELEMENT_NOT_FOUND` / `OPTION_NOT_FOUND` / `NOT_CHECKABLE` / `FILE_NOT_FOUND` / `USER_CANCELLED` / `TIMEOUT` / `EVAL_ERROR` / `DIALOG_NOT_PENDING` / `EMPTY_SCREENSHOT` / `WRITE_FAILED` / `CLI_USAGE_ERROR`
+`BRIDGE_CONNECT_FAILED` / `BRIDGE_TIMEOUT` / `BROWSER_UNAVAILABLE` / `BROWSER_ERROR` / `BROWSER_VIEWPORT_NOT_READY` / `ELEMENT_NOT_FOUND` / `OPTION_NOT_FOUND` / `NOT_CHECKABLE` / `FILE_NOT_FOUND` / `USER_CANCELLED` / `TIMEOUT` / `EVAL_ERROR` / `DIALOG_NOT_PENDING` / `EMPTY_SCREENSHOT` / `WRITE_FAILED` / `CLI_USAGE_ERROR` / `MISSING_CONVERSATION_ID` / `CANNOT_RESOLVE_PATH`
 
 ## 测试
 

@@ -1,6 +1,6 @@
 {
   "name": "browserctl-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Self-contained browserctl CLI with auto-start Chrome/Edge daemon (no Electron required)",
   "keywords": [
     "browser",
@@ -30,7 +30,8 @@
     "dist",
     "bin",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "docs"
   ],
   "engines": {
     "node": ">=20"

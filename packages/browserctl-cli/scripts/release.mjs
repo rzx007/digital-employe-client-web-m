@@ -2,11 +2,15 @@
 /**
  * browserctl-cli 发布：自动 bump 版本并 npm publish。
  *
- * 用法（在 packages/browserctl-cli 目录或 monorepo 根目录）：
- *   node scripts/release.mjs [patch|minor|major|auto]
+ * 用法（monorepo 根目录）：
+ *   pnpm publish:browserctl-cli              # auto bump + test + publish
+ *   pnpm --filter browserctl-cli release:patch|minor|major
  *
  * auto（默认）：npm 无此包 → 用 package.json 当前版本；
  *              npm 已有且 >= 本地版本 → 在 npm 最新版上 patch +1。
+ *
+ * 需先 npm login（registry.npmjs.org）。Dry-run：pnpm --filter browserctl-cli pack
+ * 发布后 commit packages/browserctl-cli/package.json 版本号变更。
  */
 import fs from "node:fs"
 import path from "node:path"
