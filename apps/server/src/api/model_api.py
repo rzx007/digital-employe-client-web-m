@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,11 @@ from src.llm.registry_service import (
 )
 from src.models.response import ResponseBase
 from src.core.deps import require_capability
+from src.llm.speech import (
+    save_speech_config,
+    speech_config_for_api,
+    transcribe_audio_bytes,
+)
 from src.service.config_kv_service import ConfigKvService
 from src.service.modal_service import ModelCallRequest, ModelService
 
@@ -127,6 +132,29 @@ class TestProviderRequest(BaseModel):
 class SyncFromRemoteResponse(BaseModel):
     synced: bool
     registry: LlmRegistryResponse
+
+
+class SpeechConfigResponse(BaseModel):
+    use_active_provider: bool = False
+    transcription_url: str = ""
+    transcription_model: str = ""
+    transcription_language: str = "zh"
+    api_key_masked: str = ""
+    api_key_present: bool = False
+    is_default: bool = False
+
+
+class UpdateSpeechConfigRequest(BaseModel):
+    use_active_provider: bool = False
+    transcription_url: str = ""
+    transcription_model: str = ""
+    transcription_language: str = "zh"
+    transcription_api_key: str | None = None
+    api_key_unchanged: bool = True
+
+
+class TranscribeResponse(BaseModel):
+    text: str
 
 
 @router.post(
@@ -383,6 +411,62 @@ async def get_runtime_model_config():
             supports_vision=active_model_supports_vision(),
         )
     )
+
+
+@router.get(
+    "/model/speech-config",
+    summary="语音转写配置（无完整密钥）",
+    response_model=ResponseBase[SpeechConfigResponse],
+)
+async def get_speech_config(db: Session = Depends(get_db)):
+    data = speech_config_for_api(db)
+    return ResponseBase(data=SpeechConfigResponse.model_validate(data))
+
+
+@router.put(
+    "/model/speech-config",
+    summary="保存语音转写配置",
+    response_model=ResponseBase[SpeechConfigResponse],
+)
+async def update_speech_config(
+    payload: UpdateSpeechConfigRequest,
+    db: Session = Depends(get_db),
+):
+    data = save_speech_config(
+        db,
+        use_active_provider=payload.use_active_provider,
+        transcription_url=payload.transcription_url,
+        transcription_model=payload.transcription_model,
+        transcription_language=payload.transcription_language,
+        transcription_api_key=payload.transcription_api_key,
+        api_key_unchanged=payload.api_key_unchanged,
+    )
+    return ResponseBase(data=SpeechConfigResponse.model_validate(data))
+
+
+@router.post(
+    "/model/transcribe",
+    summary="语音转写（后端代理）",
+    response_model=ResponseBase[TranscribeResponse],
+)
+async def transcribe_speech(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    file_bytes = await file.read()
+    filename = file.filename or "recording.webm"
+    try:
+        text = await transcribe_audio_bytes(
+            db,
+            file_bytes=file_bytes,
+            filename=filename,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("speech transcribe failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="语音转写服务不可用") from exc
+    return ResponseBase(data=TranscribeResponse(text=text))
 
 
 @router.post("/call-model", summary="调用模型API", response_model=ResponseBase[ModelCallResponse])

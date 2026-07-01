@@ -8,6 +8,7 @@ import {
   type ManagedProcessHandle,
 } from "../../core/services/managed-process"
 import { isOfflineMode } from "../../core/runtime-env"
+import { getFinchEnvForBackend } from "../../core/web-env"
 import { freeBackendPortIfBusy } from "./backend-port"
 
 const log = createLogger("backend")
@@ -234,6 +235,10 @@ export async function startBackend(): Promise<void> {
       ...getBrowserctlEnv(),
       // 离线依赖：OFFLINE_DEPS_DIR/python 前置注入 PYTHONPATH（默认关闭）
       ...getOfflineDepsEnv(),
+      // Finch 语音转写：把 apps/web/.env 中的 VITE_FINCH_* 传给 Python 后端
+      ...(process.env.APP_ROOT
+        ? getFinchEnvForBackend(process.env.APP_ROOT)
+        : {}),
     },
     onExit: (code, signal) => {
       log.info("process exit", { code, signal })

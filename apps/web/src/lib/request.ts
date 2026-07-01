@@ -138,6 +138,66 @@ export function getRequestHeaders(customHeaders?: HeadersInit) {
   return nextHeaders
 }
 
+type ApiErrorBody = {
+  detail?: unknown
+  msg?: unknown
+  message?: unknown
+}
+
+function formatApiErrorDetail(detail: unknown): string | null {
+  if (typeof detail === "string" && detail.trim()) {
+    return detail.trim()
+  }
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item === "string") return item
+        if (
+          item &&
+          typeof item === "object" &&
+          typeof (item as { msg?: string }).msg === "string"
+        ) {
+          return (item as { msg: string }).msg
+        }
+        return null
+      })
+      .filter((part): part is string => Boolean(part))
+    if (parts.length > 0) return parts.join("；")
+  }
+  return null
+}
+
+/** 从 ofetch FetchError 的 response body 提取后端 detail/msg，避免只显示 HTTP 状态码 */
+export function getRequestErrorMessage(
+  error: unknown,
+  fallback = "请求失败"
+): string {
+  if (error && typeof error === "object" && "data" in error) {
+    const data = (error as { data?: unknown }).data
+    if (typeof data === "string" && data.trim()) {
+      return data.trim()
+    }
+    if (data && typeof data === "object") {
+      const body = data as ApiErrorBody
+      const fromDetail = formatApiErrorDetail(body.detail)
+      if (fromDetail) return fromDetail
+      if (typeof body.msg === "string" && body.msg.trim()) {
+        return body.msg.trim()
+      }
+      if (typeof body.message === "string" && body.message.trim()) {
+        return body.message.trim()
+      }
+    }
+  }
+  if (error instanceof Error) {
+    const msg = error.message.trim()
+    if (msg && !/^\[.+\] ".+": \d{3}/.test(msg)) {
+      return msg
+    }
+  }
+  return fallback
+}
+
 export const request = ofetch.create({
   baseURL: fallbackBaseURL,
   headers: { ...defaultHeaders },
