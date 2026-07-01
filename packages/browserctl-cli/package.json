@@ -1,12 +1,51 @@
 {
   "name": "browserctl-cli",
   "version": "0.1.0",
-  "private": true,
+  "description": "Self-contained browserctl CLI with auto-start Chrome/Edge daemon (no Electron required)",
+  "keywords": [
+    "browser",
+    "automation",
+    "cdp",
+    "chrome",
+    "cli",
+    "browserctl",
+    "headless"
+  ],
+  "license": "MIT",
+  "author": "BobanStaff <770304867@qq.com>",
+  "homepage": "https://github.com/rzx007/digital-employe-client-web-m/tree/master/packages/browserctl-cli",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rzx007/digital-employe-client-web-m.git",
+    "directory": "packages/browserctl-cli"
+  },
+  "bugs": {
+    "url": "https://github.com/rzx007/digital-employe-client-web-m/issues"
+  },
   "type": "module",
-  "bin": { "browserctl": "dist/cli.js" },
-  "files": ["dist", "bin"],
+  "bin": {
+    "browserctl": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "pnpm run build",
+    "release": "node scripts/release.mjs auto",
+    "release:patch": "node scripts/release.mjs patch",
+    "release:minor": "node scripts/release.mjs minor",
+    "release:major": "node scripts/release.mjs major",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts"
   },

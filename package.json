@@ -20,7 +20,8 @@
     "dev:server": "cd apps/server && uv run python start.py",
     "build:server": "python3 scripts/build-server.py",
     "build:server:debug": "python3 scripts/build-server.py --debug",
-    "build:license-issuer": "python apps/license-issuer/scripts/build-binary.py"
+    "build:license-issuer": "python apps/license-issuer/scripts/build-binary.py",
+    "publish:browserctl-cli": "pnpm --filter browserctl-cli release"
   },
   "devDependencies": {
     "prettier": "^3.8.1",

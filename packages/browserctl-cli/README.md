@@ -4,6 +4,28 @@ Self-contained global CLI to drive a standalone Chrome/Edge via browserctl comma
 
 The command set is identical to the Electron-embedded `browserctl`; the difference is the daemon runs as a plain Node.js process rather than inside Electron.
 
+**Requirements:** Node.js ≥ 20, Google Chrome or Microsoft Edge installed.
+
+---
+
+## Install (npm)
+
+```bash
+npm install -g browserctl-cli
+# or
+pnpm add -g browserctl-cli
+```
+
+Then:
+
+```bash
+browserctl open https://www.baidu.com
+browserctl snapshot --interactive
+browserctl quit
+```
+
+Global install registers the `browserctl` command (auto-starts a background daemon on first use).
+
 ---
 
 ## Build
@@ -163,4 +185,25 @@ Chrome is closed indirectly by the daemon's shutdown handler; if Chrome also lin
 
 ## npm publish
 
-Deferred — the package is `"private": true` for now.
+Maintainers（需先 `npm login`）：
+
+```bash
+# 推荐：自动 bump 版本 + 测试 + 发布（auto = npm 已有同版本则 patch+1）
+pnpm publish:browserctl-cli
+
+# 或在包目录指定 bump 级别
+pnpm --filter browserctl-cli release:patch
+pnpm --filter browserctl-cli release:minor
+pnpm --filter browserctl-cli release:major
+```
+
+| 命令 | 版本规则 |
+|------|----------|
+| `release` / `publish:browserctl-cli` | **auto**：npm 无包→用当前版本；npm 已有且 ≥ 本地→在 npm 最新上 patch+1 |
+| `release:patch` | 本地版本 patch+1 |
+| `release:minor` | 本地版本 minor+1 |
+| `release:major` | 本地版本 major+1 |
+
+发布后请 **commit** `packages/browserctl-cli/package.json` 的版本号变更。
+
+`prepublishOnly` 会在 publish 前自动 `tsup build`。Dry-run：`pnpm --filter browserctl-cli pack`
