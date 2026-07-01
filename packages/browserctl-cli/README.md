@@ -86,10 +86,22 @@ browserctl upload @eN file1.png file2.pdf
 browserctl wait --selector "#result"
 browserctl wait --url "https://example.com/dashboard"
 browserctl wait --load networkidle
+browserctl wait --load load
+browserctl wait --load domcontentloaded
 browserctl wait --fn "document.querySelector('.ready') !== null"
+
+# Run JavaScript in the page context
+browserctl eval "document.title"
+browserctl eval --file ./script.js [--timeout 15000]
 
 # Get the current page URL
 browserctl get url
+
+# Read element text or state
+browserctl get text @eN
+browserctl is visible @eN
+browserctl is enabled @eN
+browserctl is checked @eN
 
 # Save a screenshot to a file
 browserctl screenshot --out shot.png

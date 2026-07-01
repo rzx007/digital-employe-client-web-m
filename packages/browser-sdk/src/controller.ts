@@ -902,7 +902,68 @@ export class BrowserController {
       )
       return { ok: true, data: { value: (v as string | null) ?? null } }
     } catch (e) {
-      return { ok: false, error: (e as Error).message }
+      const msg = (e as Error).message
+      if (msg === "ELEMENT_NOT_FOUND")
+        return { ok: false, error: msg, code: "ELEMENT_NOT_FOUND" }
+      return { ok: false, error: msg, code: "BROWSER_ERROR" }
+    }
+  }
+
+  /** 读元素 innerText/textContent（trim）。 */
+  async getText(
+    refOrSelector: string
+  ): Promise<CdpResult<{ text: string }>> {
+    try {
+      const v = await this.runOnElement(
+        refOrSelector,
+        "return (el.innerText ?? el.textContent ?? '').trim();"
+      )
+      return { ok: true, data: { text: String(v ?? "") } }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg === "ELEMENT_NOT_FOUND")
+        return { ok: false, error: msg, code: "ELEMENT_NOT_FOUND" }
+      return { ok: false, error: msg, code: "BROWSER_ERROR" }
+    }
+  }
+
+  /**
+   * 元素状态断言：visible / enabled / checked。
+   * 元素不存在 → ELEMENT_NOT_FOUND；存在但 hidden/disabled → { result: false }；
+   * checked 且不可勾选 → NOT_CHECKABLE。
+   */
+  async queryIs(
+    kind: "visible" | "enabled" | "checked",
+    refOrSelector: string
+  ): Promise<CdpResult<{ result: boolean }>> {
+    try {
+      if (kind === "checked") {
+        const cur = await this.isChecked(refOrSelector)
+        if (cur === null)
+          return { ok: false, error: "not checkable", code: "NOT_CHECKABLE" }
+        return { ok: true, data: { result: cur } }
+      }
+      if (kind === "visible") {
+        const v = await this.runOnElement(
+          refOrSelector,
+          `
+          const cs = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+          `
+        )
+        return { ok: true, data: { result: Boolean(v) } }
+      }
+      const v = await this.runOnElement(
+        refOrSelector,
+        "return !el.disabled && el.getAttribute('aria-disabled') !== 'true';"
+      )
+      return { ok: true, data: { result: Boolean(v) } }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg === "ELEMENT_NOT_FOUND")
+        return { ok: false, error: msg, code: "ELEMENT_NOT_FOUND" }
+      return { ok: false, error: msg, code: "BROWSER_ERROR" }
     }
   }
 
@@ -918,7 +979,10 @@ export class BrowserController {
       )
       return { ok: true, data: { value: (v as string | null) ?? null } }
     } catch (e) {
-      return { ok: false, error: (e as Error).message }
+      const msg = (e as Error).message
+      if (msg === "ELEMENT_NOT_FOUND")
+        return { ok: false, error: msg, code: "ELEMENT_NOT_FOUND" }
+      return { ok: false, error: msg, code: "BROWSER_ERROR" }
     }
   }
 
@@ -929,6 +993,49 @@ export class BrowserController {
       return { ok: true }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
+    }
+  }
+
+  /** 页内执行 JS（returnByValue + awaitPromise）；超时或异常返回 EVAL_ERROR/TIMEOUT。 */
+  async evaluateJs(
+    js: string,
+    timeoutMs = 10_000
+  ): Promise<CdpResult<{ value: unknown; type?: string }>> {
+    try {
+      const result = await Promise.race([
+        this.sendCommand("Runtime.evaluate", {
+          expression: js,
+          returnByValue: true,
+          awaitPromise: true,
+        }) as Promise<{
+          result?: { value?: unknown; type?: string }
+          exceptionDetails?: { text?: string }
+        }>,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("TIMEOUT")), timeoutMs)
+        ),
+      ])
+      if (result.exceptionDetails?.text) {
+        return {
+          ok: false,
+          error: result.exceptionDetails.text,
+          code: "EVAL_ERROR",
+        }
+      }
+      return {
+        ok: true,
+        data: {
+          value: result.result?.value ?? null,
+          type: result.result?.type,
+        },
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      return {
+        ok: false,
+        error: msg,
+        code: msg === "TIMEOUT" ? "TIMEOUT" : "EVAL_ERROR",
+      }
     }
   }
 
@@ -1002,6 +1109,51 @@ export class BrowserController {
           (m, p) =>
             m === "Page.lifecycleEvent" &&
             (p as { name?: string }).name === "networkIdle",
+          () => {
+            if (done) return
+            done = true
+            clearTimeout(timer)
+            dispose()
+            resolve({ ok: true })
+          }
+        )
+      })
+    } catch (e) {
+      return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
+    }
+  }
+
+  /**
+   * 等待 Page.lifecycleEvent（load / DOMContentLoaded）：先 readyState 探针短路，
+   * 否则监听 lifecycle 事件。SPA 二次渲染不会重发 DCL——与 agent-browser 同类启发式。
+   */
+  async waitForLoadEvent(
+    eventName: "load" | "DOMContentLoaded",
+    timeoutMs = 10_000
+  ): Promise<CdpResult> {
+    try {
+      await this.sendCommand("Page.enable")
+      const probeExpr =
+        eventName === "load"
+          ? "document.readyState === 'complete'"
+          : "document.readyState !== 'loading'"
+      const probe = (await this.sendCommand("Runtime.evaluate", {
+        expression: probeExpr,
+        returnByValue: true,
+      })) as { result?: { value?: boolean } }
+      if (probe.result?.value === true) return { ok: true }
+      return await new Promise<CdpResult>((resolve) => {
+        let done = false
+        const timer = setTimeout(() => {
+          if (done) return
+          done = true
+          dispose()
+          resolve({ ok: false, error: "TIMEOUT", code: "TIMEOUT" })
+        }, timeoutMs)
+        const dispose = this.addMessageListener(
+          (m, p) =>
+            m === "Page.lifecycleEvent" &&
+            (p as { name?: string }).name === eventName,
           () => {
             if (done) return
             done = true

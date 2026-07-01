@@ -908,3 +908,120 @@ test("open-artifact 缺少 CONVERSATION_ID 时报错且不访问 bridge", async 
     await closeServer(srv)
   }
 })
+
+test("eval 发送 js 与 timeout_ms 到 bridge", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: { value: 42, type: "number" } }))
+  })
+  try {
+    await runCli(["eval", "document.title"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.js, "document.title")
+    assert.equal(received.timeout_ms, 10_000)
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("wait --load load 分发 load 到 wait 路由", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["wait", "--load", "load"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.load, "load")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("wait --load domcontentloaded 分发到 wait 路由", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: {} }))
+  })
+  try {
+    await runCli(["wait", "--load", "domcontentloaded"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.load, "domcontentloaded")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("wait --load 非法值抛 CLI 错误", async () => {
+  const srv = await startServer((req, res) => {
+    res.end(JSON.stringify({ ok: true }))
+  })
+  try {
+    const { stdout } = await runCli(["wait", "--load", "bogus"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    const j = JSON.parse(stdout)
+    assert.equal(j.ok, false)
+    assert.match(j.error, /domcontentloaded/)
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("get text 命中 /get-text 并返回 data.text", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: { text: "提交" } }))
+  })
+  try {
+    const { stdout } = await runCli(["get", "text", "@e3"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.ref_or_selector, "@e3")
+    const j = JSON.parse(stdout)
+    assert.equal(j.data.text, "提交")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("is visible 命中 /is 且 body.kind=visible", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: { result: true } }))
+  })
+  try {
+    const { stdout } = await runCli(["is", "visible", "#kw"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.kind, "visible")
+    assert.equal(received.ref_or_selector, "#kw")
+    assert.equal(JSON.parse(stdout).data.result, true)
+  } finally {
+    await closeServer(srv)
+  }
+})
+
+test("is 非法 kind 抛 CLI 错误", async () => {
+  const srv = await startServer((req, res) => {
+    res.end(JSON.stringify({ ok: true }))
+  })
+  try {
+    const { stdout } = await runCli(["is", "hidden", "@e1"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    const j = JSON.parse(stdout)
+    assert.equal(j.ok, false)
+    assert.match(j.error, /visible\|enabled\|checked/)
+  } finally {
+    await closeServer(srv)
+  }
+})

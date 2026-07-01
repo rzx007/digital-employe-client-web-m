@@ -20,7 +20,8 @@
 browserctl health
 browserctl open <url>                 # = navigate，自动等到 readyState=complete
 browserctl snapshot [--max-nodes 200] [--compact|-c] [--depth N|-d N] [--scope <sel>|-s <sel>] [--tree | --interactive]
-browserctl wait (--selector <css> [--state visible|hidden] | --text <text> | --url <glob> | --load networkidle | --fn <js> | --fn-file <path> | --fn-stdin | --ms <n>) [--timeout 10000]
+browserctl wait (--selector <css> [--state visible|hidden] | --text <text> | --url <glob> | --load load|domcontentloaded|networkidle | --fn <js> | --fn-file <path> | --fn-stdin | --ms <n>) [--timeout 10000]
+browserctl eval (<js> | --file <path> | --stdin) [--timeout 10000]
 browserctl click <@eN|selector> [--confirm "确认文案"]
 browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin)
 browserctl hover <@eN|selector>            # 鼠标悬停（单次 mouseMoved，不点击）
@@ -32,6 +33,9 @@ browserctl uncheck <@eN|selector>          # 取消勾选 checkbox
 browserctl drag <@eN|selector> <@eN|selector>   # 从 source 拖到 target（10 步插值）
 browserctl upload <@eN|selector> <file...> # 给 <input type=file> 设置文件
 browserctl get url|title
+browserctl get value <@eN|selector>
+browserctl get text <@eN|selector>
+browserctl is visible|enabled|checked <@eN|selector>
 browserctl extract-text
 browserctl screenshot [--annotate] [--out <path>]  # 落盘返回 { path, bytes, annotations? }，不输出 base64
 browserctl close                      # 关闭内嵌浏览器并收起右栏
@@ -52,7 +56,7 @@ browserctl close                      # 关闭内嵌浏览器并收起右栏
 
 ## 错误码
 
-`BRIDGE_CONNECT_FAILED` / `BRIDGE_TIMEOUT` / `BROWSER_UNAVAILABLE` / `BROWSER_VIEWPORT_NOT_READY` / `ELEMENT_NOT_FOUND` / `OPTION_NOT_FOUND` / `NOT_CHECKABLE` / `FILE_NOT_FOUND` / `USER_CANCELLED` / `TIMEOUT` / `EMPTY_SCREENSHOT` / `WRITE_FAILED` / `CLI_USAGE_ERROR`
+`BRIDGE_CONNECT_FAILED` / `BRIDGE_TIMEOUT` / `BROWSER_UNAVAILABLE` / `BROWSER_VIEWPORT_NOT_READY` / `ELEMENT_NOT_FOUND` / `OPTION_NOT_FOUND` / `NOT_CHECKABLE` / `FILE_NOT_FOUND` / `USER_CANCELLED` / `TIMEOUT` / `EVAL_ERROR` / `EMPTY_SCREENSHOT` / `WRITE_FAILED` / `CLI_USAGE_ERROR`
 
 ## 测试
 

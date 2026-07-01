@@ -1102,3 +1102,171 @@ test("screenshot --annotate：OOPIF ref 抛错时静默跳过", async () => {
     )
   )
 })
+
+test("evaluateJs 成功返回 value", async () => {
+  const t = mockTransport({
+    "Runtime.evaluate": {
+      result: { type: "string", value: "hello" },
+    },
+  })
+  const c = new BrowserController(t)
+  const r = await c.evaluateJs("1+1", 5000)
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { value: string }).value, "hello")
+  const ev = t.calls.find(([m]) => m === "Runtime.evaluate")
+  assert.equal((ev![1] as { awaitPromise?: boolean }).awaitPromise, true)
+})
+
+test("evaluateJs 异常返回 EVAL_ERROR", async () => {
+  const t = mockTransport({
+    "Runtime.evaluate": {
+      exceptionDetails: {
+        text: "Uncaught ReferenceError: x is not defined",
+      },
+    },
+  })
+  const c = new BrowserController(t)
+  const r = await c.evaluateJs("x", 5000)
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "EVAL_ERROR")
+})
+
+test("evaluateJs 超时返回 TIMEOUT", async () => {
+  const t = mockTransport({})
+  t.sendCommand = async (method) => {
+    if (method === "Runtime.evaluate") {
+      await new Promise((r) => setTimeout(r, 200))
+      return { result: { value: 1 } }
+    }
+    return {}
+  }
+  const c = new BrowserController(t)
+  const r = await c.evaluateJs("slow()", 50)
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "TIMEOUT")
+})
+
+test("waitForLoadEvent(load)：已 complete 短路", async () => {
+  const t = eventTransport(async (method) => {
+    if (method === "Runtime.evaluate") return { result: { value: true } }
+    return {}
+  })
+  const c = new BrowserController(t)
+  const r = await c.waitForLoadEvent("load", 5000)
+  assert.equal(r.ok, true)
+})
+
+test("waitForLoadEvent(load)：等 load 事件后成功", async () => {
+  const t = eventTransport(async (method) => {
+    if (method === "Runtime.evaluate") return { result: { value: false } }
+    return {}
+  })
+  const c = new BrowserController(t)
+  const p = c.waitForLoadEvent("load", 5000)
+  await new Promise((res) => setTimeout(res, 20))
+  t.emit("Page.lifecycleEvent", { name: "load" })
+  assert.equal((await p).ok, true)
+})
+
+test("waitForLoadEvent(DOMContentLoaded)：探针短路", async () => {
+  const t = eventTransport(async (method) => {
+    if (method === "Runtime.evaluate") return { result: { value: true } }
+    return {}
+  })
+  const c = new BrowserController(t)
+  const r = await c.waitForLoadEvent("DOMContentLoaded", 5000)
+  assert.equal(r.ok, true)
+})
+
+function refElementTransport(
+  callFunctionValue: unknown
+): Transport & { calls: Array<[string, unknown]> } {
+  return mockTransport({
+    "Runtime.evaluate": { result: { value: { x: 10, y: 10 } } },
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": {
+      model: { content: [0, 0, 20, 0, 20, 20, 0, 20] },
+    },
+    "Runtime.callFunctionOn": { result: { value: callFunctionValue } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 2,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+}
+
+test("getText 返回 innerText", async () => {
+  const c = new BrowserController(refElementTransport("按钮文字"))
+  const r = await c.getText("@e0")
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { text: string }).text, "按钮文字")
+})
+
+test("getText 元素不存在 → ELEMENT_NOT_FOUND", async () => {
+  const t = mockTransport({
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: [],
+          backendDOMNodeId: 1,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  await c.snapshot(50)
+  const r = await c.getText("@e99")
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "ELEMENT_NOT_FOUND")
+})
+
+test("queryIs visible：存在且可见 → result true", async () => {
+  const c = new BrowserController(refElementTransport(true))
+  const r = await c.queryIs("visible", "@e0")
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { result: boolean }).result, true)
+})
+
+test("queryIs visible：存在但 hidden → result false", async () => {
+  const c = new BrowserController(refElementTransport(false))
+  const r = await c.queryIs("visible", "@e0")
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { result: boolean }).result, false)
+})
+
+test("queryIs enabled：result false", async () => {
+  const c = new BrowserController(refElementTransport(false))
+  const r = await c.queryIs("enabled", "@e0")
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { result: boolean }).result, false)
+})
+
+test("queryIs checked：不可勾选 → NOT_CHECKABLE", async () => {
+  const c = new BrowserController(refElementTransport(null))
+  const r = await c.queryIs("checked", "@e0")
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "NOT_CHECKABLE")
+})
+
+test("queryIs checked：已勾选 → result true", async () => {
+  const c = new BrowserController(refElementTransport(true))
+  const r = await c.queryIs("checked", "@e0")
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { result: boolean }).result, true)
+})

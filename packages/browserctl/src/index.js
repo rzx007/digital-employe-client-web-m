@@ -35,7 +35,8 @@ Usage:
   browserctl click <@eN|selector> [--confirm "message"] [--pretty]
   browserctl press <key> [@eN|selector] [--ctrl|--shift|--alt|--meta] [--pretty]
   browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>] [--pretty]
-  browserctl wait (--selector <css> [--state visible|hidden] | --text <text> | --url <glob> | --load networkidle | --fn <js> | --fn-file <path> | --fn-stdin | --ms <n>) [--timeout 10000] [--pretty]
+  browserctl wait (--selector <css> [--state visible|hidden] | --text <text> | --url <glob> | --load load|domcontentloaded|networkidle | --fn <js> | --fn-file <path> | --fn-stdin | --ms <n>) [--timeout 10000] [--pretty]
+  browserctl eval (<js> | --file <path> | --stdin) [--timeout 10000] [--pretty]
   browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin) [--pretty]
   browserctl hover <@eN|selector> [--pretty]
   browserctl dblclick <@eN|selector> [--pretty]
@@ -48,7 +49,9 @@ Usage:
   browserctl select <@eN|selector> (<value> | --label <text>) [--pretty]
   browserctl get url|title [--pretty]
   browserctl get value <@eN|selector> [--pretty]
+  browserctl get text <@eN|selector> [--pretty]
   browserctl get attr <@eN|selector> <name> [--pretty]
+  browserctl is visible|enabled|checked <@eN|selector> [--pretty]
   browserctl get-url [--pretty]
   browserctl get-title [--pretty]
   browserctl extract-text [--pretty]
@@ -107,6 +110,10 @@ export function parseFlags(argv) {
       flags.ms = Number(argv[++i])
     } else if (value === "--timeout") {
       flags.timeout = Number(argv[++i])
+    } else if (value === "--file") {
+      flags.file = argv[++i] || ""
+    } else if (value === "--stdin") {
+      flags.stdin = true
     } else if (value === "--out") {
       flags.out = argv[++i] || ""
     } else if (value === "--to") {
@@ -236,6 +243,23 @@ async function resolveFillText(rest, flags) {
     return raw.replace(/\r?\n$/, "")
   }
   return rest.slice(1).join(" ")
+}
+
+// eval JS 来源：--file > --stdin > 位置参数
+async function resolveJsSource(rest, flags) {
+  if (typeof flags.file === "string" && flags.file) {
+    try {
+      return fs.readFileSync(flags.file, "utf8").replace(/\r?\n$/, "")
+    } catch (error) {
+      throw new Error(
+        `cannot read --file ${flags.file}: ${error.message}`
+      )
+    }
+  }
+  if (flags.stdin) {
+    return (await readStdin()).replace(/\r?\n$/, "")
+  }
+  return rest.join(" ")
 }
 
 function requestJson(method, path, payload = {}) {
@@ -550,6 +574,19 @@ async function run(argv, baseUrl) {
     return
   }
 
+  if (command === "eval") {
+    const js = await resolveJsSource(rest, flags)
+    if (!js) throw new Error("js expression required")
+    print(
+      await postAction("eval", {
+        js,
+        timeout_ms: Number.isFinite(flags.timeout) ? flags.timeout : 10_000,
+      }),
+      flags.pretty
+    )
+    return
+  }
+
   if (command === "wait") {
     // --ms：纯客户端固定等待，不经 bridge
     if (Number.isFinite(flags.ms)) {
@@ -572,6 +609,12 @@ async function run(argv, baseUrl) {
     // --state 必须配 --selector
     if (flags.state && !flags.selector) {
       throw new Error("--state requires --selector")
+    }
+    const allowedLoad = new Set(["load", "domcontentloaded", "networkidle"])
+    if (flags.load && !allowedLoad.has(flags.load)) {
+      throw new Error(
+        "--load must be one of load, domcontentloaded, networkidle"
+      )
     }
     if (!flags.selector && !flags.text && !flags.url && !flags.load && !flags.fn) {
       throw new Error(
@@ -612,6 +655,15 @@ async function run(argv, baseUrl) {
       )
       return
     }
+    if (target === "text") {
+      const refOrSelector = rest[1]
+      if (!refOrSelector) throw new Error("ref or selector required")
+      print(
+        await postAction("get-text", { ref_or_selector: refOrSelector }),
+        flags.pretty
+      )
+      return
+    }
     if (target === "attr" || target === "attribute") {
       const refOrSelector = rest[1],
         name = rest[2]
@@ -626,7 +678,21 @@ async function run(argv, baseUrl) {
       )
       return
     }
-    throw new Error("get target must be url|title|value|attr")
+    throw new Error("get target must be url|title|value|text|attr")
+  }
+
+  if (command === "is") {
+    const kind = rest[0]
+    const refOrSelector = rest[1]
+    if (!["visible", "enabled", "checked"].includes(kind)) {
+      throw new Error("is kind must be visible|enabled|checked")
+    }
+    if (!refOrSelector) throw new Error("ref or selector required")
+    print(
+      await postAction("is", { kind, ref_or_selector: refOrSelector }),
+      flags.pretty
+    )
+    return
   }
 
   if (command === "get-url" || command === "get-title") {

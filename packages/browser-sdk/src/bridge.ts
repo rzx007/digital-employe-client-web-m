@@ -20,6 +20,7 @@ function errorCode(message: unknown, fallback = "BROWSER_ERROR"): string {
   if (raw.includes("ELEMENT_NOT_FOUND")) return "ELEMENT_NOT_FOUND"
   if (raw.includes("FILE_NOT_FOUND")) return "FILE_NOT_FOUND"
   if (raw.includes("NOT_CHECKABLE")) return "NOT_CHECKABLE"
+  if (raw.includes("EVAL_ERROR")) return "EVAL_ERROR"
   if (raw.includes("USER_CANCELLED")) return "USER_CANCELLED"
   if (raw.includes("TIMEOUT")) return "TIMEOUT"
   if (raw.includes("BROWSER_VIEWPORT_NOT_READY")) {
@@ -564,6 +565,13 @@ async function handleBridgeRequest(
         let result
         if (load === "networkidle") {
           result = await controller.waitForNetworkIdle(timeoutMs)
+        } else if (load === "load") {
+          result = await controller.waitForLoadEvent("load", timeoutMs)
+        } else if (load === "domcontentloaded") {
+          result = await controller.waitForLoadEvent(
+            "DOMContentLoaded",
+            timeoutMs
+          )
         } else if (url) {
           result = await controller.waitForUrl(url, timeoutMs)
         } else if (fn) {
@@ -576,6 +584,24 @@ async function handleBridgeRequest(
         } else {
           result = await controller.waitFor({ selector, text, timeoutMs })
         }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "eval": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const js = typeof body.js === "string" ? body.js : ""
+        const timeoutMs =
+          typeof body.timeout_ms === "number" ? body.timeout_ms : 10_000
+        const result = await controller.evaluateJs(js, timeoutMs)
         reply(res, result.ok ? 200 : 502, result)
         return
       }
@@ -675,6 +701,58 @@ async function handleBridgeRequest(
         const name = String(body.name ?? "")
         const result = await controller.getAttribute(refOrSelector, name)
         if (!result.ok && result.error === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "get-text": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.getText(refOrSelector)
+        if (!result.ok && result.code === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "is": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const kind = body.kind as string
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        if (!["visible", "enabled", "checked"].includes(kind)) {
+          reply(res, 400, {
+            ok: false,
+            error: "kind must be visible|enabled|checked",
+            code: "CLI_USAGE_ERROR",
+          })
+          return
+        }
+        const result = await controller.queryIs(
+          kind as "visible" | "enabled" | "checked",
+          refOrSelector
+        )
+        if (!result.ok && result.code === "ELEMENT_NOT_FOUND") {
           reply(res, 404, result)
           return
         }
