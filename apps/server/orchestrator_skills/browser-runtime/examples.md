@@ -9,6 +9,8 @@ browserctl open https://www.baidu.com
 browserctl snapshot --interactive
 browserctl fill "#kw" "数字员工"
 browserctl click "#su"
+# 或语义定位（无需 snapshot @eN）：
+# browserctl find role button click --name "百度一下"
 browserctl wait --selector "#content_left"   # 等结果容器出现，再读取
 browserctl snapshot --interactive
 browserctl get value "#kw"                   # 校验 fill 已落地（也可用 @eN）

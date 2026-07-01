@@ -37,6 +37,7 @@
 | `FILE_NOT_FOUND` | `upload` 给定的文件路径不存在 |
 | `USER_CANCELLED` | 用户取消确认 |
 | `TIMEOUT` | 操作超时（含 `wait` 超时） |
+| `EVAL_ERROR` | `eval` JS 执行异常 |
 | `EMPTY_SCREENSHOT` | 截图数据为空 |
 | `WRITE_FAILED` | 截图写盘失败 |
 | `MISSING_CONVERSATION_ID` | `open-artifact` 缺会话标识（shell 未注入 `CONVERSATION_ID`） |
@@ -75,6 +76,12 @@ browserctl wait --selector <css> [--state visible|hidden]  # 等元素出现/隐
 browserctl wait --text <文本>        # 等文本出现在页面
 browserctl wait --url <glob>         # 等 URL 匹配 glob（* 通配）
 browserctl wait --load networkidle   # 等网络空闲（JS 启发式 + Page.lifecycleEvent）
+browserctl wait --load load          # 等 window load（readyState=complete / lifecycle load）
+browserctl wait --load domcontentloaded  # 等 DCL（readyState≠loading；SPA 二次渲染不重发 DCL）
+browserctl eval <js>                 # 页内执行 JS，返回 { value, type }
+browserctl eval --file <path>        # 从文件读 JS（多行/特殊字符）
+browserctl eval --stdin              # 从管道读 JS
+browserctl eval <js> --timeout 15000 # 默认 10s，Promise 不 resolve 则 TIMEOUT
 browserctl wait --fn <js>            # 等 JS 表达式返回 true
 browserctl wait --fn-file <path>       # 从文件读取 JS 表达式（含特殊字符时优先）
 browserctl wait --fn-stdin             # 从管道读取 JS 表达式
@@ -98,7 +105,19 @@ browserctl select <@eN|selector> (<value> | --label <文本>)          # 选原�
 browserctl get url
 browserctl get title
 browserctl get value <@eN|selector>    # 读元素当前值（el.value 优先，回退 value 属性），校验 fill/select
+browserctl get text <@eN|selector>     # 读元素 innerText/textContent（trim）
 browserctl get attr <@eN|selector> <name>    # 读元素属性（href/src/aria-* 等），不存在返回 null
+browserctl is visible <@eN|selector>   # 元素存在且可见 → { result: true }；存在但 hidden → { result: false }；不存在 → ELEMENT_NOT_FOUND
+browserctl is enabled <@eN|selector>   # 元素存在且未 disabled → { result: true/false }
+browserctl is checked <@eN|selector>   # 可勾选 → { result: true/false }；非 checkbox/radio → NOT_CHECKABLE
+browserctl find role <role> <action> [value] [--name <name>] [--exact]   # 语义定位（主 frame；不依赖 snapshot @eN）
+browserctl find text|label <text> <action> [value] [--exact]
+browserctl find placeholder|testid|alt|title <query> <action> [value]
+browserctl find first|last <selector> <action> [value]
+browserctl find nth <n> <selector> <action> [value]   # n 为 1-based
+browserctl back|forward|reload
+browserctl scrollintoview|scroll-into-view <@eN|selector>   # 同 scroll @eN
+browserctl dialog status|accept [text]|dismiss
 browserctl get-url
 browserctl get-title
 browserctl extract-text
@@ -131,6 +150,64 @@ browserctl close                       # 关闭内嵌浏览器并收起右栏（
 > `type` 与 `fill` 区别：`fill` 先清空再输入；`type` 在当前焦点处追加，不清空。两者文本参数均支持 `--text-file` / `--text-stdin`。
 >
 > `fill` 输入段已改用 CDP `Input.insertText` 一次性注入（保留 `clearElement` 原型 setter 清空步骤，非破坏性），避免逐字符 `dispatchKeyEvent` 在中文/复合输入场景下的丢字问题。
+
+### 元素读值与状态断言（Batch 5.2）
+
+| 命令 | 语法 | 返回 data | 错误码 |
+|------|------|-----------|--------|
+| `get text` | `browserctl get text <ref_or_selector>` | `{ text: string }` | `ELEMENT_NOT_FOUND` |
+| `is visible` | `browserctl is visible <ref_or_selector>` | `{ result: boolean }` | `ELEMENT_NOT_FOUND` |
+| `is enabled` | `browserctl is enabled <ref_or_selector>` | `{ result: boolean }` | `ELEMENT_NOT_FOUND` |
+| `is checked` | `browserctl is checked <ref_or_selector>` | `{ result: boolean }` | `NOT_CHECKABLE` / `ELEMENT_NOT_FOUND` |
+
+**`is` 三态语义**（元素须先被 `runOnElement` 解析到）：
+
+| 情况 | 返回 |
+|------|------|
+| 元素不存在 | `{ ok: false, code: "ELEMENT_NOT_FOUND" }` |
+| 存在，条件为真 | `{ ok: true, data: { result: true } }` |
+| 存在，条件为假 | `{ ok: true, data: { result: false } }` |
+
+`checked` 额外：非 checkbox/radio → `{ ok: false, code: "NOT_CHECKABLE" }`（不是 true/false 三态）。
+
+### 语义定位 find（Batch 5.3）
+
+无需先 `snapshot`；在主 frame 内定位后直接走 objectId 路径（**不**转成 `@eN`）。
+
+| strategy | 示例 | 说明 |
+|----------|------|------|
+| `first`/`last`/`nth` | `find first #kw click` | CSS `querySelector(All)`；`nth` 为 **1-based** |
+| `testid` | `find testid submit-btn click` | `[data-testid]` 精确匹配 |
+| `placeholder` | `find placeholder 关键词 fill "text"` | placeholder contains（忽略大小写） |
+| `role` | `find role button click --name 百度一下` | 隐式 role + `--name` contains；`--exact` 全匹配 |
+| `text`/`label` | `find text 登录 click` | 最小包含元素 / label→control；`--exact` 全匹配 |
+| `alt`/`title` | `find title 帮助 hover` | 属性 contains |
+
+**action**：`click` \| `fill` \| `type` \| `hover` \| `focus` \| `check` \| `uncheck` \| `text`（不含 `select`）。`fill`/`type` 支持 `--text-file`/`--text-stdin`。
+
+失败：`ELEMENT_NOT_FOUND`（未匹配）、`NOT_CHECKABLE`、`EVAL_ERROR`（定位 JS 异常）。
+
+### 导航与弹窗（Batch 5.4）
+
+| 命令 | 说明 |
+|------|------|
+| `back` / `forward` / `reload` | CDP 历史导航 + `waitForLoadComplete`；返回 `{ url, title }`（经 `getUrl`/`getTitle` 读取） |
+| `scrollintoview` | 同 `scroll @eN`；元素不存在 → `ELEMENT_NOT_FOUND` |
+| `dialog status` | `{ pending, type?, message? }` |
+| `dialog accept [text]` | 处理 pending confirm/prompt；无 pending → `DIALOG_NOT_PENDING` |
+| `dialog dismiss` | 拒绝 confirm/prompt |
+
+`alert`/`beforeunload` 在 CDP 事件中**自动 accept**；`confirm`/`prompt` 置 pending。任意 action 响应若有 pending dialog，附加 top-level `warning`（不改 `ok`）。
+
+### batch（Batch 5.5，CLI-only）
+
+```bash
+browserctl batch "get url" "snapshot --interactive"
+browserctl batch --bail "open https://example.com" "click @e1"
+echo '[["get","url"],["wait","--load","domcontentloaded"]]' | browserctl batch --json
+```
+
+同 Node 进程顺序执行；每条子命令仍独立 HTTP 调 bridge。`--bail` 首条失败即停；不可嵌套 `batch`。
 
 > `screenshot --annotate`：先取 refCache（无则自动 `snapshot`），对每个 `@eN` 取 `getBoundingClientRect`，注入 `__browserctl_annotations__` 红框 overlay → `Page.captureScreenshot{captureBeyondViewport:true}` → 移除 overlay。返回 `{ path, bytes, annotations:[{ref,number,role,name?,box:{x,y,width,height}}] }`。**OOPIF 跨源 iframe 的 @eN 不参与 annotate**（主 session 上 `DOM.resolveNode` 会失败，静默跳过）。
 
