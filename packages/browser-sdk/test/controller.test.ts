@@ -856,3 +856,114 @@ test("snapshot scope 回退：getChildAXTree 抛错 → getFullAXTree", async ()
     "回退到 getFullAXTree"
   )
 })
+
+test("screenshot --annotate：注入 overlay、captureBeyondViewport:true、移除 overlay", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "DOM.getBoxModel": { model: { content: [0, 0, 100, 0, 100, 50, 0, 50] } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 1,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+    "Runtime.callFunctionOn": {
+      result: { value: { x: 0, y: 0, width: 100, height: 50 } },
+    },
+    "Runtime.evaluate": { result: { value: true } },
+    "Page.captureScreenshot": { data: "iVBOR" },
+  })
+  const c = new BrowserController(t)
+  await c.snapshot(200)
+  const r = await c.screenshot({ annotate: true })
+  assert.equal(r.ok, true)
+  assert.ok((r.data as { annotations?: unknown[] }).annotations?.length)
+  const shot = t.calls.filter(([m]) => m === "Page.captureScreenshot")
+  assert.equal(shot.length, 1)
+  assert.equal(
+    (shot[0][1] as { captureBeyondViewport?: boolean }).captureBeyondViewport,
+    true
+  )
+  const evals = t.calls.filter(([m]) => m === "Runtime.evaluate")
+  assert.ok(
+    evals.some(([, p]) =>
+      String((p as { expression?: string }).expression).includes(
+        "__browserctl_annotations__"
+      )
+    )
+  )
+  assert.ok(
+    evals.some(([, p]) =>
+      String((p as { expression?: string }).expression).includes("remove()")
+    )
+  )
+})
+
+test("screenshot --annotate：OOPIF ref 抛错时静默跳过", async () => {
+  const t = mockTransport({
+    "DOM.getBoxModel": { model: { content: [0, 0, 100, 0, 100, 50, 0, 50] } },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+    "Runtime.callFunctionOn": {
+      result: { value: { x: 0, y: 0, width: 100, height: 50 } },
+    },
+    "Runtime.evaluate": { result: { value: true } },
+    "Page.captureScreenshot": { data: "iVBOR" },
+  })
+  let resolveCount = 0
+  t.sendCommand = async (method, params) => {
+    t.calls.push([method, params])
+    if (method === "Accessibility.getFullAXTree") {
+      return {
+        nodes: [
+          {
+            nodeId: "1",
+            role: { value: "RootWebArea" },
+            childIds: ["2"],
+            backendDOMNodeId: 1,
+          },
+          {
+            nodeId: "2",
+            role: { value: "button" },
+            name: { value: "OK" },
+            backendDOMNodeId: 2,
+          },
+        ],
+      }
+    }
+    if (method === "DOM.resolveNode") {
+      resolveCount++
+      if (resolveCount === 2) {
+        throw new Error("Cannot find object for given backendNodeId")
+      }
+      return { object: { objectId: "obj-1" } }
+    }
+    if (method === "Runtime.callFunctionOn") {
+      return { result: { value: { x: 0, y: 0, width: 100, height: 50 } } }
+    }
+    if (method === "Runtime.evaluate") return { result: { value: true } }
+    if (method === "Page.captureScreenshot") return { data: "iVBOR" }
+    return {}
+  }
+  const c = new BrowserController(t)
+  await c.snapshot(200)
+  const r = await c.screenshot({ annotate: true })
+  assert.equal(r.ok, true, "OOPIF 抛错不应中断整个 annotate")
+  const anns =
+    (r.data as { annotations?: Array<{ ref: string }> }).annotations ?? []
+  assert.ok(anns.some((a) => a.ref === "@e0"), "@e0 仍被标注")
+  assert.ok(!anns.some((a) => a.ref === "@e1"), "@e1(OOPIF) 应被跳过")
+  const evals = t.calls.filter(([m]) => m === "Runtime.evaluate")
+  assert.ok(
+    evals.some(([, p]) =>
+      String((p as { expression?: string }).expression).includes(
+        "__browserctl_annotations__"
+      )
+    )
+  )
+})

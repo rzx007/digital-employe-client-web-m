@@ -52,7 +52,7 @@ Usage:
   browserctl get-url [--pretty]
   browserctl get-title [--pretty]
   browserctl extract-text [--pretty]
-  browserctl screenshot [--out <path>] [--pretty]
+  browserctl screenshot [--annotate] [--out <path>] [--pretty]
   browserctl close [--pretty]
 
 Environment:
@@ -645,8 +645,9 @@ async function run(argv, baseUrl) {
   }
 
   if (command === "screenshot") {
-    // bridge 回 base64（走 HTTP，不入 Agent 上下文）；CLI 落盘到产物目录，只回路径
-    const result = await postAction("screenshot", {})
+    const result = await postAction("screenshot", {
+      annotate: Boolean(flags.annotate),
+    })
     if (!result.ok) {
       print(result, flags.pretty)
       return
@@ -676,7 +677,14 @@ async function run(argv, baseUrl) {
       return
     }
     print(
-      { ok: true, data: { path: outPath, bytes: fs.statSync(outPath).size } },
+      {
+        ok: true,
+        data: {
+          path: outPath,
+          bytes: fs.statSync(outPath).size,
+          annotations: result.data.annotations || [],
+        },
+      },
       flags.pretty
     )
     return

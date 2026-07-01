@@ -93,6 +93,10 @@ browserctl get url
 
 # Save a screenshot to a file
 browserctl screenshot --out shot.png
+
+# Annotated screenshot with @eN labels (for HITL / vision models)
+browserctl snapshot --interactive
+browserctl screenshot --annotate --out shot-annotated.png
 ```
 
 ---

@@ -1077,14 +1077,123 @@ export class BrowserController {
     }
   }
 
-  async screenshot(): Promise<CdpResult<{ base64: string }>> {
+  async screenshot(opts: { annotate?: boolean } = {}): Promise<
+    CdpResult<{
+      base64: string
+      annotations?: Array<{
+        ref: string
+        number: number
+        role: string
+        name?: string
+        box: { x: number; y: number; width: number; height: number }
+      }>
+    }>
+  > {
     try {
+      let annotations: Array<{
+        ref: string
+        number: number
+        role: string
+        name?: string
+        box: { x: number; y: number; width: number; height: number }
+      }> = []
+      if (opts.annotate) {
+        if (!this.refCache.length) await this.snapshot()
+        const items: Array<{
+          number: number
+          x: number
+          y: number
+          width: number
+          height: number
+          role: string
+          name?: string
+          ref: string
+        }> = []
+        for (const ref of this.refCache) {
+          try {
+            if (!ref.backendNodeId) continue
+            const resolved = (await this.sendCommand("DOM.resolveNode", {
+              backendNodeId: ref.backendNodeId,
+            })) as { object?: { objectId?: string } }
+            if (!resolved.object?.objectId) continue
+            const r = (await this.sendCommand("Runtime.callFunctionOn", {
+              objectId: resolved.object.objectId,
+              functionDeclaration:
+                "function(){ const r=this.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height}; }",
+              returnByValue: true,
+            })) as {
+              result?: {
+                value?: { x: number; y: number; width: number; height: number }
+              }
+            }
+            const box = r.result?.value
+            if (!box || box.width <= 0 || box.height <= 0) continue
+            const num = Number(ref.ref.slice(2))
+            items.push({
+              number: num,
+              x: box.x,
+              y: box.y,
+              width: box.width,
+              height: box.height,
+              role: ref.role,
+              name: ref.name ?? undefined,
+              ref: ref.ref,
+            })
+          } catch {
+            // OOPIF 跨源 iframe ref 在主 session 抛错——静默跳过
+            continue
+          }
+        }
+        items.sort((a, b) => a.number - b.number)
+        annotations = items.map((it) => ({
+          ref: it.ref,
+          number: it.number,
+          role: it.role,
+          name: it.name,
+          box: {
+            x: it.x,
+            y: it.y,
+            width: it.width,
+            height: it.height,
+          },
+        }))
+        const itemsJson = JSON.stringify(items)
+        await this.sendCommand("Runtime.evaluate", {
+          expression: `(() => {
+            const items = ${itemsJson}; const id = "__browserctl_annotations__";
+            document.getElementById(id)?.remove();
+            const sx = window.scrollX||0, sy = window.scrollY||0;
+            const c = document.createElement('div');
+            c.id = id; c.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;pointer-events:none;z-index:2147483647';
+            for (const it of items) {
+              const dx = it.x+sx, dy = it.y+sy;
+              const b = document.createElement('div');
+              b.style.cssText = 'position:absolute;left:'+dx+'px;top:'+dy+'px;width:'+it.width+'px;height:'+it.height+'px;border:2px solid rgba(255,0,0,0.8);box-sizing:border-box;pointer-events:none;';
+              const l = document.createElement('div');
+              l.textContent = String(it.number);
+              l.style.cssText = 'position:absolute;top:'+(dy<14?'2px':'-14px')+';left:-2px;background:rgba(255,0,0,0.9);color:#fff;font:bold 11px/14px monospace;padding:0 4px;border-radius:2px;white-space:nowrap;';
+              b.appendChild(l); c.appendChild(b);
+            }
+            document.documentElement.appendChild(c); return true;
+          })()`,
+        })
+      }
       const result = (await this.sendCommand("Page.captureScreenshot", {
         format: "png",
+        captureBeyondViewport: true,
       })) as { data?: string }
-      return { ok: true, data: { base64: result.data ?? "" } }
+      if (opts.annotate) {
+        await this.sendCommand("Runtime.evaluate", {
+          expression:
+            "document.getElementById('__browserctl_annotations__')?.remove()",
+        })
+      }
+      return {
+        ok: true,
+        data: { base64: result.data ?? "", annotations },
+      }
     } catch (e) {
-      return { ok: false, error: (e as Error).message }
+      return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
     }
   }
 

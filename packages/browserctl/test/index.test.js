@@ -379,6 +379,39 @@ test("screenshot 落盘并返回路径，stdout 不含 base64", async () => {
   }
 })
 
+test("screenshot --annotate 传 annotate:true 且返回 annotations 数组", async () => {
+  const B =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(
+      JSON.stringify({
+        ok: true,
+        data: {
+          base64: B,
+          annotations: [{ ref: "@e1", number: 1, role: "button", box: {} }],
+        },
+      })
+    )
+  })
+  const out = path.join(os.tmpdir(), `browserctl-shot-ann-${process.pid}.png`)
+  try {
+    const { stdout } = await runCli(["screenshot", "--annotate", "--out", out], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.annotate, true)
+    const j = JSON.parse(stdout)
+    assert.equal(j.ok, true)
+    assert.ok(Array.isArray(j.data.annotations))
+    assert.equal(j.data.annotations.length, 1)
+    assert.equal(j.data.annotations[0].ref, "@e1")
+  } finally {
+    if (fs.existsSync(out)) fs.unlinkSync(out)
+    await closeServer(srv)
+  }
+})
+
 test("bridge 接受连接但不响应时返回 BRIDGE_TIMEOUT", async () => {
   const srv = await startServer(() => {
     /* 故意不响应 */

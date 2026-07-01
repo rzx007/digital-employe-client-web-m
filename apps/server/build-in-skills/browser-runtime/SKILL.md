@@ -87,7 +87,7 @@ browserctl get value @e4                 # 读元素当前值，校验 fill/sele
 browserctl get attr @e3 href             # 读元素属性（href/src/aria-* 等）
 browserctl get url
 browserctl extract-text
-browserctl screenshot                    # 截图落盘，返回文件路径（非 base64）
+browserctl screenshot [--annotate]         # 截图落盘；--annotate 在图上标 @eN 红框编号并返回 annotations
 browserctl wait --selector "#result" [--state visible|hidden]  # 操作后等目标元素/状态，再 snapshot
 browserctl wait --url "https://example.com/*"                  # 等 URL 匹配 glob
 browserctl wait --load networkidle                             # 等网络空闲

@@ -102,7 +102,7 @@ browserctl get attr <@eN|selector> <name>    # 读元素属性（href/src/aria-*
 browserctl get-url
 browserctl get-title
 browserctl extract-text
-browserctl screenshot [--out <path>]   # 截图落盘到产物目录，返回 { path, bytes }，不输出 base64
+browserctl screenshot [--annotate] [--out <path>]   # 截图落盘，返回 { path, bytes, annotations? }；--annotate 在图上标 @eN 红框编号
 browserctl close                       # 关闭内嵌浏览器并收起右栏（任务结束释放资源）
 ```
 
@@ -131,12 +131,12 @@ browserctl close                       # 关闭内嵌浏览器并收起右栏（
 > `type` 与 `fill` 区别：`fill` 先清空再输入；`type` 在当前焦点处追加，不清空。两者文本参数均支持 `--text-file` / `--text-stdin`。
 >
 > `fill` 输入段已改用 CDP `Input.insertText` 一次性注入（保留 `clearElement` 原型 setter 清空步骤，非破坏性），避免逐字符 `dispatchKeyEvent` 在中文/复合输入场景下的丢字问题。
->
-> OOPIF（跨源 iframe）annotate / `-c`/`-d`/`-s` 等扩展 flag 为后续 Batch 预留，本批仅落地上述 8 条交互命令。
+
+> `screenshot --annotate`：先取 refCache（无则自动 `snapshot`），对每个 `@eN` 取 `getBoundingClientRect`，注入 `__browserctl_annotations__` 红框 overlay → `Page.captureScreenshot{captureBeyondViewport:true}` → 移除 overlay。返回 `{ path, bytes, annotations:[{ref,number,role,name?,box:{x,y,width,height}}] }`。**OOPIF 跨源 iframe 的 @eN 不参与 annotate**（主 session 上 `DOM.resolveNode` 会失败，静默跳过）。
 
 > `snapshot` 会自动遍历同源 iframe：iframe 内的元素也会出现在 `@eN` 列表里，可直接 `click`/`fill`/`select`/`get`/`scroll`。跨源 iframe（不同域，走独立进程）会被静默跳过、不影响主页面。**iframe 内只能用 `@eN` 定位，CSS 选择器不跨 frame**（选择器只在主文档生效），优先用 `@eN`。
 
-> `screenshot` 默认写到当前会话产物目录 `browser-screenshot-<时间戳>.png`，或用 `--out` 指定路径。返回文件路径后，如需让模型查看可再 `read` 该图片。
+> `screenshot` 默认写到当前会话产物目录 `browser-screenshot-<时间戳>.png`，或用 `--out` 指定路径。stdout 不含 base64；返回文件路径后，如需让模型查看可再 `read` 该图片。
 
 ## 调用方式
 

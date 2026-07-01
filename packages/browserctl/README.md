@@ -33,7 +33,7 @@ browserctl drag <@eN|selector> <@eN|selector>   # 从 source 拖到 target（10 
 browserctl upload <@eN|selector> <file...> # 给 <input type=file> 设置文件
 browserctl get url|title
 browserctl extract-text
-browserctl screenshot [--out <path>]  # 落盘返回 { path, bytes }，不输出 base64
+browserctl screenshot [--annotate] [--out <path>]  # 落盘返回 { path, bytes, annotations? }，不输出 base64
 browserctl close                      # 关闭内嵌浏览器并收起右栏
 ```
 

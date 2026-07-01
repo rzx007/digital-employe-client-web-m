@@ -602,7 +602,8 @@ async function handleBridgeRequest(
           })
           return
         }
-        const result = await controller.screenshot()
+        const annotate = Boolean(body.annotate)
+        const result = await controller.screenshot({ annotate })
         reply(res, result.ok ? 200 : 502, result)
         return
       }
