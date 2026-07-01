@@ -9,9 +9,31 @@ Monorepo：React 19 + Electron 前端（`apps/web`）、Python FastAPI 后端（
 - `packages/ui` — Radix UI + shadcn/ui + Tailwind CSS v4 组件库
 - `scripts/` — 构建脚本（`build-server.py` 等）
 
-## Build & Development Commands
+### 宿主日志目录
+
+Electron 主进程与 Python 后端日志统一在 `~/.boban-staff/logs/`：
+
+| 文件 | 来源 |
+|------|------|
+| `main.log` | Electron 主进程（[`apps/web/electron/core/data-paths.ts`](apps/web/electron/core/data-paths.ts)） |
+| `app.log` / `error.log` | Python 后端（[`apps/server/src/core/config.py`](apps/server/src/core/config.py) `get_default_logs_dir()`） |
+
+桌面端可在 **设置 → 关于 → 诊断与支持** 打开日志目录，或将上述三个文件打包为 zip 导出。
+
+### 桌面宠物目录
+
+| 路径 | 用途 |
+|------|------|
+| `~/.boban-staff/pets/<folder>/` | 本应用 zip 安装 / 手动导入（[`pet-paths.ts`](apps/web/electron/features/pet/pet-paths.ts)） |
+| `~/.codex/pets/<folder>/` | Codex/Petdex 生态兼容；只读扫描 |
+
+每包需 `pet.json` + 雪碧图。列表 slug 为**文件夹名**；`resolvePetFolder` 支持 `meta.id` 与目录名不一致时的回退匹配。
 
 ### 前端（apps/web + packages/ui）
+
+聊天 API/UI 类型分层见 [`CHAT_DATA_TYPES.md`](apps/web/src/lib/chat/CHAT_DATA_TYPES.md)；会话消息流转（Query / useChat / SSE / hydrate / HITL 展示）见 [`conversation-message-flow.md`](apps/web/src/lib/chat/conversation-message-flow.md)。
+
+内嵌浏览器（右栏 `BrowserPanel` + `WebContentsView` 视口对齐、CSS→DIP、勿用子窗口）见 [`apps/web/electron/features/browser/README.md`](apps/web/electron/features/browser/README.md)。
 
 ```bash
 pnpm install          # 安装依赖（需要 Node >= 20, pnpm >= 10.33）
@@ -26,7 +48,10 @@ pnpm lint --filter=web
 pnpm build --filter=@workspace/ui
 
 # Electron 桌面端开发（自动启动 Python 后端）
-pnpm --filter web dev:app
+pnpm --filter digital-employee dev:app
+
+# Electron 正式打包（必须使用 arm64 原生 Node，见下方 macOS 架构说明）
+pnpm --filter digital-employee build:app
 ```
 
 前端无测试框架。添加测试前先配置 Vitest。
@@ -51,14 +76,28 @@ uv run uvicorn src.server:app --host 0.0.0.0 --port 58000 --reload
 # 从项目根目录启动
 pnpm dev:server
 
-# 打包为 exe（输出到 apps/web/py-server/backend.exe）
+# 打包后端（Windows → apps/web/py-server/backend.exe；macOS/Linux → backend）
 pnpm build:server
 
 # 打包完整应用（Python 后端 + Electron）
 pnpm build:app
 ```
 
-后端无测试目录。`README.md` 中提到的 `tests/` 文件不存在。
+### macOS（Apple Silicon）架构与 venv
+
+若出现 `pydantic_core` / `dlopen` 报错：`have 'arm64', need 'x86_64'`（或相反），或 Electron 打包时 `dmg-builder` 报错 `Library not loaded: /usr/local/opt/gettext/lib/libintl.8.dylib`，说明 **Node 与 Python 依赖的二进制架构不一致**。常见原因是 NVM 装成了 x86_64（Rosetta）版 Node，而 `uv sync` 在 arm64 下装了 wheel。
+
+**验证 Node 架构**：`node -p process.arch` 应输出 `arm64`，`file "$(which node)"` 应包含 `arm64`。若输出 `x64` 或 `x86_64`，说明是 Rosetta 转译版。
+
+**处理**：在 **原生 arm64** 终端中重装 Node（`nvm uninstall <version>` → `nvm install <version>`），删除 `apps/server/.venv` 后重新 `uv sync`。勿在「使用 Rosetta 打开」的终端里安装/同步 Python 依赖。
+
+后端测试（pytest）位于 `apps/server/tests/`：
+
+```bash
+cd apps/server
+uv sync --group dev
+uv run pytest
+```
 
 ## apps/server 架构（Python 后端）
 
@@ -83,6 +122,14 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 
 `init_db()` 除了 `create_all`，还自动执行 ALTER TABLE 迁移（为旧表补充新列）。修改模型后不需要手动写 migration，但需要确保 `init_db()` 中补上对应的 `ensure_column` 调用。
 
+### 架构文档（apps/server/docs）
+
+- [可恢复流](./apps/server/docs/resumable-stream-architecture.md) — SSE buffer、resume、落库
+- [Agent 串行模式](./docs/agent-serial-mode.md) — 客户端可切换的全局 Agent 串行执行与启动队列
+- [总管委派 SSE 串流](./apps/server/docs/orchestrator-employee-stream-isolation.md) — 总管/员工并发 `astream` 串流根因与 `execution.py` 修复
+- [HITL 人机协同](./apps/server/docs/hitl-architecture.md) — 澄清/方案审批、`message_id` 模型、数据流与待办
+- [HITL tool invocation 报错](./apps/server/docs/hitl-tool-invocation-not-found.md) — `No tool invocation found for tool call ID` 成因与修复
+
 ### Agent 系统
 
 `src/service/agent.py` → `get_agent(skill_path, root_path)` 创建对话 agent：
@@ -95,7 +142,18 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
   - `/agent/` → FilesystemBackend（`src/service/`，用于读取 `AGENTS.md`）
 - Checkpointer：`MemorySaver`（内存，重启丢失）
 - Store：`InMemoryStore`
-- LLM：通过 `OPENAI_API_KEY` / `BASE_URL` / `DEEPAGENT_MODEL` 配置
+- LLM：通过 `config_kvs` 的 `LLM_REGISTRY`（多供应商注册表，含 `active_provider_id` / `active_model_id`）配置；统一经 `src/llm/factory.build_chat_model()` 创建实例；运行时只读 registry，四键仅用于一次性迁移写入 `LLM_REGISTRY`（不删 DB 行）
+
+### 多供应商 LLM（`src/llm/`）
+
+- 迁移与兼容逻辑总览：[`apps/server/docs/compatibility-inventory.md`](apps/server/docs/compatibility-inventory.md)（含四键 → `LLM_REGISTRY` 待移除清单）
+- `src/llm/registry.py`：`LLM_REGISTRY` JSON（多家供应商凭证 + 模型清单）；全局仅一对 `active_provider_id` / `active_model_id`；设置页 Radio 单选激活
+- `src/llm/providers/catalog.py`：静态供应商目录（DashScope、DeepSeek 官方、OpenAI、Moonshot、智谱、SiliconFlow + custom）
+- `src/llm/factory.py`：`build_chat_model()` 合并 KV 配置并应用上下文 profile
+- `src/llm/connection.py`：设置页探活（`GET /models` → fallback `POST /chat/completions`）
+- **注意**：DashScope 与 DeepSeek 官方的模型名不可混用（如 `deepseek-v4-flash` 仅适用于 DashScope，`deepseek-chat` 适用于 DeepSeek 官方）
+- DeepSeek V4 模型在 `build_chat_model()` 中自动注入 `extra_body={"thinking": {"type": "disabled"}}`（LangChain 尚未正确回传 `reasoning_content`，Agent 工具调用会 400）
+- `model_patch` 仅在 active 供应商为 dashscope（或目录标记）时启用，用于 DashScope 上下文超长错误兼容
 
 ### 技能（Skills）解析优先级
 
@@ -113,8 +171,9 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 ### 任务调度
 
 - `TaskSchedulerService`：APScheduler BackgroundScheduler，CST 时区
-- 只保留 `dispatch_type == "skill"` 的任务
-- `EmployeeTask` 来自员工 `meta_json.tasks`，通过 `TaskService.sync_workspace_tasks()` 同步
+- 只调度 `dispatch_type` 为 `skill` 或 `mcp` 的活跃任务
+- `employee_tasks` 表是任务唯一数据源；创建/编辑员工时通过 `TaskService.upsert_employee_tasks()` 写入
+- `GET /workspaces/{id}/tasks/sync` 仅重算活跃任务的 `next_run_at` 并调用 `TaskSchedulerService.reload_jobs()`
 - 支持确认流程：从 SKILL.md 解析 `confirm_url`，执行后写入 `TaskExecutionLog.confirm_url`
 - 修改员工任务后需调用 `TaskSchedulerService.reload_jobs()` 刷新调度
 
@@ -124,22 +183,85 @@ Workspace、Employee、EmployeeSkill、EmployeeShiftSchedule、ChatGroup、Group
 
 | 变量                       | 默认值                                              | 说明                                                                                             |
 | -------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `SQLITE_PATH`              | `~/.digital-employee/data/app.db`                   | **注意**：`.env.example` 里的路径已过时，实际默认值在 `config.py` 的 `get_default_sqlite_path()` |
+| `SQLITE_PATH`              | `~/.boban-staff/data/app.db`                   | **注意**：`.env.example` 里的路径已过时，实际默认值在 `config.py` 的 `get_default_sqlite_path()` |
 | `SERVER_PORT`              | `58000`                                             | 服务端口                                                                                         |
 | `ENVIRONMENT`              | `dev`                                               | dev/prod                                                                                         |
-| `OPENAI_API_KEY`           | —                                                   | LLM API Key                                                                                      |
-| `BASE_URL`                 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | LLM API 地址                                                                                     |
-| `DEEPAGENT_MODEL`          | `qwen2.5-72b-instruct`                              | Agent 使用的模型                                                                                 |
+| `LLM_REGISTRY`             | —                                                   | 多供应商注册表 JSON（唯一 LLM 配置存储）；`active_*` 为当前使用的供应商与模型 |
 | `SKILL_REMOTE_BASE_URL`    | —                                                   | 远程技能服务地址                                                                                 |
 | `AGENT_INTERFACE_BASE_URL` | —                                                   | Agent Interface 服务地址                                                                         |
 | `DBCHAT_BASE_URL`          | —                                                   | DB Chat 服务地址                                                                                 |
 | `LOGIN_URL`                | —                                                   | 登录页面地址                                                                                     |
 | `DEFAULT_WORKSPACE_ID`     | `1`                                                 | 默认工作空间 ID                                                                                  |
-| `EMPLOYEE_ZIP_URL`         | —                                                   | 远程员工 ZIP 下载地址                                                                            |
+| `OFFLINE_MODE`             | `0`                                                 | 设为 `1` 启用离线模式（跳过登录、禁用远程集成，保留本地聊天/技能与调度）                         |
+
+#### 离线模式（OFFLINE_MODE）
+
+离线模式下，应用将跳过登录、禁用远程平台集成（技能/MCP/绩效/派单/自动更新），保留本地聊天、本地/内置技能、本地员工 CRUD、本地任务调度与设置页手动 LLM 配置。
+
+```powershell
+# 开发（PowerShell）
+$env:OFFLINE_MODE="1"; pnpm dev:server
+$env:OFFLINE_MODE="1"; pnpm --filter digital-employee dev:app
+
+# 打包离线版安装包
+pnpm build:app:offline
+
+# Linux ARM64 离线 deb（须在 arm64 macOS + Docker 上运行）
+pnpm build:deb:arm64:offline
+```
+
+架构入口文件：`apps/server/src/core/runtime_capabilities.py` 和 `apps/server/src/core/remote_gateway.py`。
+离线版最小 KV（配置在设置页或通过 `config-kv.init.json` 种子写入）：`LLM_REGISTRY`（或遗留的 `DEEPAGENT_MODEL`、`OPENAI_API_KEY`、`BASE_URL`）。
+
+#### 设备激活（Activation）
+
+完整需求、架构与运维说明见 **[docs/offline-activation.md](docs/offline-activation.md)**。
+
+离线包默认要求本机激活：用户复制**设备码** → 管理员 CLI 签发带有效期的**授权码** → 用户粘贴激活；到期后重复该流程。
+
+| 开关 | 说明 |
+|------|------|
+| `activation_enforced` | 能力表字段；默认 `offline_mode && !ACTIVATION_BYPASS` |
+| `ACTIVATION_BYPASS=1` | 仅开发：跳过激活窗与 Middleware |
+| 在线版也要激活 | 改 `apps/server/src/core/activation/policy.py` 中 `is_activation_enforced()` 一处即可 |
+
+**共享库与边界**
+
+- [`packages/activation-core`](packages/activation-core) — 授权码签名/验签、设备码格式（`license` / `device` / `expiry`）
+- [`apps/server`](apps/server) — 本机设备指纹、`activation.json`、API/Middleware（依赖 activation-core）
+- [`apps/license-issuer`](apps/license-issuer) — 管理员签发 CLI `de-license`（依赖 activation-core，可 PyInstaller 打 exe）
+
+**后端（enforcement 真相源）**
+
+- `apps/server/src/core/activation/` — 运行时 policy / storage / keys；密码学来自 activation-core
+- `apps/server/src/core/activation_gateway.py` + `middleware/activation_middleware.py`
+- `apps/server/src/api/activation_api.py` — `/activation/device`、`/status`、`/activate`
+- `GET /system/runtime` 含 `activation` 与 `capabilities.activation_enforced`
+
+**Electron / 前端**
+
+- `apps/web/electron/features/activation/` — `gate.ts` 启动门控、`window-activation` 激活窗
+- `apps/web/src/routes/activation.tsx`、`components/activation/`
+- 设置 → 关于：`ActivationAboutSection`（仅 `activation_enforced` 时显示）
+
+**管理员签发**
+
+```powershell
+# 组织密钥（仅保管人首次/轮换）；私钥勿入库
+uv run de-license keys generate --out-dir apps/license-issuer/release
+uv run de-license keys export-public -o apps/server/src/core/activation/public_key.pem
+
+# 签发：默认同目录 private_key.pem（与 de-license.exe 一并分发）
+pnpm build:license-issuer
+cd apps/license-issuer/release
+.\de-license.exe issue --device "用户设备码" --expires +365d
+```
+
+详见 [`apps/license-issuer/README.md`](apps/license-issuer/README.md)。私钥与 exe 同目录分发、勿入库；`public_key.pem` 可入库并随 PyInstaller 打入客户端（见 `scripts/build-server.py`）。
 
 ### 已知问题
 
-- **无测试**：`tests/` 目录不存在。
+- **测试**：`apps/server/tests/`（pytest）；`uv run pytest`。
 
 ### 打包
 
@@ -158,6 +280,9 @@ python scripts/build-server.py --app
 ```
 
 输出：`apps/web/py-server/backend.exe`（Windows）/ `backend`（Linux/macOS）。
+
+- **Mac DMG（Apple Silicon）**：`build:app` 直接调用 `electron-builder`，**必须使用 arm64 原生 Node**，否则默认打 x64 包导致 dmg-builder/gettext 失败（x86_64 dmgbuild 二进制编译于较新 macOS，在旧系统上无法运行）。若使用 Rosetta Node 打包，需手动加 `--mac --arm64` 参数。若仍异常可清理 `~/Library/Caches/electron-builder/dmg-builder*` 后重打。
+- **Mac 自动更新**：`mac.target` 需含 `zip`；上传到更新服务器的 `macos/` 目录须包含 `latest-mac.yml` 与同版本 `.zip`（仅 DMG 会导致 `ZIP file not provided`）。详见 `apps/web/electron/README.md`。
 
 ## 前端 Code Style
 

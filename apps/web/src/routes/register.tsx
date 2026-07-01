@@ -7,18 +7,20 @@ import { Label } from "@workspace/ui/components/label"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconEye, IconEyeOff, IconLoader2, IconX } from "@tabler/icons-react"
 import { motion, AnimatePresence } from "motion/react"
-import logoImage from "@/assets/logo.png"
 import bgImage from "@/assets/Group.png"
 import { registerApi } from "@/api/auth"
+import { useBrand } from "@/lib/brand/brand"
 import { getDeptTree } from "@/api/dept"
 import { togglePath, type DeptTreeNode } from "@/lib/dept-tree"
 import { RegisterDeptTree } from "@/components/login/register-dept-tree"
+import { getElectronApi, isElectron, withElectronApi } from "@/lib/electron/host"
 
 export const Route = createFileRoute("/register")({
   component: RegisterPage,
 })
 
 function RegisterPage() {
+  const brand = useBrand()
   const [regUsername, setRegUsername] = useState("")
   const [regPassword, setRegPassword] = useState("")
   const [showRegPassword, setShowRegPassword] = useState(false)
@@ -31,7 +33,7 @@ function RegisterPage() {
   const [deptLoading, setDeptLoading] = useState(false)
   const [deptFetchError, setDeptFetchError] = useState<string | null>(null)
   const [registerDone, setRegisterDone] = useState(false)
-  const isElectron = !!window.electronApi
+  const inElectron = isElectron()
   const shellRef = useRef<HTMLDivElement>(null)
   const columnRef = useRef<HTMLDivElement>(null)
 
@@ -63,7 +65,8 @@ function RegisterPage() {
   }, [])
 
   useLayoutEffect(() => {
-    if (!isElectron || !window.electronApi?.resizeRegisterWindow) return
+    const api = getElectronApi()
+    if (!inElectron || !api?.resizeRegisterWindow) return
     const shell = shellRef.current
     if (!shell) return
 
@@ -86,7 +89,7 @@ function RegisterPage() {
         requestAnimationFrame(() => {
           const natural = measureHeight()
           const h = Math.min(Math.max(natural, 500), maxPx)
-          void window.electronApi!.resizeRegisterWindow!({
+          void api.resizeRegisterWindow({
             width: W,
             height: h,
           })
@@ -101,7 +104,7 @@ function RegisterPage() {
     if (col) ro.observe(col)
 
     return () => ro.disconnect()
-  }, [isElectron, registerLoading, deptLoading, registerDone])
+  }, [inElectron, registerLoading, deptLoading, registerDone])
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -126,8 +129,10 @@ function RegisterPage() {
       })
       if (res.code === 1) {
         setRegisterDone(true)
-        if (isElectron) {
-          window.electronApi?.notifyRegisterSuccess(regUsername.trim())
+        if (inElectron) {
+          void withElectronApi((api) =>
+            api.notifyRegisterSuccess(regUsername.trim()),
+          )
         } else {
           localStorage.setItem("register_success", regUsername.trim())
         }
@@ -144,8 +149,8 @@ function RegisterPage() {
   }
 
   const handleClose = () => {
-    if (isElectron) {
-      window.electronApi?.closeRegister()
+    if (inElectron) {
+      void withElectronApi((api) => api.closeRegister())
     } else {
       window.close()
     }
@@ -153,21 +158,21 @@ function RegisterPage() {
 
   const rootStyle: React.CSSProperties = {
     background: `url(${bgImage}) no-repeat 100% 0%, linear-gradient(180deg, #eaf0fd 1%, rgba(236, 242, 255, 0.74) 27%, rgba(255, 255, 255, 0) 83%)`,
-    ...(isElectron ? { WebkitAppRegion: "drag" } : {}),
+    ...(inElectron ? { WebkitAppRegion: "drag" } : {}),
   }
 
   return (
     <div
       className={cn(
         "relative flex w-screen flex-col",
-        isElectron
+        inElectron
           ? "min-h-min w-full overflow-x-hidden"
           : "min-h-dvh overflow-hidden",
       )}
       style={rootStyle}
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
-        {isElectron && (
+        {inElectron && (
           <div
             className="pointer-events-auto absolute top-0 right-0 z-10 flex items-center"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -187,49 +192,53 @@ function RegisterPage() {
         <div
           className={cn(
             "pointer-events-auto select-none",
-            isElectron
+            inElectron
               ? "flex items-center px-4 pt-4"
               : "mx-auto flex w-full max-w-md items-center justify-center gap-2 pb-6",
           )}
         >
-          <img src={logoImage} alt="DigitalEmployee" className="h-7 w-9" />
+          <img
+            src={brand.logos.login}
+            alt={brand.productName}
+            className="h-7 w-9"
+          />
           <h1
             className={cn(
               "text-gray-800 tracking-wider",
-              isElectron
+              inElectron
                 ? "ml-2 text-base font-semibold"
                 : "text-xl font-semibold",
             )}
           >
-            数字员工
+            {brand.productName}
           </h1>
         </div>
       </div>
       <div
-        ref={isElectron ? shellRef : undefined}
+        ref={inElectron ? shellRef : undefined}
         className={cn(
-          isElectron
+          inElectron
             ? "flex w-full flex-col overflow-x-hidden px-6 pb-3 pt-12"
             : "flex min-h-0 flex-1 flex-col justify-center px-4 pb-6 pt-20 md:px-6",
         )}
       >
         <div
-          ref={isElectron ? columnRef : undefined}
+          ref={inElectron ? columnRef : undefined}
           className={cn(
             "flex min-h-0 w-full flex-col",
-            isElectron
+            inElectron
               ? "mx-auto max-w-sm"
               : "mx-auto max-h-[min(100dvh-2rem,920px)] w-full max-w-md overflow-hidden rounded-2xl border border-border/50 bg-background/95 shadow-md ring-1 ring-border/20 backdrop-blur-sm",
           )}
           style={
-            isElectron
+            inElectron
               ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties)
               : undefined
           }
         >
           <div
             className={cn(
-              isElectron
+              inElectron
                 ? "flex w-full flex-col overflow-x-hidden"
                 : "flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain p-5 md:p-7",
             )}
@@ -414,7 +423,7 @@ function RegisterPage() {
                     <Button
                       type="submit"
                       className="w-full"
-                      size={isElectron ? "lg" : "default"}
+                      size={inElectron ? "lg" : "default"}
                       disabled={
                         registerLoading ||
                         !regUsername.trim() ||

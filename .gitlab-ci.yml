@@ -1,0 +1,286 @@
+# ==============================================================================
+# 数字员工客户端 - 打包流水线
+#
+# Windows（win-builder = yaoji 账户下的 GitLab Runner，shell executor）：
+#   首次部署请用管理员执行 scripts/ci/setup-win-runner-yaoji.ps1
+#   将 Runner 服务从 systemprofile 改为 yaoji 运行。
+#   CI job 即「远程下发指令」，实际执行 scripts/ci/build-windows.ps1。
+#   默认保留 .venv / node_modules，比旧 CI 冷启动快。
+#   - 推 vX.Y.Z tag → build:windows 自动触发（全平台 release 流程中的 Windows 部分）
+#   - 分支 Pipeline → build:windows:manual 网页手动点 Play
+#   - 打包门户 Pipeline Trigger（dev 等分支）→ build:windows:branded 自动跑（仅 Windows 品牌在线包）
+#   RDP 本地也可直接跑同一脚本。
+#
+# macOS / Linux：推送 tag 时由 mac-builder CI 自动构建。
+# 分支 push：Windows 无自动 job（smoke 冒烟已关；需打包用 build:windows:manual 手动 Play）。
+#
+# 注：本仓库 GitLab 为旧版本，使用 only/except 语法（不支持 rules）。
+# ==============================================================================
+
+stages:
+  - build
+  - package
+
+variables:
+  # ---------- 国内镜像（npmmirror，与根目录 .npmrc 一致）----------
+  NPM_CONFIG_REGISTRY: "https://registry.npmmirror.com"
+  ELECTRON_MIRROR: "https://npmmirror.com/mirrors/electron/"
+  # dmg-builder 等须走 electron-builder-binaries 路径（非 electron/）；26.11.1+ 才与 ELECTRON_MIRROR 共存
+  ELECTRON_BUILDER_BINARIES_MIRROR: "https://npmmirror.com/mirrors/electron-builder-binaries/"
+  UV_INDEX_URL: "https://mirrors.aliyun.com/pypi/simple/"
+  UV_EXTRA_INDEX_URL: "https://npmmirror.com/mirror/pypi/simple https://pypi.org/simple"
+  # yaoji 账户：Python / uv 缓存 / 工具链 PATH
+  UV_PYTHON: "C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe"
+  UV_CACHE_DIR: "C:/Users/yaoji/AppData/Local/uv-cache"
+  UV_CONCURRENT_DOWNLOADS: "16"
+  PIP_INDEX_URL: "https://mirrors.aliyun.com/pypi/simple/"
+  # Node 大型构建（Vite 26K 模块）提高堆上限
+  NODE_OPTIONS: "--max-old-space-size=8192"
+  # Windows shell 构建：Python/uv 子进程输出统一 UTF-8
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+  # uv 拉 PyPI：拉长超时，避免 anthropic 等大包下载失败
+  UV_HTTP_TIMEOUT: "300"
+  UV_HTTP_RETRIES: "5"
+  # 32 位 makensis 从 systemprofile 下的 .cache 启动会因 WOW64 重定向报 3221225781。
+  # 只把 electron-builder 缓存移出 systemprofile，不覆盖 LOCALAPPDATA
+  # （否则会搬走 pnpm 的 store，导致冷装）。
+  ELECTRON_BUILDER_CACHE: "C:/GitLab-Runner/localappdata/electron-builder/Cache"
+  # UV_PYTHON / UV_CACHE_DIR 见全局 variables（yaoji 账户）
+  FEISHU_BITABLE_WIKI_NODE: "Zc3XwAhsMiJPUEk7IimcHMfKnoc"
+  FEISHU_BITABLE_TABLE_ID: "tblhM5KRRT2i8YsP"
+  FEISHU_BITABLE_URL: "https://scnj8otdvysf.feishu.cn/wiki/Zc3XwAhsMiJPUEk7IimcHMfKnoc?table=tblhM5KRRT2i8YsP&view=vewYirQnN3"
+
+# 版本 tag（vX.Y.Z）才触发真打包
+.release_refs: &release_refs
+  - /^v\d+\.\d+\.\d+/
+
+# Windows smoke / build：yaoji 账户 Runner（见 setup-win-runner-yaoji.ps1）
+.win_smoke: &win_smoke
+  variables:
+    GIT_CLEAN_FLAGS: ""
+  before_script:
+    - pwsh -NoProfile -File scripts/ci/windows-prepare.ps1 -SkipClean
+
+# ------------------------------------------------------------------------------
+# 冒烟测试：已关闭（job 名前加 . 变隐藏 job，不再运行）。
+# 真打包已跑通，分支 push 不再需要冒烟。如需重开：去掉下面 job 名前的点。
+# ------------------------------------------------------------------------------
+.smoke:windows:
+  <<: *win_smoke
+  stage: build
+  tags:
+    - win-builder
+  except:
+    - tags
+  script:
+    - echo "CI user=$env:USERNAME"
+    - node -v
+    - pnpm -v
+    - py -3.11-64 -c "import sys,platform; print(sys.executable); print(platform.architecture()); assert sys.maxsize > 2**32"
+    - uv --version
+    - git --version
+    - echo "ALL TOOLS VISIBLE TO RUNNER"
+
+# Windows 打包：CI 在那台机器上跑 build-windows.ps1（不删缓存）
+.win_build: &win_build
+  variables:
+    GIT_CLEAN_FLAGS: ""
+
+# ------------------------------------------------------------------------------
+# Windows x64：推 tag 自动打包（快路径，保留 .venv）
+# ------------------------------------------------------------------------------
+build:windows:
+  <<: *win_build
+  stage: build
+  tags:
+    - win-builder
+  only: *release_refs
+  script:
+    # 自动推 test 更新服务器（同 job 内能看到 release/ 产物；与 arm/macos 解耦，
+    # Windows 打完即推，无需等其他平台）。失败不阻断。
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_TAG -SkipGitSync -PushUpdate test
+  # exe 走飞书分发(publish-feishu.py)，不塞 GitLab 产物(老服务器 413 上限)。
+  # 仅留体积极小的更新清单/blockmap 作轻量记录。
+  artifacts:
+    name: "BobanStaff-Windows-$CI_COMMIT_TAG"
+    paths:
+      - apps/web/release/*.yml
+      - apps/web/release/*.blockmap
+    expire_in: 30 days
+
+# ------------------------------------------------------------------------------
+# Windows x64：分支上手动触发（Pipeline 页点 Play）
+# ------------------------------------------------------------------------------
+build:windows:manual:
+  <<: *win_build
+  stage: build
+  tags:
+    - win-builder
+  when: manual
+  except:
+    - tags
+  script:
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_REF_NAME -SkipGitSync
+  # exe 走飞书分发，不塞 GitLab 产物(老服务器 413 上限)。
+  artifacts:
+    name: "BobanStaff-Windows-$CI_COMMIT_REF_NAME"
+    paths:
+      - apps/web/release/*.yml
+      - apps/web/release/*.blockmap
+    expire_in: 7 days
+
+# ------------------------------------------------------------------------------
+# Windows x64 品牌在线包（打包门户专用 stage）
+#
+# 与 build:windows / build:windows:manual 分离：
+#   - 仅 Pipeline Trigger 来源（门户 POST trigger/pipeline）自动执行，无需点 Play
+#   - 只打 Windows 在线包，不触发 mac/linux/tag release 流程
+#   - 必填变量：BRAND_PROJECT、BRAND_ASSETS_REPO（门户传入）
+# ------------------------------------------------------------------------------
+build:windows:branded:
+  <<: *win_build
+  stage: package
+  tags:
+    - win-builder
+  only:
+    - triggers
+  except:
+    - tags
+  script:
+    - if (-not $env:BRAND_PROJECT) { throw "BRAND_PROJECT 未设置（请通过打包门户或 trigger-branded-build.ps1 传入）" }
+    - if (-not $env:BRAND_ASSETS_REPO) { throw "BRAND_ASSETS_REPO 未设置" }
+    - if (-not $env:BRAND_ASSETS_REF) { $env:BRAND_ASSETS_REF = "main" }
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_REF_NAME -SkipGitSync -BrandProject $env:BRAND_PROJECT -AssetsRepo $env:BRAND_ASSETS_REPO -AssetsRef $env:BRAND_ASSETS_REF
+  artifacts:
+    name: "BobanStaff-Branded-$CI_COMMIT_REF_NAME-$BRAND_PROJECT"
+    paths:
+      - apps/web/release/*.yml
+      - apps/web/release/*.blockmap
+      - apps/web/.branded-build.json
+    expire_in: 14 days
+
+# ------------------------------------------------------------------------------
+# tag 或分支 Pipeline 均可点 Play
+# ------------------------------------------------------------------------------
+build:windows:offline:
+  <<: *win_build
+  stage: build
+  tags:
+    - win-builder
+  when: manual
+  script:
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_REF_NAME -SkipGitSync -Offline
+  artifacts:
+    name: "BobanStaff-Windows-Offline-$CI_COMMIT_REF_NAME"
+    paths:
+      - apps/web/release/*.yml
+      - apps/web/release/*.blockmap
+    expire_in: 30 days
+
+# ------------------------------------------------------------------------------
+# 仅测试飞书推送：复用 release 目录里已打好的安装包跑 publish-feishu.py，不重新打包。
+# 手动触发（需上次 build:windows:manual 留下的 exe 还在工作区，GIT_CLEAN_FLAGS="" 会保留）。
+# ------------------------------------------------------------------------------
+publish:feishu:
+  <<: *win_build
+  stage: build
+  tags:
+    - win-builder
+  when: manual
+  except:
+    - tags
+  script:
+    - C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe scripts/ci/publish-feishu.py
+
+# ------------------------------------------------------------------------------
+# electron 自动更新 feed 推送（凭据走 GitLab CI/CD Variables）：
+#   UPDATE_TEST_HOST / UPDATE_TEST_USER / UPDATE_TEST_PASS / UPDATE_TEST_BASE
+#   UPDATE_PROD_HOST / UPDATE_PROD_USER / UPDATE_PROD_PASS / UPDATE_PROD_BASE
+#   （BASE 为平台目录的上一层，脚本自动追加 /win32）
+#
+# 测试推送已合并进 build:windows 内部（同 job 工作区有 release/，不需要等 arm/macos）。
+# 正式推送独立 manual job：自带重新构建（跨 job 工作区清空，没法只跑推送），点 Play 才跑。
+# 老 GitLab artifact 413 上限不允许把 200M exe 上传中转，所以"重构建一次"是唯一可靠路径。
+# ------------------------------------------------------------------------------
+publish:update:win:prod:
+  <<: *win_build
+  stage: build
+  tags:
+    - win-builder
+  only: *release_refs
+  when: manual
+  script:
+    - pwsh -NoProfile -File scripts/ci/build-windows.ps1 -Ref $env:CI_COMMIT_TAG -SkipGitSync -PushUpdate prod -SkipFeishu
+
+# ------------------------------------------------------------------------------
+# 冒烟测试（Mac）：已关闭（job 名前加 . 变隐藏 job）。mac-builder 已验证就绪。
+# 如需重开排查工具链：去掉下面 job 名前的点。
+# ------------------------------------------------------------------------------
+.smoke:mac:
+  stage: build
+  tags:
+    - mac-builder
+  except:
+    - tags
+  script:
+    - whoami
+    - 'echo "PATH=$PATH"'
+    - node -v
+    - pnpm -v
+    - python3 --version
+    - uv --version
+    - git --version
+    - docker --version
+    - docker buildx ls
+    - echo "ALL MAC TOOLS VISIBLE"
+
+# ------------------------------------------------------------------------------
+# Linux arm64 deb（在 Mac 上通过 Docker buildx 交叉构建）
+# 复用现有 scripts/build-deb.sh（须 Apple Silicon + Docker Desktop）
+# ------------------------------------------------------------------------------
+build:linux:
+  stage: build
+  tags:
+    - mac-builder
+  only: *release_refs
+  script:
+    # 写 .env（VITE_* from CI variables）—— 转写凭证等编译进 bundle
+    - python3 scripts/ci/write-vite-env.py
+    - bash scripts/build-deb.sh --offline
+    # deb 走飞书分发(publish-feishu.py)，不塞 GitLab 产物(老服务器 413 上限)。
+    # 显式传路径，避免误推 apps/web/release 里 macOS 上次留下的 dmg/zip。
+    - python3 scripts/ci/publish-feishu.py release/BobanStaff-Offline-Linux-arm64-${CI_COMMIT_TAG#v}.deb
+
+# ------------------------------------------------------------------------------
+# macOS（dmg 手动分发 + zip 应用内更新源）
+# 需 electron-builder ≥ 26.11.1：与 ELECTRON_MIRROR 同时使用时才会正确走
+# ELECTRON_BUILDER_BINARIES_MIRROR（npmmirror），否则 dmg-builder 404。
+# ------------------------------------------------------------------------------
+build:macos:
+  stage: build
+  tags:
+    - mac-builder
+  only: *release_refs
+  variables:
+    # mac runner home 已有 1.4G uv 缓存（yaojie 账户）。job 内 ~/.cache/uv 解析路径
+    # 取决于 HOME，不可靠；显式钉到绝对路径让 uv sync 直接吃这份 cache。lockfile 锁
+    # 的是 pythonhosted 直链，单设 mirror 在 --locked 时不绕过下载——只有 cache 命中
+    # 才能避免冷拉（同 build-deb.sh 用 docker named volume 的思路）。
+    UV_CACHE_DIR: "/Users/yaojie/.cache/uv"
+  script:
+    - pnpm install --frozen-lockfile --registry=https://registry.npmmirror.com
+    # 写 .env（VITE_* from CI variables）—— 转写凭证等编译进 bundle
+    - python3 scripts/ci/write-vite-env.py
+    - pnpm build:app
+    # dmg/zip 走飞书分发(publish-feishu.py)，不塞 GitLab 产物(老服务器 413 上限)。
+    # 先清掉根 release/ 里上次 Linux 留下的 deb，避免被误推；然后扫 apps/web/release 即可。
+    - rm -f release/*.deb
+    - python3 scripts/ci/publish-feishu.py
+  # dmg/zip 走飞书；GitLab 仅留体积极小的更新清单/blockmap。
+  artifacts:
+    name: "BobanStaff-Mac-$CI_COMMIT_TAG"
+    paths:
+      - apps/web/release/*.yml
+      - apps/web/release/*.blockmap
+    expire_in: 30 days

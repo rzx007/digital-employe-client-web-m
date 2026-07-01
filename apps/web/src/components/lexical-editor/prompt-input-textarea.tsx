@@ -1,4 +1,11 @@
-import { useState, useCallback, type ClipboardEventHandler } from "react"
+import {
+  useState,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+  type ClipboardEventHandler,
+  type ReactNode,
+} from "react"
 import {
   useOptionalPromptInputController,
   usePromptInputAttachments,
@@ -12,11 +19,15 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
   $getRoot,
+  $getSelection,
+  $isRangeSelection,
   $createParagraphNode,
   $createTextNode,
   COMMAND_PRIORITY_LOW,
+  COMMAND_PRIORITY_HIGH,
   KEY_ENTER_COMMAND,
   KEY_BACKSPACE_COMMAND,
+  PASTE_COMMAND,
   $isElementNode,
 } from "lexical"
 import { useEffect, useRef } from "react"
@@ -27,6 +38,10 @@ import {
   type SlashCommandItem,
 } from "./slash-command-plugin"
 import { MentionPlugin, type MentionCandidate } from "./mention-plugin"
+import {
+  INSERT_MENTION_COMMAND,
+  InsertMentionPlugin,
+} from "./insert-mention-plugin"
 
 export interface PromptChangeEvent {
   value: string
@@ -221,6 +236,52 @@ function BackspaceAttachmentPlugin({
   return null
 }
 
+// 纯文本粘贴：拦截粘贴事件，仅插入纯文本。
+// 避免 Lexical 默认富文本粘贴在粘贴大段 / 带 HTML 的内容时，
+// 同步把 text/html 转换成大量节点导致主线程长时间阻塞（卡死）。
+function PlainTextPastePlugin() {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    return editor.registerCommand<ClipboardEvent>(
+      PASTE_COMMAND,
+      (event) => {
+        const clipboardData = event.clipboardData
+        if (!clipboardData) {
+          return false
+        }
+
+        // 含文件（图片等）时交由外层 onPaste 处理为附件，这里不拦截
+        const hasFiles = Array.from(clipboardData.items ?? []).some(
+          (item) => item.kind === "file"
+        )
+        if (hasFiles) {
+          return false
+        }
+
+        const text = clipboardData.getData("text/plain")
+        if (!text) {
+          return false
+        }
+
+        event.preventDefault()
+        editor.update(() => {
+          const selection = $getSelection()
+          if ($isRangeSelection(selection)) {
+            // insertRawText 按 \n 拆分为换行节点，且不触碰 text/html，开销恒定
+            selection.insertRawText(text)
+          }
+        })
+        return true
+      },
+      // 高于默认富文本粘贴处理（COMMAND_PRIORITY_LOW），优先拦截
+      COMMAND_PRIORITY_HIGH
+    )
+  }, [editor])
+
+  return null
+}
+
 function DisabledPlugin({ disabled }: { disabled: boolean }) {
   const [editor] = useLexicalComposerContext()
 
@@ -258,7 +319,7 @@ function Placeholder({
   placeholder,
   className,
 }: {
-  placeholder: string
+  placeholder: ReactNode
   className?: string
 }) {
   return (
@@ -273,11 +334,35 @@ function Placeholder({
   )
 }
 
+export interface PromptComposerHandle {
+  insertMention: (id: string, name: string) => void
+  focus: () => void
+}
+
+function ComposerHandleBridge({
+  handleRef,
+}: {
+  handleRef: React.Ref<PromptComposerHandle>
+}) {
+  const [editor] = useLexicalComposerContext()
+
+  useImperativeHandle(handleRef, () => ({
+    insertMention: (id: string, name: string) => {
+      editor.dispatchCommand(INSERT_MENTION_COMMAND, { id, name })
+    },
+    focus: () => {
+      editor.focus()
+    },
+  }))
+
+  return null
+}
+
 // 属性类型
 export interface LexicalPromptInputTextareaProps {
   value?: string
   onChange?: (e: PromptChangeEvent) => void
-  placeholder?: string
+  placeholder?: ReactNode
   className?: string
   autoFocus?: boolean
   commands?: SlashCommandItem[]
@@ -287,17 +372,23 @@ export interface LexicalPromptInputTextareaProps {
 }
 
 // 组件
-export function LexicalPromptInputTextarea({
-  onChange,
-  className,
-  placeholder = "请输入任务...",
-  value: propValue,
-  autoFocus = true,
-  commands,
-  mentionCandidates,
-  disabled = false,
-  disabledPlaceholder = "AI 正在回复中...",
-}: LexicalPromptInputTextareaProps) {
+export const LexicalPromptInputTextarea = forwardRef<
+  PromptComposerHandle,
+  LexicalPromptInputTextareaProps
+>(function LexicalPromptInputTextarea(
+  {
+    onChange,
+    className,
+    placeholder = "请输入任务...",
+    value: propValue,
+    autoFocus = true,
+    commands,
+    mentionCandidates,
+    disabled = false,
+    disabledPlaceholder = "AI 正在回复中...",
+  },
+  ref
+) {
   const controller = useOptionalPromptInputController()
   const attachments = usePromptInputAttachments()
   const [isComposing, setIsComposing] = useState(false)
@@ -353,9 +444,9 @@ export function LexicalPromptInputTextarea({
 
   const handleChange = controller
     ? (e: PromptChangeEvent) => {
-      controller.textInput.setInput(e.value)
-      onChange?.(e)
-    }
+        controller.textInput.setInput(e.value)
+        onChange?.(e)
+      }
     : (e: PromptChangeEvent) => onChange?.(e)
 
   const initialConfig = {
@@ -401,7 +492,7 @@ export function LexicalPromptInputTextarea({
             <ContentEditable
               data-slot="input-group-control"
               className={cn(
-                "h-full w-full flex-1 resize-none  border-0 bg-transparent px-4 shadow-none ring-0 focus-visible:outline-none disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
+                "h-full w-full flex-1 resize-none border-0 bg-transparent px-4 shadow-none ring-0 focus-visible:outline-none disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
                 className
               )}
             />
@@ -415,6 +506,7 @@ export function LexicalPromptInputTextarea({
           ErrorBoundary={LexicalErrorBoundary}
         />
         <HistoryPlugin />
+        <PlainTextPastePlugin />
         <DisabledPlugin disabled={disabled} />
         <OnChangePlugin value={value} onChange={handleChange} />
         <FocusOnMountPlugin autoFocus={autoFocus && !disabled} />
@@ -422,7 +514,9 @@ export function LexicalPromptInputTextarea({
         <BackspaceAttachmentPlugin attachments={attachments} />
         <SlashCommandPlugin commands={commands} />
         <MentionPlugin candidates={mentionCandidates} />
+        <InsertMentionPlugin />
+        <ComposerHandleBridge handleRef={ref} />
       </div>
     </LexicalComposer>
   )
-}
+})

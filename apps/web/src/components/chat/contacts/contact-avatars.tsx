@@ -5,6 +5,7 @@ import {
 } from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
+import { avatarColorClass, avatarInitials } from "@/lib/avatar"
 
 type EmployeeStatus = "online" | "busy" | "offline"
 
@@ -30,14 +31,15 @@ export function EmployeeContactAvatar({
   return (
     <div className={cn("relative", className)}>
       <Avatar className={cn("size-9", avatarClassName)}>
-        <AvatarImage src={avatar} />
+        {avatar ? <AvatarImage src={avatar} alt={name ?? ""} /> : null}
         <AvatarFallback
           className={cn(
-            "rounded-none! bg-primary font-medium text-primary-foreground",
+            "rounded-none! text-xs font-medium",
+            avatarColorClass(name),
             fallbackClassName
           )}
         >
-          {name?.slice(0, 1)}
+          {avatarInitials(name)}
         </AvatarFallback>
       </Avatar>
       {showStatus && (
@@ -51,56 +53,6 @@ export function EmployeeContactAvatar({
           )}
         />
       )}
-    </div>
-  )
-}
-
-export function GroupMembersAvatar({
-  participants = [],
-  className,
-  itemClassName,
-  fallbackClassName,
-  placeholderClassName,
-}: {
-  participants?: Array<{ id: string; name: string; avatar?: string }>
-  className?: string
-  itemClassName?: string
-  fallbackClassName?: string
-  placeholderClassName?: string
-}) {
-  const items = participants.slice(0, 4)
-  const placeholdersCount = Math.max(0, 4 - items.length)
-
-  return (
-    <div className={cn("grid grid-cols-2 border", className)}>
-      {items.map((participant) => (
-        <Avatar
-          key={participant.id}
-          className={cn(
-            "h-4 w-4 rounded-none border border-background",
-            itemClassName
-          )}
-        >
-          <AvatarImage src={participant.avatar} className="rounded-none" />
-          <AvatarFallback
-            className={cn(
-              "rounded-none! bg-primary text-[9px] font-medium text-primary-foreground",
-              fallbackClassName
-            )}
-          >
-            {participant.name.slice(0, 1)}
-          </AvatarFallback>
-        </Avatar>
-      ))}
-      {Array.from({ length: placeholdersCount }).map((_, index) => (
-        <div
-          key={`placeholder-${index}`}
-          className={cn(
-            "h-4 w-4 rounded-none border bg-border",
-            placeholderClassName
-          )}
-        />
-      ))}
     </div>
   )
 }

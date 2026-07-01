@@ -9,11 +9,12 @@ import {
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAppUpdater } from "@/components/common/use-app-updater"
+import { isElectron } from "@/lib/electron/host"
 
 export function UpdatePill() {
   const { state, handleClick } = useAppUpdater({ autoCheck: true })
 
-  if (!window.electronApi?.isElectron) return null
+  if (!isElectron()) return null
 
   if (
     state.status === "idle" ||
@@ -30,13 +31,13 @@ export function UpdatePill() {
       onClick={handleClick}
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       className={cn(
-        "flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all duration-300 animate-in fade-in slide-in-from-right-2",
+        "flex animate-in items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all duration-300 fade-in slide-in-from-right-2",
         state.status === "available" &&
-        "cursor-pointer bg-primary/15 text-primary hover:bg-primary/25",
+          "cursor-pointer bg-primary/15 text-primary hover:bg-primary/25",
         state.status === "downloading" &&
-        "cursor-default bg-primary/80 text-white",
+          "cursor-default bg-primary/80 text-white",
         state.status === "downloaded" &&
-        "cursor-pointer bg-primary/80 text-white hover:bg-primary"
+          "cursor-pointer bg-primary/80 text-white hover:bg-primary"
       )}
     >
       {state.status === "available" && (
@@ -72,7 +73,7 @@ export function UpdateButton() {
     },
   })
 
-  if (!window.electronApi?.isElectron) return null
+  if (!isElectron()) return null
 
   const getConfig = () => {
     switch (state.status) {
@@ -133,9 +134,7 @@ export function UpdateButton() {
             ? "outline"
             : "outline"
       }
-      disabled={
-        state.status === "checking" || state.status === "downloading"
-      }
+      disabled={state.status === "checking" || state.status === "downloading"}
       onClick={handleClick}
     >
       {config.loading ? (

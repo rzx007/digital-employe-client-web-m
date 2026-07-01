@@ -6,12 +6,13 @@ import {
   useMemo,
   type ComponentProps,
 } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { cn } from "@workspace/ui/lib/utils"
 import { useChat } from "@ai-sdk/react"
 import type { UIMessage } from "ai"
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
+import type { PromptComposerHandle } from "@/components/lexical-editor/prompt-input-textarea"
 import {
   Conversation as ConversationUI,
   ConversationContent,
@@ -22,78 +23,316 @@ import {
   MessageContent,
   MessageResponse,
 } from "@workspace/ui/components/ai-elements/message"
-import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
-import { Spinner } from "@/components/spinner"
-import { mapStoredMessagesToUIMessages } from "@/lib/chat/message-utils"
-import { classifyMessageParts } from "@/lib/chat/message-utils"
+import {
+  getCopyableMessageText,
+  mapStoredMessagesToUIMessages,
+} from "@/lib/chat/message-utils"
+import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
+import { CuratorTurnDeliverables } from "./curator-turn-deliverables"
+import { useConversationSession } from "@/hooks/use-conversation-session"
+import { getContactId } from "@/lib/chat/contact-utils"
+import { useInvalidateContactsOnTeamChanges } from "@/hooks/use-invalidate-contacts-on-team-changes"
+import { useSyncPendingFromComposer } from "@/hooks/use-sync-pending-from-composer"
 import {
   useMessagesQuery,
-  useCuratorConversationQuery,
-  useResetCuratorConversation,
+  useUpdateConversationTitleMutation,
 } from "@/hooks/use-chat-queries"
 import { usePendingMessages } from "@/hooks/use-pending-messages"
+import { useSyncConversationSubtasks } from "@/hooks/use-conversation-subtasks"
 import { useChatStore } from "@/stores/chat-store"
-import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
-import { cancelConversationStream } from "@/api/conversation"
-import { toast } from "sonner"
+import { getLastAssistantMessage } from "@/lib/chat/message-query-cache"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@workspace/ui/components/alert-dialog"
-import { Checkbox } from "@workspace/ui/components/checkbox"
+  useCuratorTaskExecutions,
+  useCancelTaskExecution,
+} from "@/hooks/use-schedule-monitor-queries"
+import { ACTIVE_TASK_RUN_STATUSES } from "@/types/schedule-monitor"
+
+import { fetchOrchestratorSkills } from "@/api/orchestrator"
+import {
+  buildCuratorSlashCommands,
+  resolveCuratorSend,
+} from "./curator-slash-commands"
+import { cancelConversationStream } from "@/api/chat"
+import { prepareVoiceMeta } from "@/lib/voice/prepare-voice-meta"
+import { getVoiceMeta } from "@/lib/voice/voice-meta"
+import { VoiceMessageCapsule } from "@/components/chat/messages/voice-message-capsule"
+import type { VoiceMessageMeta } from "@/types/chat"
+import { shouldRenameCuratorConversationOnFirstMessage } from "@/lib/chat/curator-conversation-actions"
+import { applySemanticConversationTitle } from "@/lib/chat/conversation-title"
+import { toast } from "sonner"
 import { chatTransport, type ChatViewContact } from "../shared/chat-view-shared"
 import { CuratorChatHeader } from "../contacts/curator-chat-header"
-import { ExecutionReportCard } from "../message-blocks/execution-report-card"
-import { ChatPromptInput } from "@/components/chat-prompt-input"
-import { PendingMessageQueue } from "../panel/pending-message-queue"
+import { CuratorCompactToolbar } from "./curator-compact-toolbar"
+import { getCuratorLayout } from "./curator-layout"
+
+import { ChatComposerArea } from "../panel/chat-composer-area"
+import { ChatStreamingIndicator } from "../panel/chat-streaming-indicator"
+import { CuratorRotatingPlaceholder } from "./curator-rotating-placeholder"
+import { CuratorEmptyWelcome } from "./curator-empty-welcome"
+import { CuratorFileProvider } from "./curator-file-provider"
+import { CuratorRecruitmentProvider } from "./curator-recruitment-provider"
+import { CuratorPlanFeedbackProvider } from "./curator-plan-feedback-context"
+import { TasksIndicator } from "./tasks-indicator"
+import { useArtifactStore } from "@/stores/artifact-store"
 import { EmployeeContactAvatar } from "../contacts/contact-avatars"
-import { getMessageMeta } from "../shared/chat-view-shared"
-import { RenderClassifiedBlocks } from "../messages/chat-message-item"
+import { UserAvatar } from "@/components/user-avatar"
+import { useAuthStore } from "@/stores/auth-store"
+import { getChannelBadge } from "@/lib/chat/assistant-stream-state"
+import { getElapsedMsFromMeta } from "../shared/chat-view-shared"
+import {
+  buildCuratorTimeline,
+  type TimelineEntry,
+} from "./build-curator-timeline"
+import { MessageAssistantActions } from "../messages/message-assistant-actions"
+import { MessageCopyAction } from "../messages/message-copy-action"
 import { format } from "date-fns"
 import { zhCN } from "date-fns/locale"
-import type { TaskExecution } from "@/types/schedule-monitor"
+import { curatorUnreadKey } from "@/lib/constants"
+import {
+  buildRecruitmentHireAllOutbound,
+  buildRecruitmentHireOutbound,
+  type RecruitmentCandidateItem,
+} from "@/lib/chat/recruitment-tool-payload"
+import {
+  toolUiActionMetadata,
+  type ToolUiActionOutbound,
+} from "@/lib/chat/tool-ui-action"
 import { chatKeys } from "@/lib/query-keys/chat"
-
-type TimelineEntry =
-  | { kind: "message"; data: UIMessage; ts: number }
-  | { kind: "execution"; data: TaskExecution; ts: number }
-
-function getMsgTs(
-  msg: UIMessage,
-  storedMessages: Array<{
-    id: string
-    metadata?: Record<string, unknown>
-    timestamp?: Date
-  }>
-): number {
-  const stored = storedMessages.find((m) => m.id === msg.id)
-  const meta = stored?.metadata
-  const createdAt = meta?.created_at
-  if (typeof createdAt === "string" || createdAt instanceof Date) {
-    return new Date(createdAt).getTime()
-  }
-  if (stored?.timestamp) return stored.timestamp.getTime()
-  return 0
-}
+import { useConversationStatusStore } from "@/stores/conversation-status-store"
+import {
+  prepareDisplayMessages,
+  resolveHitlApproveMessageId,
+} from "@/lib/chat/hitl"
+import { pickMessageDisplaySource } from "@/lib/chat/pick-message-display-source"
+import {
+  isBenignStreamAbortError,
+  isStreamDisconnectedError,
+} from "@/lib/chat/stream-abort"
 
 function formatTime(ts: number): string {
   return format(new Date(ts), "HH:mm", { locale: zhCN })
 }
 
+import { BlockRenderer } from "../message-blocks/block-render-map"
+import { useClassifiedMessageBlocks } from "@/hooks/use-classified-message-blocks"
+
+function CuratorMessageItem({
+  message,
+  isLastAssistantMessage,
+  hasCurrentTurnEnded,
+  includeFileChanges,
+  layout,
+  resolvedContact,
+  contactDisplayName,
+  ts,
+  session,
+  curatorConversationId,
+  sessionFlags,
+  onSendUserMessage,
+}: {
+  message: UIMessage
+  isLastAssistantMessage: boolean
+  hasCurrentTurnEnded: boolean
+  includeFileChanges: boolean
+  layout: Record<string, string>
+  resolvedContact: ChatViewContact | undefined | null
+  contactDisplayName: string
+  ts: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  session: any
+  curatorConversationId: string | number | null
+  sessionFlags?: string | null
+  onSendUserMessage?: (text: string) => Promise<void>
+}) {
+  const {
+    blocks: classifiedBlocks,
+    toolAutoCollapseMap,
+    commandMeta,
+    mentionMeta,
+    filesMeta,
+  } = useClassifiedMessageBlocks(message, {
+    includeFileChanges,
+    isLastAssistantMessage,
+    isTurnEnded: hasCurrentTurnEnded,
+  })
+
+  const user = useAuthStore((s) => s.user)
+  const userName = user?.name || "我"
+  const channelBadge =
+    message.role === "user"
+      ? getChannelBadge(
+          (message as { metadata?: Record<string, unknown> }).metadata
+        )
+      : null
+
+  const elapsedMs = getElapsedMsFromMeta(message)
+  const copyText = getCopyableMessageText(message, { includeFileChanges })
+  const voiceMeta =
+    message.role === "user"
+      ? getVoiceMeta(
+          (message as { metadata?: Record<string, unknown> }).metadata
+        )
+      : null
+  const hitlApproveMessageId = resolveHitlApproveMessageId(
+    message,
+    session.activeHitl
+  )
+  const isStreamingEmptyShell =
+    message.role === "assistant" &&
+    isLastAssistantMessage &&
+    !hasCurrentTurnEnded &&
+    classifiedBlocks.length === 0
+  const ctx = {
+    messageId: hitlApproveMessageId,
+    conversationId: curatorConversationId,
+    toolAutoCollapseMap,
+    isLastAssistantMessage,
+    isTurnEnded: hasCurrentTurnEnded,
+    onHitlApproved: session.onHitlApproved,
+    onSendUserMessage,
+    commandMeta: commandMeta ?? {},
+    mentionMeta,
+    filesMeta,
+  }
+
+  return (
+    <Message from={message.role} className={cn("group", layout.message)}>
+      {message.role === "assistant" && (
+        <div className="mb-2 flex items-center gap-2">
+          {resolvedContact?.type === "curator" ? (
+            <EmployeeContactAvatar
+              name={resolvedContact.curator?.name}
+              avatar={resolvedContact.curator?.avatar}
+              status={resolvedContact.curator?.status}
+              avatarClassName="size-6"
+              fallbackClassName="text-[10px]"
+            />
+          ) : resolvedContact?.type === "employee" ? (
+            <EmployeeContactAvatar
+              name={resolvedContact.employee?.name}
+              avatar={resolvedContact.employee?.avatar}
+              avatarClassName="size-6"
+              fallbackClassName="text-[10px]"
+            />
+          ) : (
+            <EmployeeContactAvatar
+              name={contactDisplayName}
+              avatar={undefined}
+              avatarClassName="size-6"
+              fallbackClassName="text-[10px]"
+            />
+          )}
+          <span className="text-xs text-muted-foreground">
+            {contactDisplayName}
+          </span>
+          <span className="ml-auto text-[10px] text-muted-foreground/60">
+            {formatTime(ts)}
+          </span>
+        </div>
+      )}
+      {message.role === "user" && channelBadge && (
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <span className="text-xs text-muted-foreground">
+            {channelBadge.name}
+          </span>
+          <div className="size-6 shrink-0 overflow-hidden rounded">
+            <img
+              src={channelBadge.logo}
+              alt={channelBadge.name}
+              className="size-full object-cover"
+            />
+          </div>
+        </div>
+      )}
+      {message.role === "user" && !channelBadge && (
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <span className="text-xs text-muted-foreground">{userName}</span>
+          <div className="size-6 shrink-0 overflow-hidden rounded">
+            <UserAvatar
+              userId={user?.id}
+              alt={userName}
+              className="size-full object-cover"
+            />
+          </div>
+        </div>
+      )}
+      {voiceMeta && curatorConversationId != null ? (
+        <VoiceMessageCapsule
+          messageId={message.id}
+          conversationId={curatorConversationId}
+          meta={voiceMeta}
+          transcript={copyText}
+        />
+      ) : isStreamingEmptyShell ? null : (
+        <MessageContent className="w-auto">
+          <div className="space-y-3">
+            {classifiedBlocks.length > 0 ? (
+              classifiedBlocks.map((block) => (
+                <BlockRenderer key={block.key} block={block} ctx={ctx} />
+              ))
+            ) : message.role === "assistant" ? (
+              <MessageResponse />
+            ) : null}
+            {/* 团队交付物紧贴在本轮最后一条总管消息的内容末尾（与其自身文件卡同区） */}
+            {isLastAssistantMessage &&
+            hasCurrentTurnEnded &&
+            message.role === "assistant" &&
+            curatorConversationId != null ? (
+              <CuratorTurnDeliverables
+                conversationId={curatorConversationId}
+                sessionFlags={sessionFlags}
+              />
+            ) : null}
+          </div>
+        </MessageContent>
+      )}
+      {message.role === "assistant" ? (
+        <MessageAssistantActions
+          copyText={copyText}
+          elapsedMs={elapsedMs}
+          isLastAssistantMessage={isLastAssistantMessage}
+          isTurnEnded={hasCurrentTurnEnded}
+        />
+      ) : (
+        <MessageCopyAction text={copyText} />
+      )}
+    </Message>
+  )
+}
+
 export function CuratorView({
   contact,
+  conversationId: conversationIdProp,
+  sessionFlags,
+  title: conversationTitle,
   size = "default",
+  resourcesOpen,
+  onToggleResources,
+  onToggleTasks,
+  onOpenResourceFile,
+  onOpenContacts,
+  onOpenConversations,
+  onNewConversation,
+  isCreatingConversation,
   className,
   ...props
 }: ComponentProps<"div"> & {
   contact?: ChatViewContact
+  conversationId: string | number
+  sessionFlags?: string | null
+  title?: string
   size?: "default" | "compact"
+  /** compact 工作台：由 WorkbenchContentSplit 控制资源分栏 */
+  resourcesOpen?: boolean
+  onToggleResources?: () => void
+  /** compact 工作台：由 WorkbenchContentSplit 在打开合并任务面板时收起资源分栏 */
+  onToggleTasks?: () => void
+  /** 工作台：打开资源面板并选中文件 */
+  onOpenResourceFile?: (path: string) => void
+  onOpenContacts?: () => void
+  onOpenConversations?: () => void
+  onNewConversation?: () => void
+  isCreatingConversation?: boolean
 }) {
   const [inputValue, setInputValue] = useState("")
   const [command, setCommand] = useState<{ id: string; title: string } | null>(
@@ -102,15 +341,20 @@ export function CuratorView({
   const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>(
     []
   )
-  const [showResetDialog, setShowResetDialog] = useState(false)
-  const [clearTaskLogs, setClearTaskLogs] = useState(true)
-  const [hasReceivedMessages, setHasReceivedMessages] = useState(false)
-
-  const resetMutation = useResetCuratorConversation()
+  const composerRef = useRef<PromptComposerHandle>(null)
+  const updateTitleMutation = useUpdateConversationTitleMutation()
   const queryClient = useQueryClient()
-  const { data: curatorConv, isLoading: curatorLoading } =
-    useCuratorConversationQuery()
-  const curatorConversationId = curatorConv?.id ?? null
+  const curatorConversationId = conversationIdProp
+  const curatorContactId = contact?.curator?.id
+  const openResource = useArtifactStore((s) => s.openResource)
+
+  useEffect(() => {
+    const curatorId = contact?.curator?.id
+    if (!curatorId) return
+    useConversationStatusStore
+      .getState()
+      .clearUnreadByContactKey(curatorUnreadKey(curatorId))
+  }, [contact?.curator?.id])
 
   const { data: storedMessages = [], isPending: isMessagesLoading } =
     useMessagesQuery(curatorConversationId)
@@ -123,6 +367,9 @@ export function CuratorView({
     [storedMessages]
   )
 
+  const onStreamFinishRef = useRef<() => void>(() => {})
+  const onRetryResumeRef = useRef<() => boolean>(() => false)
+
   const {
     messages,
     setMessages,
@@ -133,17 +380,59 @@ export function CuratorView({
     resumeStream,
   } = useChat({
     id: String(curatorConversationId ?? "curator-persistent"),
-    messages: initialMessages,
     transport: chatTransport,
     onFinish: () => {
-      // 不用 invalidateQueries — useChat 状态已完整
+      onStreamFinishRef.current()
     },
     onError: (chatError) => {
+      // 主动 abort 或 SSE 在 turn 结束前断开 → resume 续流，不向用户报错。
+      // 总管同样跑长编排 turn，SSE 会被中间层掐断，需与执行会话一致地自动续流。
+      if (
+        isBenignStreamAbortError(chatError) ||
+        isStreamDisconnectedError(chatError)
+      ) {
+        onRetryResumeRef.current()
+        return
+      }
       toast.error("发送失败", {
-        description: chatError.message || "请稍后重试",
+        description: chatError?.message || "请稍后重试",
       })
     },
   })
+
+  const session = useConversationSession({
+    conversationId: curatorConversationId,
+    contactId: getContactId(contact),
+    storedMessages,
+    initialMessages,
+    composerMessages: messages,
+    status,
+    setMessages,
+    resumeStream,
+    queryClient,
+  })
+
+  useSyncPendingFromComposer(curatorConversationId, messages, status)
+
+  // 把总管会话里派发的并行子任务（task 工具）同步进 tasks-panel-store，
+  // 让挂在 chat 布局右侧的子任务面板（与普通员工会话同源）能展示。
+  useSyncConversationSubtasks(messages)
+
+  useInvalidateContactsOnTeamChanges(messages, status, queryClient)
+
+  useEffect(() => {
+    onStreamFinishRef.current = session.onStreamFinish
+    onRetryResumeRef.current = session.retryResumeIfNeeded
+  }, [session.onStreamFinish, session.retryResumeIfNeeded])
+
+  // 总管派发的员工任务执行(后台异步跑)。在 handleStop 之前定义，供「点停止=中止所有任务」。
+  const { data: curatorExecutions = [] } =
+    useCuratorTaskExecutions(curatorConversationId)
+  const runningExecutions = curatorExecutions.filter((e) =>
+    ACTIVE_TASK_RUN_STATUSES.has(e.run_status)
+  )
+  const tasksRunning = runningExecutions.length > 0
+  const cancelExec = useCancelTaskExecution(curatorConversationId)
 
   const handleStop = useCallback(async () => {
     stop()
@@ -155,74 +444,35 @@ export function CuratorView({
         /* best-effort cancel */
       }
     }
-  }, [stop, curatorConversationId])
-
-  // 组件卸载时停止对话
-  useEffect(() => {
-    return () => {
-      console.log("🚀 ~ useEffect ~ 组件卸载时停止对话")
-      stop()
-    }
-  }, [stop])
-
-  const handleReset = useCallback(async () => {
-    if (!curatorConversationId) return
-    try {
-      await resetMutation.mutateAsync({
-        conversationId: curatorConversationId,
-        clearTaskLogs,
-      })
-      queryClient.setQueryData(
-        chatKeys.messages(String(curatorConversationId)),
-        []
+    // 中止所有在跑的员工任务(点停止=真的停掉编排，依赖的后续任务后端会一并跳过)。
+    if (runningExecutions.length > 0) {
+      const results = await Promise.allSettled(
+        runningExecutions.map((e) => cancelExec.mutateAsync(e.id))
       )
-      setMessages([])
-      setHasReceivedMessages(false)
-      setShowResetDialog(false)
-      toast.success("会话已清空")
-    } catch {
-      toast.error("清空失败")
+      if (results.some((r) => r.status === "rejected")) {
+        toast.error("部分任务中止失败，请稍后重试")
+      } else {
+        toast.success(`已中止 ${runningExecutions.length} 个任务`)
+      }
     }
-  }, [
-    curatorConversationId,
-    clearTaskLogs,
-    resetMutation,
-    setMessages,
-    queryClient,
-  ])
+    session.onStreamStopped()
+  }, [stop, curatorConversationId, session, runningExecutions, cancelExec])
+
+  const prevCuratorConversationIdRef = useRef(curatorConversationId)
 
   useEffect(() => {
-    if (messages.length > 0 && !hasReceivedMessages) {
-      setHasReceivedMessages(true)
+    if (prevCuratorConversationIdRef.current !== curatorConversationId) {
+      chatTransport.cancelReconnect()
+      prevCuratorConversationIdRef.current = curatorConversationId
     }
-  }, [messages, hasReceivedMessages])
+  }, [curatorConversationId])
 
-  useEffect(() => {
-    if (!initialMessages.length || !curatorConversationId) return
-    if (status === "streaming" || status === "submitted") return
-
-    setMessages(initialMessages)
-    const lastStored = storedMessages?.[storedMessages.length - 1]
-    if (
-      lastStored?.role === "assistant" &&
-      lastStored.streamState === "streaming" &&
-      (status === "ready" || status === "error")
-    ) {
-      const rafId = requestAnimationFrame(() => {
-        if (status !== "ready" && status !== "error") return
-        resumeStream()
-      })
-      return () => cancelAnimationFrame(rafId)
-    }
-    // status 是防护，不用加入依赖数组
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    curatorConversationId,
-    initialMessages,
-    setMessages,
-    resumeStream,
-    storedMessages,
-  ])
+  const displayError =
+    error &&
+    !isBenignStreamAbortError(error) &&
+    !isStreamDisconnectedError(error)
+      ? error
+      : undefined
 
   const handleTextChange = useCallback((event: PromptChangeEvent) => {
     setCommand(event.command)
@@ -230,14 +480,35 @@ export function CuratorView({
     setInputValue(event.value)
   }, [])
 
-  const isBusy = status === "submitted" || status === "streaming"
-  const chatStatus = status === "ready" && isBusy ? "submitted" : status
+  // 后端仍在跑(DB 末条 assistant streamState=streaming)但本地 SSE 假结束(status=ready)时
+  // 也算忙——发送走排队、显忙、不抢占在跑的流（与主对话 ConversationChatView 同源修复）。
+  const backendStreaming =
+    getLastAssistantMessage(storedMessages)?.streamState === "streaming"
+  // 忙 = 总管自身的流在跑 / 后端假结束仍在跑 / 员工任务在后台跑。
+  const isBusy =
+    status === "submitted" ||
+    status === "streaming" ||
+    backendStreaming ||
+    tasksRunning
+  const chatStatus: typeof status =
+    status === "ready" && isBusy ? "submitted" : status
 
-  const displayMessages = useMemo(
-    () =>
-      messages.length > 0 || hasReceivedMessages ? messages : initialMessages,
-    [initialMessages, messages, hasReceivedMessages]
-  )
+  const displayMessages = useMemo(() => {
+    const source = pickMessageDisplaySource(
+      messages,
+      initialMessages,
+      chatStatus
+    )
+    const filtered = source.filter((msg) => {
+      const meta = (msg as unknown as { metadata?: unknown }).metadata
+      if (!meta || typeof meta !== "object") return true
+      return (
+        (meta as Record<string, unknown>).source !==
+        "orchestrator_execution_summary"
+      )
+    })
+    return prepareDisplayMessages(filtered)
+  }, [messages, initialMessages, chatStatus])
 
   const lastAssistantMessageId = useMemo(() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
@@ -247,20 +518,50 @@ export function CuratorView({
   }, [displayMessages])
 
   const hasCurrentTurnEnded =
-    status === "ready" || status === "error" || !!error
+    (status === "ready" || status === "error" || !!error) && !backendStreaming
   const showStreamingIndicator =
     !isMessagesLoading &&
-    (status === "submitted" || status === "streaming") &&
+    (status === "submitted" || status === "streaming" || backendStreaming) &&
     !error &&
     displayMessages.length > 0
 
   const uploadedPathsRef = useRef<string[]>([])
+  const chatStatusRef = useRef(status)
+
+  useEffect(() => {
+    chatStatusRef.current = status
+  }, [status])
+
+  const waitForChatReady = useCallback(async () => {
+    for (let i = 0; i < 40; i++) {
+      const current = chatStatusRef.current
+      if (current === "ready" || current === "error") return
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }, [])
+
+  const { data: orchestratorSkills } = useQuery({
+    queryKey: chatKeys.orchestratorSkills(),
+    queryFn: fetchOrchestratorSkills,
+    staleTime: 5 * 60 * 1000,
+  })
+  const curatorSlashCommands = useMemo(
+    () => buildCuratorSlashCommands(orchestratorSkills ?? []),
+    [orchestratorSkills]
+  )
 
   const doSend = useCallback(
     async (message: PromptInputMessage | string) => {
       const messageText =
         (typeof message === "string" ? message : message.text)?.trim() ?? ""
-      if (!messageText || !curatorConversationId) return
+      const selectedCommandItem = command
+        ? curatorSlashCommands.find((c) => c.id === command.id)
+        : undefined
+      const { text: outboundText, skill: skillParam } = resolveCuratorSend(
+        selectedCommandItem,
+        messageText
+      )
+      if (!outboundText || !curatorConversationId) return
 
       const paths = uploadedPathsRef.current
       if (paths.length > 0) {
@@ -271,31 +572,107 @@ export function CuratorView({
           ? paths.map((p) => ({ path: p, name: p.split("/").pop() ?? p }))
           : undefined
 
+      const voicePayload =
+        typeof message === "string" ? undefined : message.voice
+
+      let voiceMeta: VoiceMessageMeta | undefined
+      if (voicePayload) {
+        try {
+          voiceMeta = await prepareVoiceMeta(curatorConversationId, voicePayload)
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "语音上传失败")
+          return
+        }
+      }
+
       const pendingMeta = {
         command: command ? { id: command.id, title: command.title } : undefined,
         mentions: mentions.length > 0 ? mentions : undefined,
         files: filesMeta,
+        voice: voiceMeta,
       }
 
       try {
+        session.prepareOutboundMessage()
+        const shouldUpdateTitle =
+          shouldRenameCuratorConversationOnFirstMessage(conversationTitle) &&
+          displayMessages.length === 0
+
         await sendMessage(
-          { text: messageText, metadata: pendingMeta },
+          { text: outboundText, metadata: pendingMeta },
           {
             body: {
               conversationId: curatorConversationId,
-              skill: command?.title ?? "",
+              skill: skillParam,
               metadata: pendingMeta,
             },
           }
         )
+
+        // 注：技能"调用"以对话中真正执行为准（在 useClassifiedMessageBlocks 里
+        // 依据工具读取 /skills/<名>/ 检测并上报），此处的"选中发送"不计为 invoke。
+
+        if (
+          shouldUpdateTitle &&
+          curatorContactId &&
+          contact?.type === "curator"
+        ) {
+          const contactId = getContactId(contact) ?? String(curatorContactId)
+          void applySemanticConversationTitle({
+            conversationId: curatorConversationId,
+            messageText,
+            contactId,
+            updateTitle: updateTitleMutation.mutateAsync,
+            onError: () => {
+              toast.error("更新会话标题失败")
+            },
+          })
+        }
       } catch (sendError) {
-        toast.error("发送失败", {
-          description:
-            sendError instanceof Error ? sendError.message : "请稍后重试",
-        })
+        const m = sendError instanceof Error ? sendError.message : ""
+        const isAbort =
+          (sendError instanceof Error && sendError.name === "AbortError") ||
+          /abort|aborted|signal is aborted|no response/i.test(m)
+        if (!isAbort) {
+          toast.error("发送失败", {
+            description: m || "请稍后重试",
+          })
+        }
       }
     },
-    [curatorConversationId, sendMessage, command, mentions]
+    [
+      curatorConversationId,
+      sendMessage,
+      command,
+      mentions,
+      session,
+      conversationTitle,
+      displayMessages.length,
+      curatorContactId,
+      contact,
+      updateTitleMutation,
+      curatorSlashCommands,
+    ]
+  )
+
+  const handleGuidanceSelect = useCallback(
+    (text: string) => {
+      if (isBusy || !curatorConversationId) {
+        setInputValue(text)
+        return
+      }
+      void doSend(text)
+    },
+    [isBusy, curatorConversationId, doSend]
+  )
+
+  const handleMentionEmployee = useCallback(
+    (employee: { id: string; name: string }) => {
+      if (isBusy || !curatorConversationId) return
+      composerRef.current?.insertMention(employee.id, employee.name)
+      composerRef.current?.focus()
+    },
+    [isBusy, curatorConversationId]
   )
 
   const handleAttachmentsChange = useCallback((paths: string[]) => {
@@ -309,13 +686,116 @@ export function CuratorView({
     sendNow: pendingSendNow,
     moveUp: pendingMoveUp,
     moveDown: pendingMoveDown,
-  } = usePendingMessages({ status, onSend: doSend, onStop: handleStop })
+  } = usePendingMessages({
+    status,
+    onSend: doSend,
+    onStop: handleStop,
+    backendBusy: backendStreaming || tasksRunning,
+  })
+
+  const sendToolUiAction = useCallback(
+    async (outbound: ToolUiActionOutbound) => {
+      const agentText = outbound.agentText.trim()
+      if (!agentText || !curatorConversationId) {
+        throw new Error("会话未就绪，无法发送反馈")
+      }
+
+      if (isBusy) {
+        await handleStop()
+        await waitForChatReady()
+      }
+
+      const meta = toolUiActionMetadata(outbound)
+      session.prepareOutboundMessage()
+      await sendMessage(
+        { text: agentText, metadata: meta },
+        {
+          body: {
+            conversationId: curatorConversationId,
+            skill: "",
+            metadata: meta,
+          },
+        }
+      )
+
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(String(curatorConversationId)),
+      })
+    },
+    [
+      curatorConversationId,
+      handleStop,
+      isBusy,
+      queryClient,
+      sendMessage,
+      session,
+      waitForChatReady,
+    ]
+  )
+
+  const curatorPlanFeedbackValue = useMemo(
+    () => ({ sendPlanFeedback: sendToolUiAction }),
+    [sendToolUiAction]
+  )
+
+  const handleRecruitmentHire = useCallback(
+    (candidate: RecruitmentCandidateItem) => {
+      const outbound = buildRecruitmentHireOutbound(candidate)
+      if (!curatorConversationId) {
+        toast.error("会话未就绪，请稍后再试")
+        return
+      }
+      if (isBusy) {
+        enqueue({
+          id: `pending-hire-${Date.now()}`,
+          text: outbound.agentText,
+          command: null,
+        })
+        toast.success("已加入发送队列", {
+          description: outbound.displayText,
+        })
+        return
+      }
+      void sendToolUiAction(outbound)
+    },
+    [curatorConversationId, isBusy, enqueue, sendToolUiAction]
+  )
+
+  const handleRecruitmentHireAll = useCallback(
+    (candidates: RecruitmentCandidateItem[]) => {
+      const outbound = buildRecruitmentHireAllOutbound(candidates)
+      if (!curatorConversationId) {
+        toast.error("会话未就绪，请稍后再试")
+        return
+      }
+      if (isBusy) {
+        enqueue({
+          id: `pending-hire-all-${Date.now()}`,
+          text: outbound.agentText,
+          command: null,
+        })
+        toast.success("已加入发送队列", {
+          description: outbound.displayText,
+        })
+        return
+      }
+      void sendToolUiAction(outbound)
+    },
+    [curatorConversationId, isBusy, enqueue, sendToolUiAction]
+  )
 
   const handleSendMessage = useCallback(
-    async (message: PromptInputMessage) => {
-      const messageText = message.text?.trim() ?? ""
-      if (!(messageText || message.files?.length)) return
-      if (isBusy || !curatorConversationId) {
+    async (message: PromptInputMessage | string) => {
+      const messageText =
+        (typeof message === "string" ? message : message.text)?.trim() ?? ""
+      const hasFiles =
+        typeof message !== "string" && (message.files?.length ?? 0) > 0
+      if (!(messageText || hasFiles || command)) return
+      const voicePayload =
+        typeof message === "string" ? undefined : message.voice
+      // 语音不进 pending 队列（队列项不携带 voice 载荷会静默降级为纯文本），
+      // 且 useChat 客户端是单流模型：busy 时先停流再发（对齐 sendToolUiAction 先例）。
+      if ((isBusy || !curatorConversationId) && !voicePayload) {
         enqueue({
           id: `pending-${Date.now()}`,
           text: messageText,
@@ -325,10 +805,25 @@ export function CuratorView({
         setInputValue("")
         return
       }
-      setInputValue("")
+      if (isBusy && voicePayload) {
+        await handleStop()
+        await waitForChatReady()
+      }
+      if (!voicePayload) {
+        setInputValue("")
+      }
       await doSend(message)
     },
-    [isBusy, enqueue, command, mentions, doSend, curatorConversationId]
+    [
+      isBusy,
+      enqueue,
+      command,
+      mentions,
+      doSend,
+      curatorConversationId,
+      handleStop,
+      waitForChatReady,
+    ]
   )
 
   const contacts = useChatStore((s) => s.contacts)
@@ -346,313 +841,174 @@ export function CuratorView({
         role: c.employee!.role,
       }))
   }, [contacts])
-  const { data: executions = [] } = useAllTaskExecutions()
-
   /* ── Build unified timeline ── */
-  const timeline: TimelineEntry[] = useMemo(() => {
-    const entries: TimelineEntry[] = []
+  const timeline: TimelineEntry[] = useMemo(
+    () => buildCuratorTimeline(displayMessages, storedMessages),
+    [displayMessages, storedMessages]
+  )
 
-    // 保持无时间戳消息的相对顺序并与真实时间线一致
-    const n = displayMessages.length
-    let anchor = 0
-    for (const msg of displayMessages) {
-      const t = getMsgTs(msg, storedMessages)
-      if (t > anchor) anchor = t
-    }
-    for (const exec of executions) {
-      if (
-        exec.run_status === "success" ||
-        exec.run_status === "failed" ||
-        exec.run_status === "timeout" ||
-        exec.run_status === "cancelled"
-      ) {
-        const t = exec.ended_at
-          ? new Date(exec.ended_at).getTime()
-          : new Date(exec.started_at).getTime()
-        if (t > anchor) anchor = t
-      }
-    }
-    const pseudoNow = anchor + (n + 1) * 1000
-    const fallbackBase = pseudoNow - n * 1000
-    let fallbackIdx = 0
-
-    for (const msg of displayMessages) {
-      let ts = getMsgTs(msg, storedMessages)
-      if (ts === 0) {
-        ts = fallbackBase + fallbackIdx * 1000
-        fallbackIdx++
-      }
-      entries.push({ kind: "message", data: msg, ts })
-    }
-
-    for (const exec of executions) {
-      if (
-        exec.run_status === "success" ||
-        exec.run_status === "failed" ||
-        exec.run_status === "timeout" ||
-        exec.run_status === "cancelled"
-      ) {
-        entries.push({
-          kind: "execution",
-          data: exec,
-          ts: exec.ended_at
-            ? new Date(exec.ended_at).getTime()
-            : new Date(exec.started_at).getTime(),
-        })
-      }
-    }
-
-    entries.sort((a, b) => a.ts - b.ts)
-    return entries
-  }, [displayMessages, executions, storedMessages])
-
-  const isDraft = !curatorConversationId
-  const contactDisplayName =
-    resolvedContact?.curator?.name ?? "总管助手"
+  const contactDisplayName = resolvedContact?.curator?.name ?? "总管助手"
 
   const isCompact = size === "compact"
+  const layout = getCuratorLayout(size)
+
+  const curatorRecruitmentValue = useMemo(
+    () => ({
+      onHire: handleRecruitmentHire,
+      onHireAll: handleRecruitmentHireAll,
+      hireDisabled: !curatorConversationId,
+    }),
+    [handleRecruitmentHire, handleRecruitmentHireAll, curatorConversationId]
+  )
+
+  const curatorFileValue = useMemo(
+    () => ({
+      conversationId: curatorConversationId,
+      onOpenFile: (path: string) => {
+        if (onOpenResourceFile) {
+          onOpenResourceFile(path)
+        } else {
+          openResource(path)
+        }
+      },
+    }),
+    [curatorConversationId, onOpenResourceFile, openResource]
+  )
+
+  const showEmptyWelcome =
+    !isMessagesLoading &&
+    timeline.length === 0 &&
+    status !== "submitted" &&
+    status !== "streaming"
 
   return (
     <div
       className={cn(
-        "flex flex-col bg-background",
-        !isCompact && "flex-1",
+        "flex min-h-0 flex-col bg-background",
+        !isCompact ? "flex-1" : "h-full",
         className
       )}
       {...props}
     >
-      {!isCompact && (
+      {isCompact ? (
+        <CuratorCompactToolbar
+          contact={resolvedContact}
+          conversationId={curatorConversationId}
+          displayName={contactDisplayName}
+          conversationTitle={conversationTitle}
+          onOpenConversations={onOpenConversations}
+          onNewConversation={onNewConversation}
+          isCreatingConversation={isCreatingConversation}
+          resourcesOpen={resourcesOpen}
+          onToggleResources={onToggleResources}
+        />
+      ) : (
         <CuratorChatHeader
-          contact={contact}
-          onReset={() => setShowResetDialog(true)}
+          contact={resolvedContact}
+          conversationId={curatorConversationId}
+          title={conversationTitle}
+          onOpenContacts={onOpenContacts}
+          onOpenConversations={onOpenConversations}
+          onNewConversation={onNewConversation}
+          isCreatingConversation={isCreatingConversation}
         />
       )}
 
-      <ConversationUI className="min-h-0 flex-1 overflow-y-auto">
-        <ConversationContent className="space-y-3">
-          {curatorLoading && (
-            <div className="flex items-center justify-center py-16">
-              <Spinner className="size-5" />
-            </div>
-          )}
-
-          {!curatorLoading && isDraft && timeline.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-              <p className="text-xs">
-                在下方输入消息，自然语言下发任务给你的数字员工团队
-              </p>
-            </div>
-          )}
-
-          {timeline.map((entry) => {
-            if (entry.kind === "execution") {
-              const exec = entry.data
-              const employeeContact = contacts.find(
-                (c) =>
-                  c.type === "employee" &&
-                  c.employee?.id === String(exec.employee_id)
-              )
-              return (
-                <Message
-                  key={`exec-${exec.id}`}
-                  from="assistant"
-                  className="mx-auto max-w-4xl"
-                >
-                  <div className="mb-2 flex items-center gap-2">
-                    <EmployeeContactAvatar
-                      name={exec.employee_name || String(exec.employee_id)}
-                      avatar={employeeContact?.employee?.avatar}
-                      avatarClassName="size-6"
-                      fallbackClassName="text-[10px]"
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {exec.employee_name || String(exec.employee_id)}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/60">
-                      {formatTime(entry.ts)}
-                    </span>
-                  </div>
-                  <MessageContent className="w-auto">
-                    <ExecutionReportCard execution={exec} />
-                  </MessageContent>
-                </Message>
-              )
-            }
-
-            /* message */
-            const message = entry.data
-            const isLastAssistantMessage =
-              message.role === "assistant" &&
-              message.id === lastAssistantMessageId
-            const includeFileChanges =
-              message.role === "assistant" &&
-              (!isLastAssistantMessage || hasCurrentTurnEnded)
-            const classifiedBlocks = classifyMessageParts(message, {
-              includeFileChanges,
-            })
-            const messageMeta = getMessageMeta(message)
-            const commandMeta =
-              messageMeta &&
-              typeof messageMeta === "object" &&
-              "command" in messageMeta &&
-              messageMeta.command &&
-              typeof messageMeta.command === "object"
-                ? (messageMeta.command as { id?: string; title?: string })
-                : null
-            const mentionMeta =
-              messageMeta &&
-              typeof messageMeta === "object" &&
-              "mentions" in messageMeta &&
-              Array.isArray(messageMeta.mentions)
-                ? (messageMeta.mentions as Array<{
-                    id?: string
-                    name?: string
-                  }>)
-                : []
-            const filesMeta =
-              messageMeta &&
-              typeof messageMeta === "object" &&
-              "files" in messageMeta &&
-              Array.isArray(messageMeta.files)
-                ? (messageMeta.files as Array<{ name: string; path: string }>)
-                : undefined
-
-            return (
-              <Message
-                key={message.id}
-                from={message.role}
-                className="mx-auto max-w-4xl"
-              >
-                {message.role === "assistant" && (
-                  <div className="mb-2 flex items-center gap-2">
-                    {resolvedContact?.type === "curator" ? (
-                      <EmployeeContactAvatar
-                        name={resolvedContact.curator?.name}
-                        avatar={resolvedContact.curator?.avatar}
-                        status={resolvedContact.curator?.status}
-                        avatarClassName="size-6"
-                        fallbackClassName="text-[10px]"
-                      />
-                    ) : resolvedContact?.type === "employee" ? (
-                      <EmployeeContactAvatar
-                        name={resolvedContact.employee?.name}
-                        avatar={resolvedContact.employee?.avatar}
-                        avatarClassName="size-6"
-                        fallbackClassName="text-[10px]"
-                      />
-                    ) : (
-                      <EmployeeContactAvatar
-                        name={contactDisplayName}
-                        avatar={undefined}
-                        avatarClassName="size-6"
-                        fallbackClassName="text-[10px]"
-                      />
-                    )}
-                    <span className="text-xs text-muted-foreground">
-                      {contactDisplayName}
-                    </span>
-                    <span className="ml-auto text-[10px] text-muted-foreground/60">
-                      {formatTime(entry.ts)}
-                    </span>
-                  </div>
+      <CuratorFileProvider value={curatorFileValue}>
+        <CuratorRecruitmentProvider value={curatorRecruitmentValue}>
+          <CuratorPlanFeedbackProvider value={curatorPlanFeedbackValue}>
+            <ConversationUI className="min-h-0 flex-1">
+              <ConversationContent className={layout.conversationContent}>
+                {showEmptyWelcome && (
+                  <CuratorEmptyWelcome
+                    displayName={contactDisplayName}
+                    onSuggestionSelect={handleGuidanceSelect}
+                    onMentionEmployee={handleMentionEmployee}
+                    suggestionsDisabled={isBusy || !curatorConversationId}
+                    size={size}
+                  />
                 )}
-                <MessageContent className="w-auto">
-                  <div className="space-y-3">
-                    {classifiedBlocks.length > 0 ? (
-                      <RenderClassifiedBlocks
-                        blocks={classifiedBlocks}
-                        commandMeta={commandMeta}
-                        mentionMeta={mentionMeta}
-                        filesMeta={filesMeta}
-                        messageId={message.id}
-                      />
-                    ) : message.role === "assistant" ? (
-                      <MessageResponse />
-                    ) : null}
-                  </div>
-                </MessageContent>
-              </Message>
-            )
-          })}
 
-          {showStreamingIndicator && (
-            <Message from="assistant" className="mx-auto -mt-4 max-w-4xl">
-              <MessageContent className="rounded-lg bg-muted/40 px-3 py-2.5">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Spinner className="size-3.5" style={{ color: "#8B5CF6" }} />
-                  <Shimmer className="text-xs">正在生成回复...</Shimmer>
-                </div>
-              </MessageContent>
-            </Message>
-          )}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </ConversationUI>
+                {timeline.map((entry) => {
+                  const message = entry.data
+                  const isLastAssistantMessage =
+                    message.role === "assistant" &&
+                    message.id === lastAssistantMessageId
+                  const includeFileChanges = shouldIncludeFileChangesForMessage(
+                    message,
+                    displayMessages,
+                    hasCurrentTurnEnded
+                  )
 
-      <div
-        className={cn(
-          "mx-auto w-full max-w-4xl border-none",
-          isCompact ? "py-2" : "py-4"
-        )}
-      >
-        {pendingQueue.length > 0 && (
-          <div className="mx-auto w-[98%]">
-            <PendingMessageQueue
-              queue={pendingQueue}
-              onRemove={pendingRemove}
-              onSendNow={pendingSendNow}
-              onMoveUp={pendingMoveUp}
-              onMoveDown={pendingMoveDown}
-            />
-          </div>
-        )}
-        <ChatPromptInput
-          value={inputValue}
-          onChange={handleTextChange}
-          onSubmit={handleSendMessage}
-          onStop={handleStop}
-          status={chatStatus}
-          disabled={curatorLoading || (!isBusy && !inputValue.trim())}
-          size="compact"
-          placeholder="描述要做的事或目标，我来拆解并分派给数字员工；键入 @ 可指定经办人"
-          className="w-full overflow-hidden bg-background/80 shadow-xl"
-          slashCommands={[]}
-          mentionCandidates={mentionCandidates}
-          conversationId={curatorConversationId}
-          onAttachmentsChange={handleAttachmentsChange}
-        />
-        {error && (
-          <p className="mt-2 text-xs text-destructive">{error.message}</p>
-        )}
+                  return (
+                    <CuratorMessageItem
+                      key={message.id}
+                      message={message}
+                      isLastAssistantMessage={isLastAssistantMessage}
+                      hasCurrentTurnEnded={hasCurrentTurnEnded}
+                      includeFileChanges={includeFileChanges}
+                      layout={layout}
+                      resolvedContact={resolvedContact}
+                      contactDisplayName={contactDisplayName}
+                      ts={entry.ts}
+                      session={session}
+                      curatorConversationId={curatorConversationId}
+                      sessionFlags={sessionFlags}
+                    />
+                  )
+                })}
+
+                {showStreamingIndicator && (
+                  <ChatStreamingIndicator
+                    status={status}
+                    messages={messages}
+                    className={cn("-mt-4", layout.message)}
+                  />
+                )}
+              </ConversationContent>
+              <ConversationScrollButton />
+            </ConversationUI>
+          </CuratorPlanFeedbackProvider>
+        </CuratorRecruitmentProvider>
+      </CuratorFileProvider>
+
+      <TasksIndicator
+        conversationId={curatorConversationId}
+        onOpen={onToggleTasks}
+        className="mb-2"
+      />
+
+      <div className={layout.footer}>
+        {curatorConversationId ? (
+          <ChatComposerArea
+            composerRef={composerRef}
+            messages={messages}
+            conversationId={curatorConversationId}
+            onHitlApproved={session.onHitlApproved}
+            activeHitl={session.activeHitl}
+            inputValue={inputValue}
+            onInputChange={handleTextChange}
+            onSend={handleSendMessage}
+            onStop={handleStop}
+            status={chatStatus}
+            submitDisabled={!isBusy && !inputValue.trim() && !command}
+            showVoiceInput
+            size="compact"
+            placeholder={<CuratorRotatingPlaceholder />}
+            className="w-full"
+            slashCommands={curatorSlashCommands}
+            mentionCandidates={mentionCandidates}
+            onAttachmentsChange={handleAttachmentsChange}
+            pendingMessages={pendingQueue}
+            onPendingRemove={pendingRemove}
+            onPendingSendNow={pendingSendNow}
+            onPendingMoveUp={pendingMoveUp}
+            onPendingMoveDown={pendingMoveDown}
+            error={displayError}
+            pendingQueueClassName="mx-auto w-[98%]"
+          />
+        ) : null}
       </div>
-
-      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>清空会话</AlertDialogTitle>
-            <AlertDialogDescription>
-              确定要清空总管助手的会话记录吗？此操作不可撤销。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex items-center gap-2 px-1">
-            <Checkbox
-              id="clear-task-logs"
-              checked={clearTaskLogs}
-              onCheckedChange={(checked) => setClearTaskLogs(checked === true)}
-            />
-            <label
-              htmlFor="clear-task-logs"
-              className="cursor-pointer text-xs text-muted-foreground select-none"
-            >
-              同时清空员工执行日志
-            </label>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleReset}>确定</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

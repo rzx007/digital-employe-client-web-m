@@ -5,7 +5,6 @@ import time
 from typing import Any
 from src.schemas.employee import EmployeeProfile
 from src.service.modal_service import ModelService
-from src.service.agent_interface_service import agent_interface_service
 from src.service.local_skill_service import LocalSkillService
 
 logger = logging.getLogger(__name__)
@@ -14,39 +13,53 @@ class EmployeeGenerationService:
     """员工生成服务类 - 使用AI模型生成员工信息"""
 
     @staticmethod
-    async def get_available_skills(token: str | None = None) -> list[dict[str, Any]]:
+    async def get_available_skills(
+        token: str | None = None,
+        workspace_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
-        获取可用技能列表
+        获取可用技能列表（仅本地：builtin + 指定 workspace 目录下的技能）。
+        招聘/候选人生成不再拉取远程技能市场，避免多余请求并与员工配置一致。
         """
         try:
-            remote_skills = await agent_interface_service.get_available_skills(
-                status=1,
-                token=token,
-            )
-            local_skills = LocalSkillService.list_local_skills()
+            _ = token  # 保留签名，便于调用方统一传参
+            local_skills = LocalSkillService.list_local_skills(workspace_id)
             local_skill_items: list[dict[str, Any]] = []
             for item in local_skills:
                 local_id = item.get("localId")
                 if local_id is None:
                     continue
+                description = (item.get("description") or "").strip()
+                skill_name = str(item.get("skillName") or "")
+                zh_raw = item.get("displayNameZh")
+                display_zh = (
+                    zh_raw.strip()
+                    if isinstance(zh_raw, str) and zh_raw.strip()
+                    else skill_name
+                )
+                recruit_summary = (item.get("recruitSummary") or "").strip()
+                if not recruit_summary:
+                    recruit_summary = LocalSkillService.build_recruit_summary(
+                        description, skill_name
+                    )
                 local_skill_items.append(
                     {
                         "id": local_id,
-                        "skillName": item.get("skillName"),
-                        "description": "",
+                        "skillName": skill_name,
+                        "displayNameZh": display_zh,
+                        "description": description,
+                        "recruitSummary": recruit_summary,
                         "directoryId": None,
                         "directoryName": "本地技能",
                     }
                 )
 
-            skills = [*remote_skills, *local_skill_items]
             logger.info(
-                "招聘生成获取到技能数量: remote=%s, local=%s, total=%s",
-                len(remote_skills),
+                "招聘生成获取到技能数量: workspace_id=%s, local=%s",
+                workspace_id,
                 len(local_skill_items),
-                len(skills),
             )
-            return skills
+            return local_skill_items
         except Exception as e:
             logger.error("获取技能列表失败: %s", e, exc_info=True)
             return []
@@ -76,6 +89,30 @@ class EmployeeGenerationService:
 
 
     @staticmethod
+    def _skills_for_recruit_prompt(
+        skills_list: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """全量技能清单：id + 名称 + 完整 description，供 LLM 一次性匹配。"""
+        compact: list[dict[str, Any]] = []
+        for skill in skills_list:
+            desc = str(skill.get("description") or "").strip()
+            if not desc:
+                desc = str(skill.get("recruitSummary") or "").strip()
+            if not desc:
+                desc = LocalSkillService.build_recruit_summary(
+                    str(skill.get("description") or ""),
+                    str(skill.get("skillName") or ""),
+                )
+            compact.append(
+                {
+                    "id": skill.get("id"),
+                    "name": skill.get("skillName"),
+                    "description": desc,
+                }
+            )
+        return compact
+
+    @staticmethod
     def _build_default_profiles(
         count: int, name_prefix: str, description: str
     ) -> list[EmployeeProfile]:
@@ -87,19 +124,64 @@ class EmployeeGenerationService:
         return profiles
 
     @staticmethod
+    def _resolve_profile_name(raw_name: object, fallback_index: int) -> str:
+        name = str(raw_name or "").strip()
+        if name and name not in ("暂无匹配", "无匹配", "未匹配"):
+            return name
+        return f"待命名员工 {fallback_index}"
+
+    @staticmethod
+    async def _generate_profiles_without_skills(
+        user_request: str, count: int
+    ) -> list[EmployeeProfile]:
+        """技能库为空时，仅根据用户需求生成无技能员工档案。"""
+        logger.info(
+            "无技能库兜底生成: request=%s, count=%s",
+            user_request[:80],
+            count,
+        )
+        prompt = f"""
+        根据以下用户需求，生成{count}个不同的数字员工候选人信息（当前技能库为空，不要编造 skill_ids）：
+
+        用户需求：{user_request}
+
+        规则：
+        1. 每个员工须有合理的岗位名称（2-6 字中文或「XX助手」风格），禁止「暂无匹配」等占位名。
+        2. description 须写清岗位职责与适用场景，并说明录用后可在员工设置中分配技能。
+        3. skill_ids 必须为空数组 []。
+
+        请返回 JSON 数组，每项包含：name、description、skill_ids（固定为 []）。
+        """
+        result = await ModelService.call_model(prompt, {})
+        if not result or result.get("code") != 1:
+            return EmployeeGenerationService._build_default_profiles(
+                count,
+                "候选员工",
+                "根据需求生成的数字员工，录用后可在员工设置中分配技能。",
+            )
+        result_content = result.get("data")
+        return EmployeeGenerationService._parse_skill_profiles(
+            result_content if isinstance(result_content, str) else str(result_content),
+            [],
+            count,
+        )
+
+    @staticmethod
     async def _generate_profiles_from_skills(
         user_request: str, skills_list: list[dict[str, Any]], count: int
     ) -> list[EmployeeProfile]:
-        import random
-
         logger.info(
             f"开始生成员工档案: request={user_request[:80]}, count={count}, skills={len(skills_list)}"
         )
 
-        limited_skills = (
-            random.sample(skills_list, min(10, len(skills_list)))
-            if skills_list
-            else skills_list
+        compact_skills = EmployeeGenerationService._skills_for_recruit_prompt(
+            skills_list
+        )
+        prompt_chars = len(json.dumps(compact_skills, ensure_ascii=False))
+        logger.info(
+            "招聘全量技能进模: count=%s, prompt_json_chars=%s",
+            len(compact_skills),
+            prompt_chars,
         )
 
         prompt = f"""
@@ -107,9 +189,13 @@ class EmployeeGenerationService:
 
         用户需求：{user_request}
 
-        可用技能列表：{json.dumps(limited_skills, ensure_ascii=False, indent=2) if isinstance(limited_skills, list) else json.dumps(limited_skills, ensure_ascii=False, indent=2)}
+        可用技能列表（共{len(compact_skills)}项，含完整 description）：{json.dumps(compact_skills, ensure_ascii=False, separators=(",", ":"))}
 
-        员工的姓名需要与员工所拥有的技能相关，可以从技能的中文名称提取关键词，如XX助手、XX工程师等。
+        规则：
+        1. 只能从「可用技能列表」中选择 skill_ids，必须使用列表中的 id 字段。
+        2. 若没有技能与用户需求明显相关，必须返回 skill_ids 为空数组 []，不要强行匹配不相关技能。
+        3. 若 skill_ids 非空，员工姓名应与所选技能/岗位相关；若 skill_ids 为空，仍须根据用户需求生成合理的岗位名称（如「数据分析师」「法务助手」），禁止「暂无匹配」等占位名。
+        4. skill_ids 为空时，description 须写清岗位职责，并说明当前技能库暂无匹配、录用后可手动分配技能。
 
         请返回JSON格式的员工信息数组，每个员工包含以下字段：
         - name: 员工名称
@@ -165,27 +251,38 @@ class EmployeeGenerationService:
                 profiles_data = json.loads(result_content)
 
             profiles = []
-            for profile in profiles_data:
+            for idx, profile in enumerate(profiles_data, start=1):
                 skill_ids = EmployeeGenerationService._extract_skill_ids(
                     profile, skills_list
                 )
                 matched_skills = [
                     skill for skill in skills_list if skill.get("id") in skill_ids
                 ]
+                name = EmployeeGenerationService._resolve_profile_name(
+                    profile.get("name"), idx
+                )
+                description = (
+                    str(profile.get("description") or "").strip()
+                    or "根据需求生成的数字员工，录用后可在员工设置中分配技能。"
+                )
                 logger.info(
-                    f"员工生成解析结果: name={profile.get('name', '')}, skill_ids={skill_ids}"
+                    "员工生成解析结果: name=%s, skill_ids=%s",
+                    name,
+                    skill_ids,
                 )
                 if not skill_ids:
                     logger.info("员工生成未匹配到技能: profile=%s", profile)
                 profiles.append(
                     EmployeeProfile(
-                        name=profile.get("name", ""),
-                        description=profile.get("description", ""),
+                        name=name,
+                        description=description,
                         skill_ids=skill_ids,
                         skills_list=matched_skills,
                     )
                 )
-            return profiles
+            return EmployeeGenerationService._normalize_profile_count(
+                profiles, count
+            )
         except json.JSONDecodeError as exc:
             logger.error(
                 "员工生成 JSON 解析失败: %s", exc, exc_info=True
@@ -209,7 +306,30 @@ class EmployeeGenerationService:
                 "候选员工",
                 result_content[:200] + "..." if len(result_content) > 200 else result_content,
             )
-    
+
+    @staticmethod
+    def _normalize_profile_count(
+        profiles: list[EmployeeProfile], count: int
+    ) -> list[EmployeeProfile]:
+        if count <= 0:
+            return profiles
+        if len(profiles) > count:
+            return profiles[:count]
+        if len(profiles) < count:
+            padded = list(profiles)
+            for idx in range(len(profiles) + 1, count + 1):
+                padded.append(
+                    EmployeeProfile(
+                        name=f"候选员工 {idx}",
+                        description=(
+                            "根据需求生成的数字员工，录用后可在员工设置中分配技能。"
+                        ),
+                        skill_ids=[],
+                        skills_list=[],
+                    )
+                )
+            return padded
+        return profiles
 
     @staticmethod
     async def generate_employee_profiles_async(
@@ -269,3 +389,24 @@ class EmployeeGenerationService:
             converted_profiles.append(converted_profile)
 
         return converted_profiles
+
+    @staticmethod
+    async def generate_candidates_for_orchestrator(
+        user_request: str,
+        count: int = 1,
+        token: str | None = None,
+        workspace_id: int | None = None,
+    ) -> tuple[list[EmployeeProfile], list[dict[str, Any]]]:
+        """为总管招聘 Tool 生成候选人（复用招聘页同一套技能匹配逻辑）。"""
+        skills = await EmployeeGenerationService.get_available_skills(
+            token=token, workspace_id=workspace_id
+        )
+        if skills:
+            profiles = await EmployeeGenerationService.generate_employee_profiles_async(
+                user_request, skills, count
+            )
+        else:
+            profiles = await EmployeeGenerationService._generate_profiles_without_skills(
+                user_request, count
+            )
+        return profiles, skills

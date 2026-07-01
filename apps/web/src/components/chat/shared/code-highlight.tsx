@@ -55,16 +55,23 @@ interface CodeHighlightProps {
   code: string
   language?: string
   className?: string
+  /** 流式写入时跳过异步高亮，避免每个 delta 都跑 highlightCode */
+  streaming?: boolean
 }
 
 export function CodeHighlight({
   code,
   language,
   className,
+  streaming = false,
 }: CodeHighlightProps) {
   const [html, setHtml] = useState<string | null>(null)
 
   useEffect(() => {
+    if (streaming) {
+      setHtml(null)
+      return
+    }
     let cancelled = false
     highlightCode(code, language)
       .then((result) => {
@@ -74,7 +81,7 @@ export function CodeHighlight({
     return () => {
       cancelled = true
     }
-  }, [code, language])
+  }, [code, language, streaming])
 
   if (html) {
     return (

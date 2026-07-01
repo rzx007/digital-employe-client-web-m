@@ -10,275 +10,217 @@ from src import models  # noqa: F401  pylint: disable=unused-import
 
 
 def init_db() -> None:
-    Base.metadata.create_all(bind=get_engine())
-
-    # 兼容已有 SQLite 数据库：为 employees 表补充新增字段
+    # 新项目=新空库：直接从 models 一步建全 schema，无历史库可升级。
     engine = get_engine()
-    inspector = inspect(engine)
+    Base.metadata.create_all(bind=engine)
 
-    def ensure_column(table_name: str, column_name: str, column_sql: str) -> None:
-        if table_name not in inspector.get_table_names():
-            return
-        columns = {col["name"] for col in inspector.get_columns(table_name)}
-        if column_name in columns:
-            return
-        with engine.begin() as conn:
-            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}"))
+    # workspaces 表：幂等加列（已有库不会被 create_all 自动 ALTER）
+    _ensure_workspace_auto_grant_column(engine)
 
-    if "employees" in inspector.get_table_names():
-        columns = {col["name"] for col in inspector.get_columns("employees")}
-        if "description" not in columns:
-            # SQLite 支持 ALTER TABLE ADD COLUMN；历史库也能升级。
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE employees ADD COLUMN description TEXT"))
-        if "shift_schedule_json" not in columns:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE employees ADD COLUMN shift_schedule_json TEXT DEFAULT '{}'"))
+    # 定时递归编排特性新增列：幂等补齐已有库
+    _ensure_orchestration_recurring_columns(engine)
 
-    ensure_column("employees", "is_curator", "is_curator BOOLEAN NOT NULL DEFAULT 0")
+    # 一次性清理脏数据：plan 无调度但子任务带 cron（旧模型偷偷定时产物）
+    _cleanup_legacy_subtask_cron_plans(engine)
 
-    # 兼容历史任务表：补充新增字段
-    ensure_column("employee_tasks", "next_run_at", "next_run_at DATETIME")
-    ensure_column("employee_tasks", "last_run_at", "last_run_at DATETIME")
-    ensure_column(
-        "employee_tasks",
-        "confirm_execution_result",
-        "confirm_execution_result BOOLEAN NOT NULL DEFAULT 0",
-    )
-    ensure_column("employee_tasks", "user_prompt", "user_prompt TEXT")
-    ensure_column("employee_tasks", "capability_id", "capability_id INTEGER")
-    ensure_column("employee_tasks", "source", "source VARCHAR(32) NOT NULL DEFAULT 'manual'")
-    ensure_column("employee_tasks", "orchestration_plan_id", "orchestration_plan_id INTEGER")
-    ensure_column("employee_tasks", "execute_mode", "execute_mode VARCHAR(32) NOT NULL DEFAULT 'scheduled'")
-    ensure_column("employee_tasks", "valid_from", "valid_from DATETIME")
-    ensure_column("employee_tasks", "valid_until", "valid_until DATETIME")
-    ensure_column(
-        "task_execution_logs",
-        "confirm_url",
-        "confirm_url VARCHAR(2048)",
-    )
-    ensure_column(
-        "task_execution_logs",
-        "result_confirmed",
-        "result_confirmed BOOLEAN NOT NULL DEFAULT 0",
-    )
-    ensure_column(
-        "task_execution_logs",
-        "is_read",
-        "is_read BOOLEAN NOT NULL DEFAULT 0",
-    )
-    ensure_column("task_execution_logs", "conversation_id", "conversation_id INTEGER")
-    ensure_column("task_execution_logs", "last_heartbeat_at", "last_heartbeat_at DATETIME")
-    ensure_column("skill_ratings", "task_execution_log_id", "task_execution_log_id INTEGER")
-    ensure_column(
-        "dispatch_orders_sync",
-        "remote_order_id",
-        "remote_order_id INTEGER NOT NULL DEFAULT 0",
-    )
-    ensure_column(
-        "dispatch_orders_sync",
-        "order_name",
-        "order_name VARCHAR(128) NOT NULL DEFAULT ''",
-    )
-    ensure_column(
-        "dispatch_orders_sync",
-        "dispatcher",
-        "dispatcher VARCHAR(45) NOT NULL DEFAULT ''",
-    )
-    ensure_column(
-        "dispatch_orders_sync",
-        "receiver",
-        "receiver VARCHAR(45) NOT NULL DEFAULT ''",
-    )
-    ensure_column("dispatch_orders_sync", "start_time", "start_time DATETIME")
-    ensure_column("dispatch_orders_sync", "end_time", "end_time DATETIME")
-    ensure_column("dispatch_orders_sync", "occur_time", "occur_time DATETIME")
-    ensure_column(
-        "dispatch_orders_sync",
-        "status",
-        "status VARCHAR(45) NOT NULL DEFAULT ''",
-    )
-    ensure_column("dispatch_orders_sync", "eval", "eval FLOAT")
-    ensure_column(
-        "dispatch_orders_sync",
-        "content",
-        "content TEXT NOT NULL DEFAULT ''",
-    )
-    ensure_column("dispatch_orders_sync", "comment", "comment VARCHAR(256)")
-    ensure_column(
-        "dispatch_orders_sync",
-        "trigger_status",
-        "trigger_status VARCHAR(32) NOT NULL DEFAULT 'pending'",
-    )
-    ensure_column("dispatch_orders_sync", "trigger_error", "trigger_error TEXT")
-    ensure_column(
-        "dispatch_orders_sync",
-        "last_triggered_at",
-        "last_triggered_at DATETIME",
-    )
-    ensure_column(
-        "dispatch_orders_sync",
-        "last_synced_at",
-        "last_synced_at DATETIME",
-    )
+    # PlanRun 机制引入前已 confirmed 的老 plan + 它们的 logs：幂等回填
+    _backfill_plan_runs_for_legacy_plans(engine)
 
-    # 兼容历史员工技能关系表：补充新增字段
-    ensure_column("employee_skills", "skill_name", "skill_name VARCHAR(255) NOT NULL DEFAULT ''")
-    ensure_column("employee_skills", "skill_description", "skill_description VARCHAR(1000)")
-    ensure_column("employee_skills", "prompt", "prompt TEXT")
-    ensure_column("employee_skills", "skill_content", "skill_content TEXT")
+    # FTS5 全文索引：conversation_messages.content
+    _init_fts5(engine)
 
-    # 员工 MCP 关联表（字段与远程 MCP 详情一致 + 关联键）
-    ensure_column("employee_mcps", "workspace_id", "workspace_id INTEGER")
-    ensure_column("employee_mcps", "employee_id", "employee_id INTEGER")
-    ensure_column("employee_mcps", "mcp_id", "mcp_id INTEGER")
-    ensure_column("employee_mcps", "mcp_server_name", "mcp_server_name VARCHAR(255)")
-    ensure_column("employee_mcps", "mcp_tool_name", "mcp_tool_name VARCHAR(255)")
-    ensure_column("employee_mcps", "capability_name", "capability_name VARCHAR(255)")
-    ensure_column("employee_mcps", "capability_desc", "capability_desc TEXT")
-    ensure_column("employee_mcps", "creator_id", "creator_id INTEGER")
-    ensure_column("employee_mcps", "api_created_at", "api_created_at VARCHAR(32)")
-    ensure_column("employee_mcps", "api_updated_at", "api_updated_at VARCHAR(32)")
-
-    # 兼容历史工作空间表：补充 user_id 字段（用户隔离）
-    ensure_column("workspaces", "user_id", "user_id TEXT")
-
-    # 兼容历史会话消息表：补充 metadata 字段
-    ensure_column("conversation_messages", "extra_meta", "extra_meta TEXT")
-
-    # 兼容历史会话消息表：补充流状态字段（断线重连用）
-    # 取值: "streaming" | "completed" | "error" | NULL（旧消息无此字段
-    ensure_column(
-        "conversation_messages", "stream_state", "stream_state VARCHAR(32)"
-    )
-    # 已发送的最后一个事件序列号
-    ensure_column(
-        "conversation_messages",
-        "stream_cursor",
-        "stream_cursor INTEGER DEFAULT 0",
-    )
-    # 序列化的事件列表（JSON array），用于断线重放
-    ensure_column("conversation_messages", "stream_chunks", "stream_chunks TEXT")
-    # 预计算的结构化 parts（JSON），前端直接渲染
-    ensure_column("conversation_messages", "message_parts", "message_parts TEXT")
-
-    # Migration: conversations.title 从 VARCHAR(255) 改为 TEXT（去掉长度限制）
-    if "conversations" in inspector.get_table_names():
-        _migrate_conversation_title_to_text(engine, inspector)
-
-    ensure_column("conversations", "status", "status VARCHAR(32) NOT NULL DEFAULT 'idle'")
-
-    ensure_column("orchestration_plans", "started_at", "started_at DATETIME")
-
-    # Migration: task_execution_logs.task_id 改为 nullable + SET NULL
-    # 真删除任务前需要保留执行记录，task_id 允许 NULL
-    if "task_execution_logs" in inspector.get_table_names():
-        _migrate_task_id_nullable(engine, inspector)
+    # 启动时清理上次进程遗留的"运行中"流状态。
+    _reset_orphaned_streams(engine)
 
 
-def _migrate_task_id_nullable(engine, inspector) -> None:
-    """SQLite 表重建：将 task_execution_logs.task_id 从 NOT NULL CASCADE 改为 nullable SET NULL。"""
-    col_info = None
-    for col in inspector.get_columns("task_execution_logs"):
-        if col["name"] == "task_id":
-            col_info = col
-            break
-    if not col_info or col_info.get("nullable", False):
-        return
+def _ensure_orchestration_recurring_columns(engine) -> None:
+    """幂等为已有库补「定时递归编排」特性新增列。
 
-    logger.info("Migrating task_execution_logs.task_id to nullable ...")
+    新库由 create_all 直接建全；已有库不会被 create_all ALTER，需在此补列：
+    - task_execution_logs.run_id
+    - orchestration_plans.cron / is_recurring / last_run_at / next_run_at
+    - orchestration_plans.schedule_kind / run_at
+    - plan_runs.conversation_id（plan_runs 表由 create_all 建出，但此列后期添加）
+    """
+    insp = inspect(engine)
+    tel_cols = {c["name"] for c in insp.get_columns("task_execution_logs")}
+    op_cols = {c["name"] for c in insp.get_columns("orchestration_plans")}
+    pr_cols = {c["name"] for c in insp.get_columns("plan_runs")}
     with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE _task_execution_logs_new ("
-                          "id INTEGER PRIMARY KEY,"
-                          "task_id INTEGER REFERENCES employee_tasks(id) ON DELETE SET NULL,"
-                          "workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,"
-                          "employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,"
-                          "skill_id INTEGER,"
-                          "conversation_id INTEGER REFERENCES conversations(id) ON DELETE SET NULL,"
-                          "task_name_snapshot VARCHAR(255) NOT NULL,"
-                          "run_status VARCHAR(32) NOT NULL,"
-                          "run_result VARCHAR(255),"
-                          "error_message TEXT,"
-                          "input_json TEXT NOT NULL DEFAULT '{}',"
-                          "output_json TEXT NOT NULL DEFAULT '{}',"
-                          "started_at DATETIME NOT NULL,"
-                          "ended_at DATETIME,"
-                          "duration_ms INTEGER,"
-                          "last_heartbeat_at DATETIME,"
-                          "confirm_url VARCHAR(2048),"
-                          "result_confirmed BOOLEAN NOT NULL DEFAULT 0,"
-                          "is_read BOOLEAN NOT NULL DEFAULT 0,"
-                          "created_at DATETIME"
-                          ")"))
-        conn.execute(text("INSERT INTO _task_execution_logs_new "
-                          "SELECT id, task_id, workspace_id, employee_id, skill_id, "
-                          "conversation_id, task_name_snapshot, run_status, run_result, "
-                          "error_message, input_json, output_json, started_at, ended_at, "
-                          "duration_ms, last_heartbeat_at, confirm_url, result_confirmed, "
-                          "is_read, created_at "
-                          "FROM task_execution_logs"))
-        conn.execute(text("DROP TABLE task_execution_logs"))
-        conn.execute(text("ALTER TABLE _task_execution_logs_new RENAME TO task_execution_logs"))
-        for idx_sql in [
-            "CREATE INDEX ix_task_execution_logs_task_id ON task_execution_logs(task_id)",
-            "CREATE INDEX ix_task_execution_logs_workspace_id ON task_execution_logs(workspace_id)",
-            "CREATE INDEX ix_task_execution_logs_employee_id ON task_execution_logs(employee_id)",
-            "CREATE INDEX ix_task_execution_logs_conversation_id ON task_execution_logs(conversation_id)",
-            "CREATE INDEX ix_task_execution_logs_task_name_snapshot ON task_execution_logs(task_name_snapshot)",
-            "CREATE INDEX ix_task_execution_logs_run_status ON task_execution_logs(run_status)",
-            "CREATE INDEX ix_task_execution_logs_started_at ON task_execution_logs(started_at)",
-            "CREATE INDEX ix_task_execution_logs_ended_at ON task_execution_logs(ended_at)",
-            "CREATE INDEX ix_task_execution_logs_created_at ON task_execution_logs(created_at)",
-            "CREATE INDEX ix_task_execution_logs_result_confirmed ON task_execution_logs(result_confirmed)",
-            "CREATE INDEX ix_task_execution_logs_is_read ON task_execution_logs(is_read)",
-            "CREATE INDEX ix_task_execution_logs_skill_id ON task_execution_logs(skill_id)",
-        ]:
-            conn.execute(text(idx_sql))
-    logger.info("Migrated task_execution_logs.task_id to nullable successfully")
+        if "run_id" not in tel_cols:
+            conn.execute(text("ALTER TABLE task_execution_logs ADD COLUMN run_id INTEGER"))
+            logger.info("added column task_execution_logs.run_id")
+        if "cron" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN cron VARCHAR(128)"))
+            logger.info("added column orchestration_plans.cron")
+        if "is_recurring" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN is_recurring BOOLEAN NOT NULL DEFAULT 0"))
+            logger.info("added column orchestration_plans.is_recurring")
+        if "last_run_at" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN last_run_at DATETIME"))
+            logger.info("added column orchestration_plans.last_run_at")
+        if "next_run_at" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN next_run_at DATETIME"))
+            logger.info("added column orchestration_plans.next_run_at")
+        if "schedule_kind" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN schedule_kind VARCHAR(16)"))
+            logger.info("added column orchestration_plans.schedule_kind")
+        if "run_at" not in op_cols:
+            conn.execute(text("ALTER TABLE orchestration_plans ADD COLUMN run_at DATETIME"))
+            logger.info("added column orchestration_plans.run_at")
+        if "conversation_id" not in pr_cols:
+            conn.execute(text("ALTER TABLE plan_runs ADD COLUMN conversation_id INTEGER"))
+            logger.info("added column plan_runs.conversation_id")
 
 
-def _migrate_conversation_title_to_text(engine, inspector) -> None:
-    """SQLite 表重建：将 conversations.title 迁移为 TEXT，去掉 255 长度限制。"""
-    columns = inspector.get_columns("conversations")
-    title_col = next((col for col in columns if col["name"] == "title"), None)
-    if not title_col:
+def _cleanup_legacy_subtask_cron_plans(engine) -> None:
+    """一次性清理脏数据：计划级无 schedule（cron 空且 schedule_kind 空）但子任务带 task 级 cron
+    的编排计划——旧模型『偷偷定时』产物。收敛后这些子任务不再被调度，置 cancelled 让用户重建。
+    三段谓词防误杀合法 recurring（plan.cron 已设的不在此列）。"""
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    if not {"orchestration_plans", "employee_tasks"}.issubset(tables):
+        return
+    op_cols = {c["name"] for c in inspector.get_columns("orchestration_plans")}
+    if "schedule_kind" not in op_cols:
+        return  # 列还没加（迁移未跑），跳过
+    with engine.begin() as conn:
+        rows = conn.execute(text("""
+            SELECT DISTINCT p.id FROM orchestration_plans p
+            JOIN employee_tasks t ON t.orchestration_plan_id = p.id
+            WHERE p.status = 'confirmed'
+              AND (p.cron IS NULL OR trim(p.cron) = '')
+              AND (p.schedule_kind IS NULL OR trim(p.schedule_kind) = '')
+              AND t.cron_expression IS NOT NULL AND trim(t.cron_expression) != ''
+        """)).all()
+        ids = [r[0] for r in rows]
+        if not ids:
+            return
+        for pid in ids:
+            conn.execute(text("UPDATE orchestration_plans SET status='cancelled' WHERE id=:pid"), {"pid": pid})
+            conn.execute(text("UPDATE employee_tasks SET is_active=0 WHERE orchestration_plan_id=:pid"), {"pid": pid})
+        logger.info("cleanup legacy subtask-cron plans: cancelled %s (ids=%s)", len(ids), ids)
+
+
+def _ensure_workspace_auto_grant_column(engine) -> None:
+    """幂等地为 workspaces 表加 auto_grant_external_dirs 列。
+
+    新库由 create_all 直接建全；已有库不会被 ALTER，需在此补列。
+    """
+    insp = inspect(engine)
+    cols = {c["name"] for c in insp.get_columns("workspaces")}
+    if "auto_grant_external_dirs" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE workspaces ADD COLUMN auto_grant_external_dirs "
+                "BOOLEAN NOT NULL DEFAULT 0"
+            ))
+        logger.info("added column workspaces.auto_grant_external_dirs")
+
+
+def _backfill_plan_runs_for_legacy_plans(engine) -> None:
+    """幂等回填：为 PlanRun 机制引入前 confirmed 但无 PlanRun 的老 plan 补一条 settled run，
+    并把它们属下的 TaskExecutionLog.run_id（NULL）更新到该 run，让 today-tasks 折叠聚合能
+    正确读到历史状态而非误判为 pending。
+
+    新建的 plan 走 execute_plan / run_plan_job 都会开 PlanRun，不受影响。本 helper 只补老数据。
+    """
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    required = {"orchestration_plans", "plan_runs", "task_execution_logs", "employee_tasks"}
+    if not required.issubset(tables):
         return
 
-    title_type = str(title_col.get("type", "")).upper()
-    # 已是 TEXT（或无长度文本）则跳过
-    if "TEXT" in title_type and "VARCHAR" not in title_type:
-        return
+    with engine.begin() as conn:
+        # 找所有 confirmed 但还没任何 PlanRun 的老 plan
+        rows = conn.execute(text("""
+            SELECT p.id, p.workspace_id, p.created_at, p.conversation_id
+            FROM orchestration_plans p
+            LEFT JOIN plan_runs r ON r.plan_id = p.id
+            WHERE p.status = 'confirmed' AND r.id IS NULL
+            GROUP BY p.id
+        """)).all()
+        if not rows:
+            return
+        backfilled = 0
+        for plan_id, workspace_id, created_at, plan_conv_id in rows:
+            # 建一条 settled PlanRun（trigger=manual 保守，auto_accept=False 保留交互式语义）；
+            # conversation_id 用 plan 创建源会话，让 today 面板该行点击可跳。
+            conn.execute(text("""
+                INSERT INTO plan_runs (plan_id, workspace_id, run_seq, trigger, auto_accept,
+                                       status, conversation_id, started_at, ended_at, created_at)
+                VALUES (:pid, :wid, 1, 'manual', 0, 'settled', :conv, :ts, :ts, :ts)
+            """), {"pid": plan_id, "wid": workspace_id, "conv": plan_conv_id, "ts": created_at})
+            new_run_id = conn.execute(text("SELECT last_insert_rowid()")).scalar()
+            # 把该 plan 属下子任务的 logs（run_id 为 NULL 的）全部归到这条新 run
+            conn.execute(text("""
+                UPDATE task_execution_logs
+                SET run_id = :rid
+                WHERE run_id IS NULL AND task_id IN (
+                    SELECT id FROM employee_tasks WHERE orchestration_plan_id = :pid
+                )
+            """), {"rid": new_run_id, "pid": plan_id})
+            backfilled += 1
+        if backfilled:
+            logger.info("backfilled %s legacy plan(s) with PlanRun + logs.run_id", backfilled)
 
-    logger.info("Migrating conversations.title to TEXT ...")
+
+def _reset_orphaned_streams(engine) -> None:
+    """启动时清理上次进程遗留的"运行中"流状态。
+
+    后端重启/崩溃会让正在跑的流被打断，但 DB 里的
+    conversation_messages.stream_state='streaming'、
+    task_execution_logs.run_status in ('running','queued')、
+    conversations.status='running' 会永久卡死，导致：
+    - 群协作的完成事件永不触发 → 后续任务永远不派发；
+    - 前端一直转圈。
+    这里把它们重置为终态（中断/失败），让链路可恢复、不卡死。
+    """
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        if "conversation_messages" in tables:
+            cols = {c["name"] for c in inspector.get_columns("conversation_messages")}
+            if "stream_state" in cols:
+                r = conn.execute(text(
+                    "UPDATE conversation_messages SET stream_state='error' "
+                    "WHERE stream_state IN ('streaming','queued')"
+                ))
+                if getattr(r, "rowcount", 0):
+                    logger.info("reset %s orphaned streaming messages", r.rowcount)
+        if "task_execution_logs" in tables:
+            cols = {c["name"] for c in inspector.get_columns("task_execution_logs")}
+            if "run_status" in cols:
+                r = conn.execute(text(
+                    "UPDATE task_execution_logs SET run_status='failed', "
+                    "run_result='进程重启中断' "
+                    "WHERE run_status IN ('running','queued')"
+                ))
+                if getattr(r, "rowcount", 0):
+                    logger.info("reset %s orphaned running task logs", r.rowcount)
+        if "conversations" in tables:
+            cols = {c["name"] for c in inspector.get_columns("conversations")}
+            if "status" in cols:
+                conn.execute(text(
+                    "UPDATE conversations SET status='idle' "
+                    "WHERE status IN ('running','interrupted')"
+                ))
+
+
+def _init_fts5(engine) -> None:
+    """为 conversation_messages.content 创建 FTS5 全文索引。"""
     with engine.connect() as conn:
-        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        try:
-            conn.execute(text("CREATE TABLE _conversations_new ("
-                              "id INTEGER PRIMARY KEY,"
-                              "workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,"
-                              "target_type VARCHAR(32) NOT NULL,"
-                              "target_id INTEGER NOT NULL,"
-                              "title TEXT,"
-                              "created_at DATETIME,"
-                              "updated_at DATETIME"
-                              ")"))
-            conn.execute(text("INSERT INTO _conversations_new "
-                              "SELECT id, workspace_id, target_type, target_id, title, created_at, updated_at "
-                              "FROM conversations"))
-            conn.execute(text("DROP TABLE conversations"))
-            conn.execute(text("ALTER TABLE _conversations_new RENAME TO conversations"))
-            for idx_sql in [
-                "CREATE INDEX ix_conversations_id ON conversations(id)",
-                "CREATE INDEX ix_conversations_workspace_id ON conversations(workspace_id)",
-                "CREATE INDEX ix_conversations_target_type ON conversations(target_type)",
-                "CREATE INDEX ix_conversations_target_id ON conversations(target_id)",
-            ]:
-                conn.execute(text(idx_sql))
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.exec_driver_sql("PRAGMA foreign_keys=ON")
-    logger.info("Migrated conversations.title to TEXT successfully")
-
+        conn.execute(text("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS conversation_messages_fts
+            USING fts5(content, content='conversation_messages', content_rowid='id', tokenize='unicode61')
+        """))
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS cm_fts_insert AFTER INSERT ON conversation_messages
+            BEGIN
+                INSERT INTO conversation_messages_fts(rowid, content) VALUES (new.id, new.content);
+            END
+        """))
+        conn.execute(text(
+            "INSERT INTO conversation_messages_fts(conversation_messages_fts) VALUES('rebuild')"
+        ))
+        conn.commit()

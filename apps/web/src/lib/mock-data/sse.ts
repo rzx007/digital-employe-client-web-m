@@ -1,31 +1,4 @@
-const encoder = new TextEncoder()
-
-export function createMockSSEStream(
-  sseText: string,
-  options?: { delay?: number; chunkDelay?: number }
-): ReadableStream<Uint8Array> {
-  const { delay = 30, chunkDelay = 60 } = options ?? {}
-  const events = sseText
-    .trim()
-    .split(/\n\n+/)
-    .filter((event) => event.trim())
-
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      for (const event of events) {
-        await new Promise((resolve) => setTimeout(resolve, chunkDelay))
-        const payload = event.trim() + "\n\n"
-        controller.enqueue(encoder.encode(payload))
-        await new Promise((resolve) => setTimeout(resolve, delay))
-      }
-
-      controller.close()
-    },
-    cancel() {},
-  })
-}
-
-export const SeeData = String.raw`
+export const MOCK_SSE_TEXT = String.raw`
 data: {"type":"messages","ns":[],"data":[{"lc": 1, "type": "constructor", "id": ["langchain", "schema", "messages", "AIMessageChunk"], "kwargs": {"content": "", "response_metadata": {"model_provider": "openai"}, "type": "AIMessageChunk", "id": "lc_run--019d23a2-0bda-79e2-a86f-4e636d46c223", "tool_calls": [{"name": "write_file", "args": {}, "id": "call_638c881117244592bb49d8", "type": "tool_call"}], "tool_call_chunks": [{"name": "write_file", "args": "", "id": "call_638c881117244592bb49d8", "index": 0, "type": "tool_call_chunk"}], "invalid_tool_calls": []}}, {"ls_integration": "langchain_chat_model", "langgraph_step": 4, "langgraph_node": "model", "langgraph_triggers": ["branch:to:model"], "langgraph_path": ["__pregel_pull", "model"], "langgraph_checkpoint_ns": "model:d09621ce-89ca-cd85-cb13-dc97b1731127", "model": "qwen2.5-72b-instruct", "model_name": "qwen2.5-72b-instruct", "stream": false, "temperature": 0.0, "_type": "openai-chat", "checkpoint_ns": "model:d09621ce-89ca-cd85-cb13-dc97b1731127", "ls_provider": "openai", "ls_model_name": "qwen2.5-72b-instruct", "ls_model_type": "chat", "ls_temperature": 0.0}]}
 
 data: {"type":"messages","ns":[],"data":[{"lc": 1, "type": "constructor", "id": ["langchain", "schema", "messages", "AIMessageChunk"], "kwargs": {"content": "", "response_metadata": {"model_provider": "openai"}, "type": "AIMessageChunk", "id": "lc_run--019d23a2-0bda-79e2-a86f-4e636d46c223", "tool_calls": [{"name": "", "args": {}, "id": "", "type": "tool_call"}], "tool_call_chunks": [{"name": null, "args": "{\"file_path\":", "id": "", "index": 0, "type": "tool_call_chunk"}], "invalid_tool_calls": []}}, {"ls_integration": "langchain_chat_model", "langgraph_step": 4, "langgraph_node": "model", "langgraph_triggers": ["branch:to:model"], "langgraph_path": ["__pregel_pull", "model"], "langgraph_checkpoint_ns": "model:d09621ce-89ca-cd85-cb13-dc97b1731127", "model": "qwen2.5-72b-instruct", "model_name": "qwen2.5-72b-instruct", "stream": false, "temperature": 0.0, "_type": "openai-chat", "checkpoint_ns": "model:d09621ce-89ca-cd85-cb13-dc97b1731127", "ls_provider": "openai", "ls_model_name": "qwen2.5-72b-instruct", "ls_model_type": "chat", "ls_temperature": 0.0}]}

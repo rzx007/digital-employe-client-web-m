@@ -1,109 +1,60 @@
-import { useCallback, useState } from "react"
-import type { MetadataSkill } from "@/api/types"
-import type { QueryInterface, WorkbenchConfig } from "@/types/workbench"
-import {
-  addCustomBlock,
-  initializeWorkbenchConfig,
-  loadWorkbenchConfig,
-  removeBlock,
-  toggleBlock,
-  updateBlockOrder,
-  updateBlockSize,
-} from "@/lib/workbench/workbench-config"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useCallback, useEffect, useRef } from "react"
+import { fetchWorkbench, saveWorkbench } from "@/api/workbench"
+import type { WorkbenchConfig } from "@/types/workbench"
+import { WORKBENCH_CONFIG_CHANGED_EVENT } from "@/lib/workbench/workbench-config"
+import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 
-interface UseWorkbenchConfigOptions {
-  employeeId: string | null
-  skills: MetadataSkill[]
-}
+const KEY = ["workbench", "config"]
 
-export function useWorkbenchConfig({ employeeId, skills }: UseWorkbenchConfigOptions) {
-  const [prevEmployeeId, setPrevEmployeeId] = useState(employeeId)
-
-  const [config, setConfig] = useState<WorkbenchConfig | null>(() => {
-    if (!employeeId) return null
-    return (
-      loadWorkbenchConfig(employeeId) ??
-      initializeWorkbenchConfig(employeeId, skills)
-    )
+export function useWorkbenchConfig() {
+  const qc = useQueryClient()
+  const query = useQuery({
+    queryKey: KEY,
+    queryFn: ({ signal }) => fetchWorkbench({ signal }),
   })
 
-  if (employeeId !== prevEmployeeId) {
-    setPrevEmployeeId(employeeId)
-    if (!employeeId) {
-      setConfig(null)
-    } else {
-      const loaded = loadWorkbenchConfig(employeeId)
-      if (loaded) {
-        setConfig(loaded)
-      } else {
-        setConfig(initializeWorkbenchConfig(employeeId, skills))
-      }
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const save = useMutation({
+    mutationFn: saveWorkbench,
+    onSuccess: (cfg) => qc.setQueryData(KEY, cfg),
+  })
+
+  const mutate = useCallback(
+    (next: WorkbenchConfig) => {
+      qc.setQueryData(KEY, next) // 乐观
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(
+        () => save.mutate({ ...next, updatedAt: Date.now() }),
+        400
+      )
+    },
+    [qc, save]
+  )
+
+  useEffect(() => {
+    const h = () => void qc.invalidateQueries({ queryKey: KEY })
+    window.addEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, h)
+    return () => window.removeEventListener(WORKBENCH_CONFIG_CHANGED_EVENT, h)
+  }, [qc])
+
+  // 总管(后端)经工具改了工作台配置 → 收到 workbench_changed 事件就重新拉,
+  // 否则后端加的 widget 不刷新页面不会出现(且可能被前端整份 PUT 覆盖丢失)
+  useWorkspaceEvents((event) => {
+    if (event.type === "workbench_changed") {
+      void qc.invalidateQueries({ queryKey: KEY })
     }
-  }
+  })
 
-  const refreshConfig = useCallback(() => {
-    if (!employeeId) return
-    const loaded = loadWorkbenchConfig(employeeId)
-    if (loaded) {
-      setConfig(loaded)
-    } else {
-      const initialized = initializeWorkbenchConfig(employeeId, skills)
-      setConfig(initialized)
+  // 卸载时清掉防抖定时器,并把最后一次乐观结果同步落库(防止快速切走丢失最后一次编辑)
+  useEffect(() => {
+    return () => {
+      if (!timer.current) return
+      clearTimeout(timer.current)
+      const cached = qc.getQueryData<WorkbenchConfig>(KEY)
+      if (cached) void saveWorkbench({ ...cached, updatedAt: Date.now() })
     }
-  }, [employeeId, skills])
+  }, [qc])
 
-  const toggleBlockEnabled = useCallback(
-    (blockId: string) => {
-      if (!config) return
-      const updated = toggleBlock(config, blockId)
-      setConfig(updated)
-    },
-    [config]
-  )
-
-  const reorderBlocks = useCallback(
-    (blockIds: string[]) => {
-      if (!config) return
-      const updated = updateBlockOrder(config, blockIds)
-      setConfig(updated)
-    },
-    [config]
-  )
-
-  const addBlock = useCallback(
-    (queryInterface: QueryInterface) => {
-      if (!config) return
-      const updated = addCustomBlock(config, queryInterface)
-      setConfig(updated)
-    },
-    [config]
-  )
-
-  const removeBlockById = useCallback(
-    (blockId: string) => {
-      if (!config) return
-      const updated = removeBlock(config, blockId)
-      setConfig(updated)
-    },
-    [config]
-  )
-
-  const resizeBlock = useCallback(
-    (blockId: string, width: number, height: number) => {
-      if (!config) return
-      const updated = updateBlockSize(config, blockId, width, height)
-      setConfig(updated)
-    },
-    [config]
-  )
-
-  return {
-    config,
-    toggleBlockEnabled,
-    reorderBlocks,
-    addBlock,
-    removeBlock: removeBlockById,
-    resizeBlock,
-    refreshConfig,
-  }
+  return { config: query.data ?? null, isLoading: query.isLoading, mutate }
 }

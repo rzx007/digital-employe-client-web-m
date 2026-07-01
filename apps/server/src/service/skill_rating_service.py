@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 import httpx
 from sqlalchemy import select
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from src.core.config import get_settings, join_base_and_path
+from src.core.remote_gateway import RemoteGateway
 from src.models.employee import Employee
 from src.models.employee_skill import EmployeeSkill
 from src.models.skill_rating import SkillRating
@@ -79,6 +81,7 @@ class SkillRatingService:
 
         row = SkillRating(
             workspace_id=employee.workspace_id,
+            user_id=employee.user_id,
             employee_id=employee.id,
             conversation_id=None,
             message_id=None,
@@ -103,9 +106,27 @@ class SkillRatingService:
             if not rating_url:
                 raise ValueError("未配置远程技能服务地址（REMOTE_API_BASE_URL）。")
             headers = {"token": f"{token}"}
-            httpx.post(rating_url, headers=headers, json={"score": payload.score})
+            RemoteGateway.sync_post("skill_rating_upload", rating_url, headers=headers, json={"score": payload.score})
         except (httpx.HTTPError, ValueError) as exc:
             logger.error("评分同步远程失败 skill_id=%s: %s", skill_id, exc, exc_info=True)
+
+        # 评分后触发改进建议（低分 + 有评论，后台线程避免阻塞 API 响应）
+        try:
+            from src.service.skill_improvement_service import trigger_improvement_review
+
+            threading.Thread(
+                target=trigger_improvement_review,
+                args=(
+                    skill_name,
+                    employee.id,
+                    payload.score,
+                    payload.comment or "",
+                    log.conversation_id,
+                ),
+                daemon=True,
+            ).start()
+        except Exception:
+            logger.warning("skill improvement review trigger failed", exc_info=True)
 
         return SkillRatingRead.model_validate(row)
 

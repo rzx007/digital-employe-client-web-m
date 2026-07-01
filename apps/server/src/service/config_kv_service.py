@@ -9,16 +9,39 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.core.config import get_settings, join_base_and_path
+from src.core.config import clear_settings_cache, get_settings, is_offline_mode, join_base_and_path
+from src.llm.registry import (
+    OFFLINE_BOOTSTRAP_PROVIDER_ID,
+    ONLINE_BOOTSTRAP_PROVIDER_ID,
+    REGISTRY_KV_KEY,
+    prepare_llm_registry_seed,
+)
+from src.core.remote_gateway import RemoteGateway
 from src.models.config_kv import ConfigKv
 
 logger = logging.getLogger(__name__)
 
 
+# (key, 已知旧值, 新值)。bootstrap 时只覆盖「值精确等于旧值」的行，
+# 不动 None / 空串 / 用户自定义值，保护私有部署。每条目幂等。
+LEGACY_KV_MIGRATIONS: list[tuple[str, str, str]] = [
+    (
+        "FEISHU_APP_ID",
+        "cli_a97bcb15167b1bb4",
+        "cli_a9d1e24afb38dcc4",
+    ),
+    (
+        "FEISHU_APP_SECRET",
+        "xvccgjHzEdB8dV28c8R4KeI6jTjWsPWL",
+        "X26JhpNSmz7Ekb8qGkk4Pymeg64Jpcdm",
+    ),
+]
+
+
 class ConfigKvService:
     @staticmethod
     def _refresh_settings_cache() -> None:
-        get_settings.cache_clear()
+        clear_settings_cache()
         try:
             from src.db.session import reset_session_state
 
@@ -135,6 +158,17 @@ class ConfigKvService:
             if exists is not None:
                 continue
             value = "" if raw_value is None else str(raw_value)
+            if key == REGISTRY_KV_KEY:
+                prepared = prepare_llm_registry_seed(value)
+                if prepared is not None:
+                    value = prepared
+                    logger.info(
+                        "LLM_REGISTRY seed active profile: offline=%s provider=%s",
+                        is_offline_mode(),
+                        OFFLINE_BOOTSTRAP_PROVIDER_ID
+                        if is_offline_mode()
+                        else ONLINE_BOOTSTRAP_PROVIDER_ID,
+                    )
             db.add(ConfigKv(config_key=key, config_value=value))
             inserted += 1
         if inserted > 0:
@@ -145,11 +179,50 @@ class ConfigKvService:
             inserted,
             path,
         )
-        return inserted
+
+        migrated = ConfigKvService._apply_legacy_migrations(db)
+        return inserted + migrated
 
     @staticmethod
-    def sync_model_provider_from_remote(db: Session, token: str | None = None) -> bool:
-        """从远程拉取模型服务商配置并覆盖本地关键配置。"""
+    def _apply_legacy_migrations(db: Session) -> int:
+        """把 KV 表里值「精确等于已知旧值」的行更新为新值；其它情况不动。
+        为已部署用户处理「config-kv.init.json 改了但 bootstrap 是 insert-only」的迁移缺口。
+        """
+        migrated = 0
+        for key, stale_value, new_value in LEGACY_KV_MIGRATIONS:
+            row = db.scalar(select(ConfigKv).where(ConfigKv.config_key == key))
+            if row is None or row.config_value != stale_value:
+                continue
+            row.config_value = new_value
+            migrated += 1
+            logger.info("Legacy KV migrated: %s -> ***", key)
+        if migrated > 0:
+            db.commit()
+            ConfigKvService._refresh_settings_cache()
+        return migrated
+
+    @staticmethod
+    def sync_model_provider_from_remote(
+        db: Session,
+        token: str | None = None,
+        *,
+        force: bool = False,
+    ) -> bool:
+        """从远程拉取模型服务商配置并覆盖本地关键配置。
+        
+        该函数从远程API获取模型服务商的配置信息（包括模型名称、API密钥和API地址），
+        并将其同步到本地的LLM注册表中，设置为激活状态。
+        
+        Args:
+            db: 数据库会话对象，用于更新本地模型注册表
+            token: 可选的认证令牌，用于访问远程API
+            
+        Returns:
+            bool: 同步是否成功
+                - True: 成功从远程获取配置并更新到本地注册表
+                - False: 同步失败（URL未配置、网络错误、响应格式错误、缺少必要字段等）
+        """
+        # 构建远程API URL
         settings = get_settings()
         url = join_base_and_path(
             settings.remote_api_base_url,
@@ -161,9 +234,11 @@ class ConfigKvService:
             )
             return False
 
+        # 发送HTTP请求获取远程配置
         try:
             headers = {"token": token or ""}
-            response = httpx.get(
+            response = RemoteGateway.sync_get(
+                "remote_model_sync",
                 url,
                 headers=headers,
                 timeout=settings.skill_remote_timeout,
@@ -174,6 +249,7 @@ class ConfigKvService:
             logger.warning("Failed to fetch remote model provider config: %s", exc)
             return False
 
+        # 验证响应格式和业务状态码
         if not isinstance(payload, dict):
             logger.warning("Remote model provider response is not a JSON object")
             return False
@@ -187,6 +263,7 @@ class ConfigKvService:
             )
             return False
 
+        # 提取并验证必要的配置字段
         data = payload.get("data")
         if not isinstance(data, dict):
             logger.warning("Remote model provider data is invalid: %r", data)
@@ -201,31 +278,46 @@ class ConfigKvService:
             )
             return False
 
-        updates = {
-            "DEEPAGENT_MODEL": model_name,
-            "OPENAI_API_KEY": api_key,
-            "BASE_URL": api_url,
-        }
-        changed = 0
-        for key, value in updates.items():
-            row = db.scalar(select(ConfigKv).where(ConfigKv.config_key == key))
-            if row is None:
-                db.add(ConfigKv(config_key=key, config_value=value))
-                changed += 1
-                continue
-            if row.config_value != value:
-                row.config_value = value
-                changed += 1
+        # 用户已在设置中手动选定模型时，不覆盖本地配置
+        from src.llm.registry import (
+            load_registry,
+            maybe_restore_local_active_provider,
+            save_registry,
+            should_apply_remote_model_sync,
+        )
 
-        if changed > 0:
-            db.commit()
-            ConfigKvService._refresh_settings_cache()
-            logger.info(
-                "Synced model provider config from remote: changed=%s model=%s",
-                changed,
-                model_name,
-            )
-            return True
+        if not force:
+            registry = load_registry(db)
+            if not should_apply_remote_model_sync(registry):
+                restored = maybe_restore_local_active_provider(registry)
+                if restored:
+                    save_registry(db, registry)
+                    logger.info(
+                        "Skip remote model sync and restored local active=%s/%s",
+                        registry.active_provider_id,
+                        registry.active_model_id,
+                    )
+                else:
+                    logger.info(
+                        "Skip remote model provider sync: local preference active=%s/%s policy=%s",
+                        registry.active_provider_id,
+                        registry.active_model_id,
+                        registry.model_sync_policy,
+                    )
+                return False
 
-        logger.info("Remote model provider config unchanged: model=%s", model_name)
-        return False
+        # 将配置同步到本地LLM注册表
+        from src.llm.registry_service import upsert_from_remote_sync
+
+        upsert_from_remote_sync(
+            db,
+            model_name=model_name,
+            api_key=api_key,
+            api_url=api_url,
+            set_as_active=True,
+        )
+        logger.info(
+            "Synced model provider config from remote into registry: model=%s",
+            model_name,
+        )
+        return True

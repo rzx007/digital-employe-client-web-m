@@ -1,8 +1,8 @@
 from __future__ import annotations
+import asyncio
 import logging
 import os
 import json
-import shutil
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -12,12 +12,19 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
-from src.models.chat_group import ChatGroup
 from src.schemas.conversation import ConversationRead
 from src.models.conversation import Conversation, ConversationMessage
 from src.models.employee import Employee
 from src.models.workspace import Workspace, cst_now
+from src.llm.vision import active_model_supports_vision
 from src.service.employee_service import EmployeeService
+from src.service.agent_message_builder import (
+    build_history_user_content,
+    build_user_agent_content,
+    history_image_budget,
+)
+from src.service.image_multimodal import LLM_IMAGE_HISTORY_MESSAGE_LIMIT
+from src.service.product_paths import resolve_conversation_product_root
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
 from langchain_openai import ChatOpenAI
@@ -25,10 +32,126 @@ from datetime import datetime  # 导入datetime模块
 from urllib.request import urlopen
 from deepagents.backends.utils import create_file_data
 from langgraph.checkpoint.memory import MemorySaver
-from src.service.agent import get_agent
+from src.service.agent import delete_conversation_checkpoint, get_agent
 
 
 logger = logging.getLogger(__name__)
+
+
+# 这些是「真正的终态」——一旦 DB 消息已是其一，resume 不得再覆盖（防把 completed/
+# interrupted 误改成 cancelled）。只有仍在途的 streaming/queued 才需要落终态。
+_TERMINAL_STREAM_STATES = ("completed", "cancelled", "error", "interrupted")
+_IN_FLIGHT_STREAM_STATES = ("streaming", "queued")
+
+
+def _serialize_buffer_event_to_sse(
+    ev: dict, debug_content_only: bool
+) -> tuple[list[str], bool]:
+    """单个 buffer 事件 → SSE 行；返回 (lines, is_terminal)。
+
+    终态事件(completed/cancelled/error/interrupted)附 [DONE] 并标记 is_terminal。
+    与 resume 实时回放逐事件逻辑一致，供「终态但 buffer 仍 linger」的重放复用。
+    """
+    data = ev.get("data")
+    if not data:
+        return [], False
+    seq = ev.get("seq")
+    prefix = f"id: {seq}\n" if seq is not None else ""
+    if isinstance(data, dict) and data.get("status") in _TERMINAL_STREAM_STATES:
+        out: list[str] = []
+        if data.get("status") == "error":
+            out.append(
+                prefix
+                + f"data: {json.dumps({'error': data.get('error')}, ensure_ascii=False)}\n\n"
+            )
+        elif data.get("status") == "interrupted":
+            out.append(
+                prefix + f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+            )
+        out.append(prefix + "data: [DONE]\n\n")
+        return out, True
+    if debug_content_only:
+        text_part = ChatService._extract_text_from_chunk(data)
+        return ([prefix + f"data: {text_part}\n\n"] if text_part else []), False
+    return [prefix + f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"], False
+
+
+def reconcile_stale_stream_state_on_resume(
+    db: Session,
+    conversation_id: int,
+    *,
+    terminal_status: str,
+) -> bool:
+    """resume 命中「流已终态」时，把 DB 里仍滞后在 streaming/queued 的末尾 assistant
+    消息落成 terminal_status，让 DB 与 registry 收敛。
+
+    背景：某轮 stream 在 registry 已是终态（如 cancelled），但该轮 assistant 消息
+    在 DB 里仍 stream_state='streaming'。前端从 DB 读到 streaming → 反复 resume →
+    后端「stream already ended」分支只通知不落库 → DB 永远 streaming → 死循环（一直
+    转圈+闪屏）。这里在 return 前补一次落库，断掉循环。
+
+    返回是否实际改了行（用于日志/测试）。已是终态或无在途消息时不动、返回 False。
+    """
+    stmt = (
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.conversation_id == conversation_id,
+            ConversationMessage.role == "assistant",
+            ConversationMessage.stream_state.in_(_IN_FLIGHT_STREAM_STATES),
+        )
+        .order_by(ConversationMessage.id.desc())
+        .limit(1)
+    )
+    msg = db.scalar(stmt)
+    if not msg:
+        return False
+    msg.stream_state = terminal_status
+    msg.stream_cursor = 0
+    db.commit()
+    return True
+
+
+async def _commit_db_off_loop(db: Session) -> None:
+    """把同步 db.commit() 放到 DB 写线程，避免阻塞事件循环。
+
+    SQLite 写锁竞争时 commit 可阻塞 30s，期间事件循环无法调度任何协程/I/O，
+    导致 agent.astream() 无法发起 httpx 请求、run_coro_on_main_loop 超时。
+    """
+    from src.service.stream_registry import _DB_WRITE_EXECUTOR
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(_DB_WRITE_EXECUTOR, db.commit)
+
+
+async def _refresh_db_off_loop(db: Session, obj: Any) -> None:
+    """把同步 db.refresh() 放到 DB 写线程，避免阻塞事件循环。"""
+    from src.service.stream_registry import _DB_WRITE_EXECUTOR
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(_DB_WRITE_EXECUTOR, db.refresh, obj)
+
+
+def _apply_external_dir_grant(db, workspace_id, conversation_id, external_dir) -> None:
+    """approve 时按 scope 记授权。external_dir 形如 {path, scope}；缺字段/非法值/None → 安全 no-op。"""
+    if not external_dir:
+        return
+    path = external_dir.get("path")
+    scope = external_dir.get("scope")
+    if not path or scope not in {"once", "session", "permanent", "auto"}:
+        return
+    from src.service.agent.path_authorization import record_grant
+
+    record_grant(db, workspace_id, conversation_id, path, scope)
+
+
+def build_skill_question(skill_name: str | None, question: str) -> str:
+    """显式指定技能时给问题加「请使用X技能…」前缀；无技能则原样返回。
+
+    与员工对齐：curator 也注入（总管 agent 已把 orchestrator_skills 加载为可用技能）。
+    """
+    if skill_name:
+        return f"请使用{skill_name}技能回答这个问题：{question}"
+    return question
 
 
 class ChatService:
@@ -144,15 +267,14 @@ class ChatService:
             return
         if target_type == "employee":
             employee = db.get(Employee, target_id)
-            if not employee or employee.workspace_id != workspace_id:
+            ws = db.get(Workspace, workspace_id)
+            owner = ws.user_id if ws is not None else None
+            if not employee or employee.user_id != owner:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到员工。")
             return
         if target_type == "group":
-            group = db.get(ChatGroup, target_id)
-            if not group or group.workspace_id != workspace_id:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到群组。")
-            return
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="群组功能已下线。")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee 或 curator。")
 
     @staticmethod
     def create_conversation(
@@ -163,8 +285,18 @@ class ChatService:
         title: str | None,
     ) -> Conversation:
         ChatService._validate_target(db, workspace_id, target_type, target_id)
+        ws = db.get(Workspace, workspace_id)
+        _uid = ws.user_id if ws is not None else None
+        if _uid is None:
+            # owner 缺失（workspace 不存在/未认领）→ 会话进不了用户级侧边栏(list_user_conversations)
+            # 的 WHERE user_id 过滤，成为孤儿。正常不该发生（离线默认用户 "1"、空间建时即认领）。
+            logger.warning(
+                "create_conversation: workspace_id=%s 缺 owner，会话将以 user_id=None 落库（孤儿）",
+                workspace_id,
+            )
         conversation = Conversation(
             workspace_id=workspace_id,
+            user_id=_uid,
             target_type=target_type,
             target_id=target_id,
             title=title or None,
@@ -175,7 +307,27 @@ class ChatService:
         return conversation
 
     @staticmethod
+    def update_conversation(
+        db: Session,
+        conversation_id: int,
+        title: str,
+    ) -> Conversation:
+        conversation = ChatService.get_conversation(db, conversation_id)
+        stripped = title.strip()
+        if not stripped:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="会话标题不能为空。",
+            )
+        conversation.title = stripped
+        db.commit()
+        db.refresh(conversation)
+        return conversation
+
+    @staticmethod
     def list_conversations(db: Session, workspace_id: int, target_type: str, target_id: int) -> list[Conversation]:
+        # 故意保持 workspace+target 级：批量删除(adelete_conversations_by_target)依赖此范围，
+        # 改成 user 级会跨项目误删。跨项目的用户级侧边栏列表见 list_user_conversations。
         ChatService._validate_target(db, workspace_id, target_type, target_id)
         stmt: Select[tuple[Conversation]] = (
             select(Conversation)
@@ -186,6 +338,18 @@ class ChatService:
             )
             .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
         )
+        convs = list(db.scalars(stmt).all())
+        return convs
+
+    @staticmethod
+    def list_user_conversations(
+        db: Session, user_id: str, target_type: str | None = None
+    ) -> list[Conversation]:
+        """列出某用户的全部会话（跨工作空间/项目），每条带其 workspace_id。"""
+        stmt = select(Conversation).where(Conversation.user_id == user_id)
+        if target_type is not None:
+            stmt = stmt.where(Conversation.target_type == target_type)
+        stmt = stmt.order_by(Conversation.updated_at.desc(), Conversation.id.desc())
         return list(db.scalars(stmt).all())
 
     @staticmethod
@@ -205,21 +369,109 @@ class ChatService:
         )
         messages = list(db.scalars(stmt).all())
 
+        # file 后端：用进度 sidecar 覆盖在流消息的瞬时 state/cursor/content（更新鲜）。
+        # 终态落库后 sidecar 已删，历史消息读不到文件 → 走行上永久值。overlay 仅供
+        # 序列化展示，expunge_all 防止内存改动被 flush 回 DB（终态才是唯一落库点）。
+        from src.core.config import get_settings
+
+        if get_settings().stream_progress_backend != "sqlite":
+            from src.service.stream_progress_store import get_progress_store
+
+            store = get_progress_store()
+            overlaid = False
+            for m in messages:
+                if m.role != "assistant":
+                    continue
+                prog = store.read(m.id)
+                if not prog:
+                    continue
+                if prog.get("stream_state") is not None:
+                    m.stream_state = prog["stream_state"]
+                if prog.get("stream_cursor") is not None:
+                    m.stream_cursor = prog["stream_cursor"]
+                if prog.get("content") is not None:
+                    m.content = prog["content"]
+                overlaid = True
+            if overlaid:
+                db.expunge_all()
+
         return messages
 
     @staticmethod
-    def delete_conversation(db: Session, conversation_id: int) -> None:
+    async def adelete_conversation(
+        db: Session, conversation_id: int, *, cascade_artifacts: bool = True
+    ) -> None:
+        # 产物现为项目级共享(SP2)：一个项目下所有会话共用同一份
+        # `<product_root>/{artifacts,uploads,skills-draft}`（含 uploads），删单个会话
+        # 不能删这些共享产物——否则会抹掉同项目其它会话仍在引用的产物。
+        # 因此本方法只清理「会话私有态」：DB 行（含级联消息）、checkpoint、
+        # 以及 stream/registry 取消；不再 rmtree 任何产物目录。
+        # 整个项目的产物随 WorkspaceService.delete_workspace 统一清理。
+        # `cascade_artifacts` 参数保留（API `cascade` 查询参数 + 批量删除调用方仍传入），
+        # 但在新扁平共享模型下对共享产物目录无操作——故意 no-op，不再删任何磁盘目录。
+        from src.service.stream_registry import registry
+
+        registry.cancel(conversation_id)
+        await delete_conversation_checkpoint(conversation_id)
+
         conversation = ChatService.get_conversation(db, conversation_id)
-        workspace = db.get(Workspace, conversation.workspace_id)
-        conversation_memory_root: Path | None = None
-        if workspace:
-            conversation_memory_root = Path(workspace.root_path) / "conversations" / str(conversation_id)
 
         db.delete(conversation)
         db.commit()
 
-        if conversation_memory_root and conversation_memory_root.exists():
-            shutil.rmtree(conversation_memory_root, ignore_errors=True)
+    @staticmethod
+    async def adelete_conversations_by_target(
+        db: Session,
+        workspace_id: int,
+        target_type: str,
+        target_id: int,
+        *,
+        cascade_artifacts: bool = True,
+    ) -> list[int]:
+        """按联系人（target）批量删除会话，逐条清理 checkpoint、消息与产物目录。"""
+        if target_type == "curator":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不允许批量删除总管会话。",
+            )
+
+        conversations = ChatService.list_conversations(
+            db, workspace_id, target_type, target_id
+        )
+        deleted_ids: list[int] = []
+        failures: list[tuple[int, str]] = []
+
+        for conversation in conversations:
+            conv_id = conversation.id
+            try:
+                await ChatService.adelete_conversation(
+                    db, conv_id, cascade_artifacts=cascade_artifacts
+                )
+                deleted_ids.append(conv_id)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.error(
+                    "Failed to delete conversation %s for target %s:%s: %s",
+                    conv_id,
+                    target_type,
+                    target_id,
+                    exc,
+                    exc_info=True,
+                )
+                failures.append((conv_id, str(exc)))
+
+        if failures:
+            failed_summary = ", ".join(f"{cid}" for cid, _ in failures)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    f"部分会话删除失败（{len(failures)}/{len(conversations)}），"
+                    f"失败 ID: {failed_summary}"
+                ),
+            )
+
+        return deleted_ids
 
     @staticmethod
     def _append_message(
@@ -240,14 +492,18 @@ class ChatService:
         db.add(message)
         conversation.updated_at = cst_now()
         db.add(conversation)
-        db.commit()
-        db.refresh(message)
+        # 注意：不再在此处 commit/refresh，由调用方统一提交（避免事件循环上同步 SQLite 写）
         return message
 
     @staticmethod
-    def _load_history_for_agent(db: Session, conversation_id: int, limit: int) -> list[dict[str, str]]:
+    def _load_history_for_agent(
+        db: Session,
+        conversation_id: int,
+        limit: int,
+        artifacts_root: str | Path,
+    ) -> tuple[list[dict[str, Any]], int | None]:
         if limit <= 0:
-            return []
+            return [], None
         stmt: Select[tuple[ConversationMessage]] = (
             select(ConversationMessage)
             .where(
@@ -258,30 +514,147 @@ class ChatService:
             .limit(limit)
         )
         messages = list(db.scalars(stmt).all())
-        payload = []
+        last_input_tokens: int | None = None
+        for message in messages:
+            if message.role != "assistant" or not message.extra_meta:
+                continue
+            try:
+                meta = json.loads(message.extra_meta)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            usage = meta.get("usage")
+            if not isinstance(usage, dict):
+                continue
+            raw_tokens = usage.get("input_tokens")
+            if raw_tokens is not None:
+                last_input_tokens = int(raw_tokens)
+                break
+        allow_images = active_model_supports_vision()
+        remaining_image_budget = history_image_budget()
+        included_image_messages = 0
+        enriched_messages: dict[int, dict[str, Any]] = {}
+
+        for message in messages:
+            if message.role != "user" or not message.content:
+                continue
+            can_include_images = (
+                allow_images
+                and included_image_messages < LLM_IMAGE_HISTORY_MESSAGE_LIMIT
+                and remaining_image_budget > 0
+            )
+            enriched, used_bytes, included_image = build_history_user_content(
+                message,
+                artifacts_root=artifacts_root,
+                conversation_id=conversation_id,
+                allow_images=allow_images,
+                remaining_byte_budget=(
+                    remaining_image_budget if can_include_images else 0
+                ),
+            )
+            enriched_messages[message.id] = enriched
+            if included_image:
+                included_image_messages += 1
+                remaining_image_budget = max(0, remaining_image_budget - used_bytes)
+
+        payload: list[dict[str, Any]] = []
         for message in reversed(messages):
             if not message.content:
                 continue
-            payload.append({"role": message.role, "content": message.content})
-        return payload
+            payload.append(
+                enriched_messages.get(
+                    message.id,
+                    {"role": message.role, "content": message.content},
+                )
+            )
+        return payload, last_input_tokens
+
+    @staticmethod
+    def _select_head_tail(
+        messages: list[dict[str, Any]],
+        limit: int,
+        keep_head: int = 4,
+    ) -> list[dict[str, Any]]:
+        """历史超限时：保留最早 keep_head 条 + 最近 (limit-keep_head) 条，丢弃中间。
+
+        取代旧的"减半重载只留最近一半"——后者丢掉最早几条会使 [system][早段 history]
+        的前缀起点整体平移、KV-cache 失效。保头让前缀更稳，同时保住任务锚点（最早的
+        目标/设定）。注：语义压缩中间段由 SummarizationMiddleware 在 token 阈值另行处理；
+        本函数只做计数级安全截断。
+        """
+        if limit <= 0:
+            return []
+        if len(messages) <= limit:
+            return messages
+        keep_head = max(0, min(keep_head, limit))
+        keep_tail = limit - keep_head
+        if keep_head == 0:
+            return messages[-keep_tail:]
+        if keep_tail <= 0:
+            return messages[:limit]
+        return messages[:keep_head] + messages[-keep_tail:]
+
+    @staticmethod
+    def _resolve_effective_history_limit(
+        settings,
+        last_input_tokens: int | None,
+    ) -> int:
+        """Reduce loaded message count only in the mid token band.
+
+        When API usage is already near the summarization threshold, load the full
+        message window and let SummarizationMiddleware handle semantic compression
+        instead of head/tail dropping the middle twice.
+        """
+        from src.service.model_context import (
+            resolve_summarization_token_threshold,
+            should_apply_head_tail_truncation,
+        )
+
+        base_limit = settings.chat_history_max_messages
+        if last_input_tokens is None:
+            return base_limit
+        if not should_apply_head_tail_truncation(settings, last_input_tokens):
+            return base_limit
+        threshold = resolve_summarization_token_threshold(settings)
+        if last_input_tokens >= int(threshold * 0.6):
+            return max(4, base_limit // 2)
+        return base_limit
 
 
     @staticmethod
-    def ensure_curator_conversation(db: Session, workspace_id: int):
-        """获取或创建总管对话（每工作空间仅一条）。"""
+    def ensure_curator_conversation(
+        db: Session, user_id: str | None, workspace_id: int
+    ):
+        """获取或创建默认总管会话（每用户·每工作空间至少一条，允许多条 curator 会话并存）。"""
+        curator_employee = EmployeeService.ensure_curator_employee(
+            db, user_id, workspace_id
+        )
+        from sqlalchemy import case
+
         conv = db.scalars(
-            select(Conversation).where(
+            select(Conversation)
+            .where(
                 Conversation.target_type == "curator",
                 Conversation.workspace_id == workspace_id,
-            ).limit(1)
+                Conversation.user_id == user_id,
+            )
+            .order_by(
+                case((Conversation.title == "总管对话", 0), else_=1),
+                Conversation.id.asc(),
+            )
+            .limit(1)
         ).first()
         if conv:
+            if conv.target_id != curator_employee.id:
+                conv.target_id = curator_employee.id
+                db.commit()
+                db.refresh(conv)
             return ConversationRead.model_validate(conv)
 
         conv = Conversation(
             workspace_id=workspace_id,
+            user_id=user_id,
             target_type="curator",
-            target_id=1,
+            target_id=curator_employee.id,
             title="总管对话",
         )
         db.add(conv)
@@ -330,25 +703,73 @@ class ChatService:
         skill_name: str,
         debug_content_only: bool = False,
         extra_meta: dict | None = None,
+        auth_token: str | None = None,
     ):
         settings = get_settings()
-        
+
+        # 阶段计时：first-yield 前全是同步调用，任一步阻塞都会卡住事件循环→所有请求一起卡。
+        # 这组 [stream-phase] 日志精确钉出卡在哪一步（构建 agent / 加载历史 / request_start / ...）。
+        import time as _time
+
+        _t_start = _time.monotonic()
+        _t_last = _t_start
+
+        def _phase(name: str):
+            nonlocal _t_last
+            _now = _time.monotonic()
+            logger.info(
+                "[stream-phase] conv=%s %s (本段 +%.3fs, 累计 %.3fs)",
+                conversation_id, name, _now - _t_last, _now - _t_start,
+            )
+            _t_last = _now
+
+        _phase("enter")
         conversation = ChatService.get_conversation(db, conversation_id)
-        history_messages = ChatService._load_history_for_agent(
+        _phase("got_conversation")
+
+        # SP2：产物落会话所钉项目根（uploads/artifacts 直挂其下），不再用全局 artifacts_path。
+        product_root = resolve_conversation_product_root(db, conversation)
+
+        history_limit = settings.chat_history_max_messages
+        history_messages, last_input_tokens = ChatService._load_history_for_agent(
             db,
             conversation_id=conversation_id,
-            limit=settings.chat_history_max_messages,
+            limit=history_limit,
+            artifacts_root=product_root,
         )
+        _phase(f"loaded_history(n={len(history_messages)}, last_input_tokens={last_input_tokens})")
+        effective_limit = ChatService._resolve_effective_history_limit(
+            settings,
+            last_input_tokens,
+        )
+        from src.service.model_context import should_apply_head_tail_truncation
 
-        ChatService._append_message(db, conversation=conversation, role="user", content=question, extra_meta=extra_meta)
-        request_messages = [*history_messages, {"role": "user", "content": question}]
+        if (
+            should_apply_head_tail_truncation(settings, last_input_tokens)
+            and effective_limit < len(history_messages)
+        ):
+            # 保头+保尾、压中间：不再"减半重载"丢最早几条（那会平移前缀起点、砸 KV-cache），
+            # 改为保留已加载窗口最早几条 + 最近若干条；前缀更稳且保住任务锚点。
+            # 接近 token 摘要阈值时跳过，避免与 SummarizationMiddleware 双重丢中间。
+            history_messages = ChatService._select_head_tail(
+                history_messages, effective_limit
+            )
+            logger.info(
+                "conv=%s history head+tail truncated %s -> %s (last_input_tokens=%s)",
+                conversation_id,
+                history_limit,
+                effective_limit,
+                last_input_tokens,
+            )
 
-        # 将 extra_meta 中的文件信息注入 agent 上下文的 question（不污染 DB 中的原始消息）
-        if extra_meta and extra_meta.get("files"):
-            file_lines = [f"- {f.get('name', f['path'])} (路径: {f['path']})" for f in extra_meta["files"]]
-            file_context = "[上传的文件]:\n" + "\n".join(file_lines)
-            question = file_context + "\n\n" + question
-            request_messages[-1] = {"role": "user", "content": question}
+        ChatService._append_message(
+            db,
+            conversation=conversation,
+            role="user",
+            content=question,
+            extra_meta=extra_meta,
+        )
+        request_messages: list[dict[str, Any]] = [*history_messages]
         
         # 创建一个空的 assistant 消息占位（不标记 streaming 状态，
         # 等 registry.start 成功后再标记，避免 start 失败时留下僵尸消息）
@@ -359,7 +780,11 @@ class ChatService:
             content="",
             extra_meta=None,
         )
-        
+        # 两条消息都已 add 到 session，统一一次 commit（不阻塞事件循环）
+        await _commit_db_off_loop(db)
+        await _refresh_db_off_loop(db, assistant_msg)
+        _phase("appended_user+assistant_msg+commit")
+
         # 根据会话ID获取会话详情，然后获取root_path
         workspace = db.get(Workspace, conversation.workspace_id)
         if not workspace:
@@ -367,6 +792,7 @@ class ChatService:
         
         target_type = conversation.target_type
         target_id = conversation.target_id
+        _phase(f"building_agent(target_type={target_type})")
         if target_type == "curator":
             # 注入 @mention 上下文，告知 orchestrator 用户指定了哪些员工
             if extra_meta and extra_meta.get("mentions"):
@@ -379,13 +805,26 @@ class ChatService:
                 )
                 question = mention_context + question
 
-            from src.service.orchestrator_agent import get_orchestrator_agent
+            # 注入「工作台现状」快照（仅工作台总管面板会附带 workbench；其他会话无此键）。
+            # 在用户消息已落库之后才拼到 in-flight question，故不污染历史/气泡。
+            if extra_meta and extra_meta.get("workbench"):
+                workbench_context = (
+                    f"[工作台现状] {extra_meta['workbench']}\n\n"
+                )
+                question = workbench_context + question
+
+            from src.service.agent.orchestrator import get_orchestrator_agent
+            # 注意：必须在本协程上下文同步构建——get_orchestrator_agent 内部用 ContextVar
+            # (_db_session_ctx) 绑定 db，挪到线程池会绑到工作线程上下文、后台任务读不到
+            # → "orchestrator DB session not set"。构建耗时优化走「缓存 agent」而非线程池。
             agent = get_orchestrator_agent(
                 workspace_id=conversation.workspace_id,
                 db=db,
                 conversation_id=conversation_id,
+                employee_id=target_id,
+                auth_token=auth_token,
+                user_id=conversation.user_id,
             )
-            request_messages = [*history_messages, {"role": "user", "content": question}]
         elif target_type == "employee":
             employee = db.get(Employee, target_id)
             if not employee:
@@ -400,41 +839,118 @@ class ChatService:
                 )
             except HTTPException:
                 skills_path = ""
-            root_path = settings.artifacts_path
-            agent = get_agent(skills_path, root_path, employee_id=employee.id if target_type == "employee" else None, conversation_id=conversation_id)
+            # SP2：员工对话产物根 = 会话所钉项目根（取代全局 settings.artifacts_path）；
+            # Phase3 已拍平为项目级扁平共享三桶（artifacts/uploads/skills-draft）。
+            root_path = product_root
+            agent = get_agent(
+                skills_path,
+                root_path,
+                employee_id=employee.id if target_type == "employee" else None,
+                conversation_id=conversation_id,
+                workspace_id=conversation.workspace_id,
+            )
         else:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee、group 或 curator。")
-        
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_type 仅支持 employee 或 curator。")
+        _phase("built_agent")
+
         try:
-            skill_question = question
-            if skill_name and target_type != "curator":
-                skill_question = f"请使用{skill_name}技能回答这个问题：{question}"
-            if request_messages:
-                request_messages[-1] = {"role": "user", "content": skill_question}
-            
+            skill_question = build_skill_question(skill_name, question)
+            user_content = build_user_agent_content(
+                skill_question,
+                extra_meta.get("files") if extra_meta else None,
+                artifacts_root=product_root,
+                conversation_id=conversation_id,
+            )
+            # 技能预路由（软提示，尾部注入；不碰系统前缀=不伤 prefill）。仅 employee
+            # 自动模式（未显式 skill_name）；任何异常退化为不注入，绝不影响正常对话。
+            try:
+                if (
+                    target_type == "employee"
+                    and settings.agent_skill_preroute
+                    and not skill_name
+                ):
+                    from src.service.agent.paths import (
+                        list_available_skills,
+                        resolve_skills_root,
+                    )
+                    from src.service.agent.skill_prerouter import (
+                        build_route_hint,
+                        match_skills,
+                    )
+
+                    _avail = list_available_skills(resolve_skills_root(skills_path))
+                    _hint = build_route_hint(match_skills(question, _avail))
+                    if _hint:
+                        user_content = f"{user_content}{_hint}"
+            except Exception:
+                logger.warning("skill preroute failed, skip", exc_info=True)
+            request_messages.append({"role": "user", "content": user_content})
+            _phase("built_user_content")
+
             from src.service.stream_registry import registry
+            from src.service.agent_stream_queue import StartResult
             
             # 启动后台任务
-            started = registry.start(
+            run_config: dict = {
+                "configurable": {"thread_id": conversation_id},
+            }
+            if last_input_tokens is not None:
+                run_config["configurable"]["last_reported_input_tokens"] = (
+                    last_input_tokens
+                )
+            from src.service.context_compression_checkpoint import (
+                resolve_checkpoint_compact_reason,
+            )
+
+            compact_reason = resolve_checkpoint_compact_reason(
+                conversation_id,
+                question,
+                extra_meta,
+            )
+            if compact_reason:
+                run_config["configurable"]["force_context_compact"] = True
+                run_config["configurable"]["context_compact_reason"] = compact_reason
+                logger.info(
+                    "conv=%s injecting context compact checkpoint reason=%s",
+                    conversation_id,
+                    compact_reason,
+                )
+            start_result = registry.request_start(
                 conversation_id=conversation_id,
                 agent=agent,
                 messages=request_messages,
-                config={"configurable": {"thread_id": conversation_id}},
+                config=run_config,
                 stream_msg_id=assistant_msg.id,
                 skill_name=skill_name,
                 debug_content_only=debug_content_only,
+                orchestrator_workspace_id=(
+                    conversation.workspace_id if target_type == "curator" else None
+                ),
+                orchestrator_conversation_id=(
+                    conversation_id if target_type == "curator" else None
+                ),
+                orchestrator_auth_token=(
+                    auth_token if target_type == "curator" else None
+                ),
+                source="user_chat",
+                # 用户主动发消息=明确放弃上一轮：抢占本会话仍在跑/卡死但未到超时墙的旧流，
+                # 不让用户干等 3-5 分钟才能重试（见 stream_registry.request_start preempt）。
+                preempt=True,
             )
-            
-            if not started:
+            _phase(f"request_start_returned({start_result})")
+
+            if start_result == StartResult.REJECTED:
                 assistant_msg.stream_state = "error"
                 assistant_msg.content = "当前会话已有正在执行的任务"
-                db.commit()
+                await _commit_db_off_loop(db)
                 yield f"data: {json.dumps({'error': '当前会话已有正在执行的任务'}, ensure_ascii=False)}\n\n"
                 return
 
-            assistant_msg.stream_state = "streaming"
+            assistant_msg.stream_state = (
+                "queued" if start_result == StartResult.QUEUED else "streaming"
+            )
             conversation.status = "running"
-            db.commit()
+            await _commit_db_off_loop(db)
             try:
                 from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED
                 WorkspaceEventBus.push(conversation.workspace_id, {
@@ -446,58 +962,149 @@ class ChatService:
                 })
             except Exception:
                 logger.warning("push start conversation_status_changed failed conv=%s", conversation_id, exc_info=True)
-            db.refresh(assistant_msg)
-                
+            await _refresh_db_off_loop(db, assistant_msg)
+            _phase("marked_running+pushed+refresh")
+
+            if start_result == StartResult.QUEUED:
+                queued_payload = {
+                    "type": "agent_queued",
+                    "data": {},
+                    "position": registry.queue_depth(),
+                    "message": "已加入执行队列，等待其他对话完成",
+                }
+                yield f"data: {json.dumps(queued_payload, ensure_ascii=False)}\n\n"
+
             # 返回恢复流的生成器
+            _phase("entering_resume_stream(以下进入实时流；若卡在这之后=卡在 buffer 回放/等首包)")
             async for chunk in ChatService.resume_conversation_stream(db, conversation_id, debug_content_only):
                 yield chunk
                 
         except Exception as e:
+            from src.service.agent.error_messages import format_agent_error_for_user
+
             logger.error("流式对话执行失败: %s", e, exc_info=True)
-            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'error': format_agent_error_for_user(e)}, ensure_ascii=False)}\n\n"
 
     @staticmethod
-    async def resume_conversation_stream(db: Session, conversation_id: int, debug_content_only: bool = False):
-        """恢复流式会话，全量回放 buffer 历史后衔接实时事件。"""
+    async def resume_conversation_stream(
+        db: Session,
+        conversation_id: int,
+        debug_content_only: bool = False,
+        after_seq: int | None = None,
+    ):
+        """恢复流式会话：从 after_seq 之后增量回放 buffer，再衔接实时事件。
+
+        after_seq=None 时回放整个 buffer（首次进入）；切回会话/重连时前端带上
+        已收到的最后一个 seq，只补增量，避免超长输出全量重放压垮前端。
+        """
         from src.service.stream_registry import registry
         import asyncio
 
-        logger.info("[resume] conv=%s debug=%s", conversation_id, debug_content_only)
+        logger.info(
+            "[resume] conv=%s debug=%s after_seq=%s",
+            conversation_id, debug_content_only, after_seq,
+        )
 
         status_info = registry.get_stream_status(conversation_id, db)
         if status_info:
             logger.info("[resume] conv=%s stream already ended: status=%s", conversation_id, status_info)
+            terminal_status = status_info.get("status")
+            # DB 收敛：registry 已终态但 DB 该轮 assistant 可能仍滞后在 streaming/queued，
+            # 不落库则前端从 DB 读到 streaming → 反复 resume → 死循环（转圈+闪屏）。
+            if isinstance(terminal_status, str) and terminal_status in _TERMINAL_STREAM_STATES:
+                try:
+                    if reconcile_stale_stream_state_on_resume(
+                        db, conversation_id, terminal_status=terminal_status
+                    ):
+                        logger.warning(
+                            "[resume] conv=%s DB 滞后 streaming/queued 已落成 %s，断 resume 热循环",
+                            conversation_id, terminal_status,
+                        )
+                except Exception:
+                    logger.warning(
+                        "[resume] conv=%s reconcile DB 终态失败", conversation_id, exc_info=True
+                    )
+            if terminal_status == "interrupted":
+                yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'interrupted', 'message_id': status_info.get('message_id')}}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            # 服务端自发短 turn（后台命令唤醒/汇报）常在前端 resume 到达前就完成 → task 终态
+            # 但仍 linger（TASK_TTL_SECONDS）、buffer 里有完整正文。原先只发 stream_ended 会丢
+            # 正文 → 前端留空壳，必须切会话重灌 DB 才显示。这里若 lingering buffer 仍有(after_seq
+            # 之后的)正文，先重放再收尾，让晚到的 resume 也拿到内容（与 live 回放同源逻辑）。
+            lingering = registry.get_task(conversation_id)
+            if lingering is not None and lingering.buffer._events:
+                replay_events = [
+                    e
+                    for e in list(lingering.buffer._events)
+                    if after_seq is None or e.get("seq", 0) > after_seq
+                ]
+                # 冷启(after_seq=None)对已结束历史流沿用 RESUME_COLD_REPLAY_CAP 截断，
+                # 防超长 buffer 反复全量重放卡死（与 live 回放 ended 分支一致）。
+                if after_seq is None:
+                    cold_cap = get_settings().resume_cold_replay_cap
+                    if cold_cap > 0 and len(replay_events) > cold_cap:
+                        replay_events = replay_events[-cold_cap:]
+                if replay_events:
+
+                    def _replay_terminal_buffer() -> tuple[list[str], bool]:
+                        out: list[str] = []
+                        term = False
+                        for ev in replay_events:
+                            lines, is_term = _serialize_buffer_event_to_sse(
+                                ev, debug_content_only
+                            )
+                            out.extend(lines)
+                            if is_term:
+                                term = True
+                                break
+                        return out, term
+
+                    replay_lines, replayed_terminal = await asyncio.to_thread(
+                        _replay_terminal_buffer
+                    )
+                    for line in replay_lines:
+                        yield line
+                    if not replayed_terminal:
+                        yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error'), 'cursor': status_info.get('cursor', 0)}}, ensure_ascii=False)}\n\n"
+                        yield "data: [DONE]\n\n"
+                    return
+
             yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': status_info['status'], 'error': status_info.get('error'), 'cursor': status_info.get('cursor', 0)}}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
 
         task = registry.get_task(conversation_id)
-        if not task or not task.is_active:
-            if not task:
-                stmt = (
-                    select(ConversationMessage)
-                    .where(
-                        ConversationMessage.conversation_id == conversation_id,
-                        ConversationMessage.role == "assistant",
-                        ConversationMessage.stream_state == "streaming",
-                    )
-                    .order_by(ConversationMessage.id.desc())
-                    .limit(1)
+        if not task or (not task.is_active and task.status != "queued"):
+            stmt = (
+                select(ConversationMessage)
+                .where(
+                    ConversationMessage.conversation_id == conversation_id,
+                    ConversationMessage.role == "assistant",
+                    ConversationMessage.stream_state.in_(("streaming", "queued")),
                 )
-                stale_msg = db.scalar(stmt)
-                if stale_msg:
-                    logger.warning(
-                        "[resume] conv=%s stale streaming message msg_id=%s, auto-repairing to error",
-                        conversation_id, stale_msg.id,
-                    )
-                    stale_msg.stream_state = "error"
-                    stale_msg.content = stale_msg.content or "流已中断，无法恢复"
-                    db.commit()
-                    yield f"data: {json.dumps({'type': 'stream_ended', 'data': {'status': 'error', 'error': '流已中断，无法恢复'}}, ensure_ascii=False)}\n\n"
-                    yield "data: [DONE]\n\n"
-                    return
+                .order_by(ConversationMessage.id.desc())
+                .limit(1)
+            )
+            stale_msg = db.scalar(stmt)
+            if stale_msg:
+                logger.warning(
+                    "[resume] conv=%s stale %s message msg_id=%s, returning no_stream (client may retry)",
+                    conversation_id,
+                    stale_msg.stream_state,
+                    stale_msg.id,
+                )
+                yield f"data: {json.dumps({'type': 'no_stream', 'data': {'message': '流尚未就绪，请稍后重试'}}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
 
-            logger.info("[resume] conv=%s no active task (task=%s, status=%s)", conversation_id, bool(task), task.status if task else None)
+            logger.info(
+                "[resume] conv=%s no active task (task=%s, status=%s)",
+                conversation_id,
+                bool(task),
+                task.status if task else None,
+            )
             yield f"data: {json.dumps({'type': 'no_stream', 'data': {'message': '无可恢复的流'}}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
@@ -516,13 +1123,19 @@ class ChatService:
             def _sse_line(payload: str) -> str:
                 return f"id: {seq}\ndata: {payload}\n\n" if seq is not None else f"data: {payload}\n\n"
 
-            if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error"):
+            if isinstance(data, dict) and data.get("status") in ("completed", "cancelled", "error", "interrupted"):
                 payloads: list[str] = []
                 if data.get("status") == "error":
-                    yield_text = await _to_thread(
-                        json.dumps, {"error": data.get("error")}, ensure_ascii=False
-                    )
+                    # 同步 json.dumps：JSON 序列化是持 GIL 的 CPU 活，丢进 asyncio 默认
+                    # 线程池只增加调度开销、且会与「模型异步建连(anyio 在某些操作上需 worker
+                    # 线程)」「群派活 to_thread」抢同一个无大小限制的默认池。runaway 流(单条
+                    # 流可产上万事件、单 payload 达数十万字符)反复回放时，海量 to_thread 把默认
+                    # 池占满 → 新对话的 model 调用在 pre-httpx 阶段拿不到线程而永久挂死。
+                    yield_text = json.dumps({"error": data.get("error")}, ensure_ascii=False)
                     payloads.append(_sse_line(yield_text))
+                if data.get("status") == "interrupted":
+                    interrupt_json = json.dumps(data, ensure_ascii=False, default=str)
+                    payloads.append(_sse_line(interrupt_json))
                 payloads.append(_sse_line("[DONE]"))
                 logger.info("[resume] conv=%s terminal event in buffer: seq=%s status=%s", conversation_id, seq, data.get("status"))
                 return True, payloads
@@ -533,22 +1146,98 @@ class ChatService:
                     return False, [_sse_line(text_part)]
                 return False, []
             else:
-                payload_str = await _to_thread(
-                    json.dumps, data, ensure_ascii=False, default=str
-                )
+                # 同理改同步，避免每个实时 chunk 一次 to_thread 毒化默认线程池（见上）。
+                payload_str = json.dumps(data, ensure_ascii=False, default=str)
                 return False, [_sse_line(payload_str)]
 
-        # Phase 1: 全量回放 buffer 中的所有历史事件
+        # Phase 1: 回放 buffer 历史事件。带 after_seq 时只回放它之后的增量；
+        # 不带 cursor（冷启，after_seq=None）时**全量回放整个 buffer**——streaming 中
+        # 前端不渲染 DB content，进行中内容全靠这次冷回放从头重建，截断前面会让画面
+        # 从中间冒字、显示残缺，所以这里必须从头放全。
         all_events = list(task.buffer._events)
+        if after_seq is not None:
+            all_events = [e for e in all_events if e.get("seq", 0) > after_seq]
+        else:
+            # 冷启（前端未带 cursor）默认全量重放整个 buffer。runaway 流 buffer 可达
+            # 上万事件，反复切窗口全量重放会占满线程池/主循环致卡死。冷启回放上限由
+            # 系统设置 RESUME_COLD_REPLAY_CAP 控制（<=0 不限制）：超过只回放最近 N 条。
+            #
+            # 但**正在 streaming 的活流**绝不能截断：用户此刻正切过来看进行中的执行，
+            # streaming 中前端不渲染 DB content、完全靠这次冷回放从头重建画面；截掉开头会
+            # 让工具调用配对错位、markdown 结构断裂 → 整段渲染残缺（实测"切换查看长任务
+            # 漏很多东西"即此因）。故 cap 只对**已结束的历史流**生效（防超长历史反复重放
+            # 卡死），活流一律全量回放。
+            cold_cap = get_settings().resume_cold_replay_cap
+            if task.is_active:
+                if cold_cap > 0 and len(all_events) > cold_cap:
+                    logger.info(
+                        "[resume] conv=%s 活流冷回放全量保留 buffer=%d（>cap %d，"
+                        "不截断以保进行中画面完整）",
+                        conversation_id, len(all_events), cold_cap,
+                    )
+            elif cold_cap > 0 and len(all_events) > cold_cap:
+                dropped = len(all_events) - cold_cap
+                logger.warning(
+                    "[resume] conv=%s 冷重放截断 buffer=%d → 只回放最近 %d 条"
+                    "（丢弃 %d 早期事件，防切窗口反复全量重放卡死；仅已结束历史流）",
+                    conversation_id, len(all_events), cold_cap, dropped,
+                )
+                all_events = all_events[-cold_cap:]
         last_buffered_seq = task.buffer.cursor
-        logger.info("[resume] conv=%s full buffer replay: %d events", conversation_id, len(all_events))
-        for event in all_events:
-            done, payloads = await _emit_event_payloads(event)
-            for payload in payloads:
-                yield payload
-            if done:
-                logger.info("[resume] conv=%s terminated during full buffer replay", conversation_id)
-                return
+        logger.info(
+            "[resume] conv=%s buffer replay: %d events (after_seq=%s, total_in_buffer=%d)",
+            conversation_id, len(all_events), after_seq, len(task.buffer._events),
+        )
+        # 历史事件一次性在单个线程里批量序列化，避免逐事件 await to_thread 造成
+        # 成百上千次线程切换（超长输出回放会因此极慢、把前端拖卡）。
+        def _serialize_history_batch() -> tuple[list[str], bool]:
+            out: list[str] = []
+            terminated = False
+            for ev in all_events:
+                data = ev.get("data")
+                if not data:
+                    continue
+                seq = ev.get("seq")
+                prefix = f"id: {seq}\n" if seq is not None else ""
+                if (
+                    isinstance(data, dict)
+                    and data.get("status")
+                    in ("completed", "cancelled", "error", "interrupted")
+                ):
+                    if data.get("status") == "error":
+                        out.append(
+                            prefix
+                            + f"data: {json.dumps({'error': data.get('error')}, ensure_ascii=False)}\n\n"
+                        )
+                    elif data.get("status") == "interrupted":
+                        out.append(
+                            prefix
+                            + f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                        )
+                    out.append(prefix + "data: [DONE]\n\n")
+                    terminated = True
+                    break
+                if debug_content_only:
+                    text_part = ChatService._extract_text_from_chunk(data)
+                    if text_part:
+                        out.append(prefix + f"data: {text_part}\n\n")
+                else:
+                    out.append(
+                        prefix
+                        + f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+                    )
+            return out, terminated
+
+        history_payloads, history_terminated = await _to_thread(
+            _serialize_history_batch
+        )
+        for payload in history_payloads:
+            yield payload
+        if history_terminated:
+            logger.info(
+                "[resume] conv=%s terminated during buffer replay", conversation_id
+            )
+            return
 
         # Phase 2: 订阅实时事件
         queue = asyncio.Queue(maxsize=5000)
@@ -590,12 +1279,22 @@ class ChatService:
                     evt = await asyncio.wait_for(queue.get(), timeout=5.0)
                 except asyncio.TimeoutError:
                     current_task = registry.get_task(conversation_id)
-                    if not current_task or not current_task.is_active:
+                    if not current_task or (
+                        not current_task.is_active
+                        and current_task.status != "queued"
+                    ):
                         logger.info(
                             "[resume] conv=%s queue.get() timeout and task no longer active, exiting",
                             conversation_id,
                         )
                         break
+                    # 心跳保活：model 在 token 间隙思考时这条 SSE 长时间无数据，
+                    # 中间层（代理/网关）会判连接「空闲」而 buffer 住或掐断——连接仍
+                    # ESTABLISHED 但前端 reader.read() 永久 pending（「SSE 还在但收不到」）。
+                    # 每次 5s 空转吐一个 SSE 注释行（`: ...`）保活、冲破代理 buffer。
+                    # 注释行不带 id/seq、不进 buffer、EventSource 与我方 flushEvent 都忽略它，
+                    # 故不影响 after_seq 增量续流与终止判定，只用于让连接「有声音」。
+                    yield ": heartbeat\n\n"
                     continue
                 done, payloads = await _emit_event_payloads(evt)
                 for payload in payloads:
@@ -618,6 +1317,166 @@ class ChatService:
         if not success:
             logger.warning("[cancel_service] conv=%s registry.cancel returned False (no active task)", conversation_id)
         return success
+
+    @staticmethod
+    async def approve_trigger(
+        db: Session,
+        conversation_id: int,
+        message_id: int,
+        decisions: list[dict],
+        auth_token: str | None = None,
+        destructive_hitl: dict | None = None,
+        external_dir: dict | None = None,
+    ) -> dict:
+        """HITL approve：封存 interrupted 段 + 新建 assistant 行 + resume。"""
+        from datetime import datetime, timezone
+
+        from src.service.agent.destructive_hitl import set_skip_destructive_hitl
+        from src.service.stream_registry import registry
+
+        conversation = ChatService.get_conversation(db, conversation_id)
+
+        msg = db.get(ConversationMessage, message_id)
+        if not msg or msg.conversation_id != conversation_id:
+            return {"accepted": False, "message": "消息不存在"}
+        if msg.role != "assistant":
+            return {"accepted": False, "message": "只能审批 assistant 消息"}
+        if msg.stream_state != "interrupted":
+            return {"accepted": False, "message": "该消息不在等待审批状态"}
+
+        meta = json.loads(msg.extra_meta) if msg.extra_meta else {}
+        if meta.get("approved_at"):
+            return {"accepted": False, "message": "该消息已审批"}
+
+        meta["approved_at"] = datetime.now(timezone.utc).isoformat()
+        msg.extra_meta = json.dumps(meta, ensure_ascii=False)
+
+        if destructive_hitl and destructive_hitl.get("skip_for_conversation"):
+            set_skip_destructive_hitl(db, conversation_id, True)
+
+        # 工作区外目录写授权：仅在用户 approve（非 reject）时按 scope 记授权。
+        # 门控靠字段存在性——前端只在 request_external_dir_access 卡片才发 external_dir。
+        # reject 决策不记。record_grant 内部会自行 commit（独立于本事务，安全）。
+        _decision_is_approve = any(
+            isinstance(d, dict) and d.get("type") == "approve" for d in decisions
+        ) and not any(
+            isinstance(d, dict) and d.get("type") == "reject" for d in decisions
+        )
+        if external_dir and _decision_is_approve:
+            _apply_external_dir_grant(
+                db, conversation.workspace_id, conversation_id, external_dir
+            )
+
+        new_msg = ChatService._append_message(
+            db,
+            conversation=conversation,
+            role="assistant",
+            content="",
+            extra_meta=None,
+        )
+        new_msg.stream_cursor = 0
+        conversation.status = "running"
+        await _commit_db_off_loop(db)
+        await _refresh_db_off_loop(db, new_msg)
+        try:
+            from src.service.workspace_events import WorkspaceEventBus, CONVERSATION_STATUS_CHANGED
+            WorkspaceEventBus.push(conversation.workspace_id, {
+                "type": CONVERSATION_STATUS_CHANGED,
+                "conversation_id": conversation_id,
+                "target_type": conversation.target_type,
+                "target_id": conversation.target_id,
+                "status": "running",
+            })
+        except Exception:
+            pass
+
+        # 3. 重建 agent
+        workspace = db.get(Workspace, conversation.workspace_id)
+        if not workspace:
+            return {"accepted": False, "message": "未找到工作空间"}
+
+        target_type = conversation.target_type
+        target_id = conversation.target_id
+
+        if target_type == "curator":
+            from src.service.agent.orchestrator import get_orchestrator_agent
+            agent = get_orchestrator_agent(
+                workspace_id=conversation.workspace_id,
+                db=db,
+                conversation_id=conversation_id,
+                employee_id=target_id,
+                auth_token=auth_token,
+                user_id=conversation.user_id,
+            )
+        elif target_type == "employee":
+            employee = db.get(Employee, target_id)
+            if not employee:
+                return {"accepted": False, "message": "未找到员工"}
+            skills_path = ChatService.resolve_employee_skills_dir(
+                skills_payload=employee.skills_json,
+                employee_id=employee.id,
+                employee_name=employee.name,
+                employee_code=employee.employee_code,
+            )
+            # SP2：HITL approve 恢复时重建员工 agent，产物根须与流式回合一致，
+            # 同样落会话所钉项目根（否则恢复段产物会写回全局根 → 分裂）。
+            root_path = resolve_conversation_product_root(db, conversation)
+            agent = get_agent(
+                skills_path,
+                root_path,
+                employee_id=employee.id,
+                conversation_id=conversation_id,
+                workspace_id=conversation.workspace_id,
+            )
+        else:
+            return {"accepted": False, "message": "不支持的 target_type"}
+
+        config = {"configurable": {"thread_id": conversation_id}}
+
+        # 4. 通过 registry approve_and_resume 启动新 task
+        from src.service.agent_stream_queue import StartResult
+
+        _is_orch = target_type == "curator"
+        start_result = await registry.approve_and_resume(
+            conversation_id=conversation_id,
+            agent=agent,
+            config=config,
+            stream_msg_id=new_msg.id,
+            decisions=decisions,
+            orchestrator_owned_db=None,
+            orchestrator_workspace_id=(
+                conversation.workspace_id if _is_orch else None
+            ),
+            orchestrator_conversation_id=(
+                conversation_id if _is_orch else None
+            ),
+            orchestrator_auth_token=(
+                auth_token if _is_orch else None
+            ),
+        )
+
+        if start_result == StartResult.REJECTED:
+            new_msg.stream_state = "error"
+            new_msg.content = new_msg.content or "恢复执行失败：已有活跃任务"
+            await _commit_db_off_loop(db)
+            return {"accepted": False, "message": "恢复执行失败：已有活跃任务"}
+
+        new_msg.stream_state = (
+            "queued" if start_result == StartResult.QUEUED else "streaming"
+        )
+        if start_result == StartResult.QUEUED:
+            new_msg.content = (
+                new_msg.content or "已加入执行队列，等待其他对话完成"
+            )
+        await _commit_db_off_loop(db)
+
+        return {
+            "accepted": True,
+            "resumed": start_result == StartResult.STARTED,
+            "queued": start_result == StartResult.QUEUED,
+            "approved_message_id": msg.id,
+            "assistant_message_id": new_msg.id,
+        }
 
     @staticmethod
     def reset_conversation_status(db: Session, conversation_id: int) -> None:

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>三平台发布与飞书推送</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-2: #0b1220;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --win: #60a5fa;
+    --linux: #fbbf24;
+    --mac: #c084fc;
+    --good: #4ade80;
+    --warn: #f87171;
+    --code-bg: #020617;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 16px 80px;
+    font: 15px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", Segoe UI, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+    letter-spacing: 0.3px;
+  }
+  .sub {
+    color: var(--muted);
+    margin: 0 0 28px;
+    font-size: 14px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin-bottom: 18px;
+  }
+  .card h2 {
+    margin: 0 0 4px;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--accent);
+  }
+  .card .where {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0 0 14px;
+  }
+  .platform-win h2 .badge { background: rgba(96, 165, 250, 0.18); color: var(--win); }
+  .platform-linux h2 .badge { background: rgba(251, 191, 36, 0.18); color: var(--linux); }
+  .platform-mac h2 .badge { background: rgba(192, 132, 252, 0.18); color: var(--mac); }
+  .step-label {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin: 14px 0 6px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 0;
+    overflow-x: auto;
+    color: #e2e8f0;
+    font: 13px/1.6 "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    position: relative;
+  }
+  pre code { color: inherit; }
+  .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: rgba(15, 23, 42, 0.7);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: inherit;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+  .copy-btn.ok { color: var(--good); border-color: var(--good); }
+  .note {
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px;
+    background: rgba(56, 189, 248, 0.08);
+    border-radius: 6px;
+    margin: 14px 0;
+    font-size: 13.5px;
+  }
+  .warn {
+    border-left-color: var(--warn);
+    background: rgba(248, 113, 113, 0.08);
+  }
+  .good {
+    border-left-color: var(--good);
+    background: rgba(74, 222, 128, 0.08);
+  }
+  code.inline {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 13px;
+    font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  .expected {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font: 12.5px/1.6 "JetBrains Mono", Menlo, Consolas, monospace;
+    color: var(--muted);
+  }
+  .expected b { color: var(--good); font-weight: normal; }
+  .footer {
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+    margin-top: 32px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>三平台发布与飞书推送</h1>
+  <p class="sub">
+    数字员工客户端 v0.1.x 的发布走 GitLab CI:推 tag → 三平台并行构建 → 自动推飞书。
+    本页上半部说明<b>正常自动流程</b>,下半部给出<b>手动应急推送命令</b>(当 CI 自动推飞书失败时,直接在打包机上补推,不必重打包)。
+  </p>
+
+  <!-- 在线/自动 -->
+  <section class="card" style="border-left: 4px solid var(--good);">
+    <h2>自动发布(正常路径)<span class="badge" style="background: rgba(74,222,128,0.18); color: var(--good);">推 tag 即触发</span></h2>
+    <p class="where">本地或任意能 push 的环境里执行,GitLab CI 接管后无需值守。</p>
+
+    <div class="step-label">1. 在 dev 上 bump 版本(<code class="inline">apps/web/package.json</code>)</div>
+<pre><button class="copy-btn">复制</button><code># 把 "version": "0.1.x" 改成新版本号，提交、推 dev
+git add apps/web/package.json
+git commit -m "chore(release): bump version 0.1.x -> 0.1.(x+1)"
+git push origin dev</code></pre>
+
+    <div class="step-label">2. 在同一提交上打 tag 并推送</div>
+<pre><button class="copy-btn">复制</button><code>git tag v0.1.(x+1)
+git push origin v0.1.(x+1)</code></pre>
+
+    <div class="note good" style="margin-top: 14px">
+      推完去 GitLab → 项目 → <b>CI/CD → Pipelines</b> 看新触发的那条。三个 job 同 stage 并行:
+      <ul style="margin: 8px 0 0; padding-left: 20px; line-height: 1.8;">
+        <li><b style="color: var(--win);">build:windows</b> — 在 GQZN-01 上跑 <code class="inline">build-windows.ps1</code> → 出 exe → 自动推飞书</li>
+        <li><b style="color: var(--linux);">build:linux</b> — Mac mini 上 Docker 交叉构建 → 出 deb → 自动推飞书</li>
+        <li><b style="color: var(--mac);">build:macos</b> — Mac mini 原生构建 → 出 dmg/zip → 自动推飞书</li>
+      </ul>
+      Linux 和 macOS 共用 mac-builder(<code class="inline">concurrent=1</code>),串行;Windows 独立机器并行。整体约 20~30 分钟。
+    </div>
+
+    <div class="note warn">
+      <b>每次都 bump 新版本号、打新 tag</b>(0.1.15 → 0.1.16),不要重复使用同号 tag。GitLab 11.7 老服务器对强推 tag 不友好,换号最干净。
+    </div>
+
+    <div class="step-label">链接格式提醒(旧版 GitLab)</div>
+    <p style="margin: 4px 0 14px; font-size: 13.5px;">
+      11.7 版的 pipeline URL 不含 <code class="inline">/-/</code>。如果飞书记录里的「流水线」链接打不开,把 <code class="inline">/-/pipelines/</code> 改成 <code class="inline">/pipelines/</code>。
+      <br>例:<code class="inline">https://gitlab.bobandata.com/llm/digital-employee-client/pipelines/35009</code>
+    </p>
+  </section>
+
+  <h2 style="margin: 36px 0 12px; font-size: 22px;">手动应急推送</h2>
+  <p class="sub" style="margin: 0 0 18px;">
+    当某个 job 把包构建出来了、但飞书推送那一步失败(SSL/限流/网络抖动),不必重打包——直接在对应打包机上手动补推。
+  </p>
+
+  <div class="note">
+    <b>每次操作前先拉最新 publish-feishu.py</b>,确保拿到今天磨出来的修复:
+    SSL 钥匙串信任、HTTP <code class="inline">Connection: close</code>、分块上传 3 次重试、进度日志。
+  </div>
+
+  <div class="note warn">
+    凭证 <code class="inline">FEISHU_APP_ID</code> / <code class="inline">FEISHU_APP_SECRET</code>
+    去 GitLab → 项目 <b>Settings → CI/CD → Variables</b> 复制(展开后点 Reveal value)。
+    Group 级变量在 group settings 里。
+  </div>
+
+  <!-- Windows -->
+  <section class="card platform-win">
+    <h2>Windows exe <span class="badge">GQZN-01</span></h2>
+    <p class="where">在 Windows 打包机 RDP 终端里跑。Python 用 yaoji 账户那个 64 位 3.11。</p>
+
+    <div class="step-label">1. 进仓库目录 + 拉最新脚本</div>
+<pre><button class="copy-btn">复制</button><code>cd C:\Users\yaoji\Desktop\gitlabrunner\builds\Rr9JJ_VD\0\llm\digital-employee-client
+git fetch origin
+git checkout origin/dev -- scripts/ci/publish-feishu.py</code></pre>
+
+    <div class="step-label">2. 设凭证 + 看 exe</div>
+<pre><button class="copy-btn">复制</button><code>$env:FEISHU_APP_ID = "&lt;粘贴&gt;"
+$env:FEISHU_APP_SECRET = "&lt;粘贴&gt;"
+ls apps\web\release\*.exe</code></pre>
+
+    <div class="step-label">3. 推(把文件名换成上面看到的)</div>
+<pre><button class="copy-btn">复制</button><code>C:/Users/yaoji/AppData/Local/Programs/Python/Python311/python.exe `
+  scripts/ci/publish-feishu.py "apps\web\release\BobanStaff-Windows-0.1.15-Setup.exe"</code></pre>
+  </section>
+
+  <!-- Linux -->
+  <section class="card platform-linux">
+    <h2>Linux deb <span class="badge">Mac mini</span></h2>
+    <p class="where">在 Mac mini 上跑(Linux 构建出 deb 后留在 Mac mini 的仓库根 <code class="inline">release/</code>)。</p>
+
+    <div class="step-label">1. 进仓库目录 + 拉最新脚本</div>
+<pre><button class="copy-btn">复制</button><code>cd /Users/yaojie/builds/aLK_hmfz-/0/llm/digital-employee-client
+git fetch origin
+git checkout origin/dev -- scripts/ci/publish-feishu.py</code></pre>
+
+    <div class="step-label">2. 设凭证 + 看 deb</div>
+<pre><button class="copy-btn">复制</button><code>export FEISHU_APP_ID="&lt;粘贴&gt;"
+export FEISHU_APP_SECRET="&lt;粘贴&gt;"
+ls -lh release/*.deb</code></pre>
+
+    <div class="step-label">3. 推(glob 自动展开,版本号不用手写)</div>
+<pre><button class="copy-btn">复制</button><code>python3 scripts/ci/publish-feishu.py release/BobanStaff-Linux-arm64-*.deb</code></pre>
+  </section>
+
+  <!-- macOS -->
+  <section class="card platform-mac">
+    <h2>macOS dmg + zip <span class="badge">Mac mini</span></h2>
+    <p class="where">和 Linux 在同一台 Mac mini,产物在 <code class="inline">apps/web/release/</code>。</p>
+
+    <div class="step-label">1. 进目录 + 拉脚本(如果刚跑过 Linux 推送可跳过)</div>
+<pre><button class="copy-btn">复制</button><code>cd /Users/yaojie/builds/aLK_hmfz-/0/llm/digital-employee-client
+git fetch origin
+git checkout origin/dev -- scripts/ci/publish-feishu.py</code></pre>
+
+    <div class="step-label">2. 设凭证 + 看产物(同终端会话已 export 过可跳过)</div>
+<pre><button class="copy-btn">复制</button><code>export FEISHU_APP_ID="&lt;粘贴&gt;"
+export FEISHU_APP_SECRET="&lt;粘贴&gt;"
+ls -lh apps/web/release/*.dmg apps/web/release/*.zip</code></pre>
+
+    <div class="step-label">3. 推 dmg + zip(各一条记录)</div>
+<pre><button class="copy-btn">复制</button><code>python3 scripts/ci/publish-feishu.py \
+  apps/web/release/BobanStaff-Mac-*-Installer.dmg \
+  apps/web/release/BobanStaff-Mac-*-Installer-mac.zip</code></pre>
+  </section>
+
+  <!-- Expected -->
+  <section class="card">
+    <h2>预期输出</h2>
+    <div class="expected">
+📤 飞书多维表格发布 local<br>
+   ↑ BobanStaff-XXX [XXX] (197.9 MB)<br>
+   📦 分块上传:50 块 × 4MB<br>
+      已传 5/50<br>
+      已传 10/50<br>
+      ...<br>
+<b>✅ 已写入 1 条记录</b>
+    </div>
+
+    <div class="note good">
+      看到 <b>✅ 已写入</b> 就是成功。去飞书多维表格刷新一下,新记录会出现在最后。
+    </div>
+
+    <div class="note">
+      <b>嫌"版本"列显示 <code class="inline">local</code> 不好看?</b>
+      推之前临时设一下(只影响这次飞书记录里的版本号):
+<pre style="margin-top:8px"><button class="copy-btn">复制</button><code>export CI_COMMIT_TAG=v0.1.15   # Linux/Mac
+$env:CI_COMMIT_TAG = "v0.1.15"  # Windows PowerShell</code></pre>
+    </div>
+  </section>
+
+  <!-- Troubleshoot -->
+  <section class="card">
+    <h2>常见报错</h2>
+
+    <div class="step-label">SSL CERTIFICATE_VERIFY_FAILED (Mac 上)</div>
+    <p style="margin:4px 0 14px">企业网关 TLS 中间人,Python certifi 没自签根证书。脚本已支持从 Mac 钥匙串自动导出根证书。
+      如果还失败,设环境变量指向 IT 给的根证书 PEM:
+<pre style="margin-top:6px"><button class="copy-btn">复制</button><code>export FEISHU_CA_BUNDLE=/path/to/company-root.pem</code></pre>
+    </p>
+
+    <div class="step-label">EOF occurred in violation of protocol</div>
+    <p style="margin:4px 0 14px">大文件长连接被代理切断。脚本已加 <code class="inline">Connection: close</code> + 3 次重试。
+      如果连续失败,大概率是飞书侧限流——等几分钟再试。</p>
+
+    <div class="step-label">⏭️ 未配置 FEISHU_APP_ID / FEISHU_APP_SECRET</div>
+    <p style="margin:4px 0">凭证没 export 上,检查环境变量。</p>
+  </section>
+
+  <p class="footer">数字员工客户端 · 三平台发布与飞书推送 · 2026-06-16</p>
+</div>
+
+<script>
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const code = btn.parentElement.querySelector('code').innerText;
+      try {
+        await navigator.clipboard.writeText(code);
+        const original = btn.textContent;
+        btn.textContent = '已复制';
+        btn.classList.add('ok');
+        setTimeout(() => {
+          btn.textContent = original;
+          btn.classList.remove('ok');
+        }, 1500);
+      } catch (e) {
+        btn.textContent = '失败';
+      }
+    });
+  });
+</script>
+</body>
+</html>

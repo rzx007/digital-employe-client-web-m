@@ -50,6 +50,8 @@ export const langgraphMetadataSchema = z.object({
   langgraph_path: z.array(z.unknown()).optional(),
   langgraph_checkpoint_ns: z.string().optional(),
   checkpoint_ns: z.string().optional(),
+  /** LangChain / LangGraph：如 summarization 中间件产生的模型流 */
+  lc_source: z.string().optional(),
   ls_provider: z.string().optional(),
   ls_model_name: z.string().optional(),
   ls_model_type: z.string().optional(),
@@ -58,8 +60,17 @@ export const langgraphMetadataSchema = z.object({
 
 // ── Message schemas ────────────────────────────────────────────────
 
+/** provider 专有字段：DeepSeek/Qwen3 思考增量 reasoning_content 经后端 PromptCacheChatOpenAI
+ *  覆写后落在此处（base ChatOpenAI 默认丢弃）。passthrough 容忍其它未知 kwargs。 */
+export const aiMessageChunkAdditionalKwargsSchema = z
+  .object({
+    reasoning_content: z.string().optional(),
+  })
+  .passthrough()
+
 export const aiMessageChunkKwargsSchema = z.object({
   content: z.string().optional(),
+  additional_kwargs: aiMessageChunkAdditionalKwargsSchema.optional(),
   response_metadata: responseMetadataSchema.optional(),
   type: z.string().optional(),
   id: z.string().optional(),
@@ -234,6 +245,7 @@ export const sseUpdatesEventSchema = z.object({
 
 export const toolOutputDataSchema = z.object({
   tool_name: z.string(),
+  tool_call_id: z.string().optional(),
   chunk: z.string(),
   chunk_seq: z.number(),
   stream: z.string(),
@@ -257,7 +269,11 @@ export const sseEventSchema = z.union([
   sseUpdatesEventSchema,
   toolOutputEventSchema,
   sseErrorEventSchema,
-  z.object({ type: z.string(), data: z.unknown(), ns: z.array(z.string()).optional() }),
+  z.object({
+    type: z.string(),
+    data: z.unknown(),
+    ns: z.array(z.string()).optional(),
+  }),
 ])
 
 // ── Type exports ───────────────────────────────────────────────────

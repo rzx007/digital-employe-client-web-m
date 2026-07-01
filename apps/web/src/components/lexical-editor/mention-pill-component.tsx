@@ -1,10 +1,6 @@
 import { cn } from "@workspace/ui/lib/utils"
 
-export function MentionPillComponent({
-  mentionName,
-}: {
-  mentionName: string
-}) {
+export function MentionPillComponent({ mentionName }: { mentionName: string }) {
   return (
     <span
       className={cn(

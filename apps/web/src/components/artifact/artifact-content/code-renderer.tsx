@@ -8,6 +8,7 @@ export interface CodeRendererProps {
   className?: string
 }
 
+/** 源码高亮展示（`text` / `code` / `skill-draft` 等类型共用） */
 export const CodeRenderer = ({ artifact, className }: CodeRendererProps) => {
   const language = artifact.language || detectLanguage(artifact.title) || "text"
 
@@ -18,7 +19,7 @@ export const CodeRenderer = ({ artifact, className }: CodeRendererProps) => {
         "[&_[data-slot=scroll-area-viewport]>div]:!block",
         "[&_[data-slot=scroll-area-viewport]>div]:!w-full",
         "[&_[data-slot=scroll-area-viewport]>div]:!min-w-0",
-        className,
+        className
       )}
     >
       <CodeHighlight

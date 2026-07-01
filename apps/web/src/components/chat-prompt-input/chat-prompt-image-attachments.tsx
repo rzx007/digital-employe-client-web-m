@@ -1,6 +1,9 @@
 import { useState } from "react"
 import type { PromptAttachmentFile } from "@workspace/ui/components/ai-elements/prompt-input"
-import { Spinner } from "@/components/spinner"
+import {
+  AttachmentStatusDot,
+  resolveAttachmentStatus,
+} from "./attachment-status-dot"
 import { AttachmentRemoveButton } from "./attachment-remove-button"
 import type { UploadFileState } from "./types"
 
@@ -18,7 +21,7 @@ export function ChatPromptImageAttachments({
   if (files.length === 0) return null
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex min-w-0 flex-wrap gap-1.5 @[18rem]/prompt-input:gap-2">
       {files.map((file) => (
         <ChatPromptImageThumb
           key={file.id}
@@ -44,15 +47,10 @@ function ChatPromptImageThumb({
   onRemove: () => void
 }) {
   const [imgFailed, setImgFailed] = useState(false)
-
-  const showPending = !conversationId
-  const showUploading =
-    Boolean(conversationId) && state?.status === "uploading"
-  const showDone = state?.status === "done"
-  const showError = state?.status === "error"
+  const statusVariant = resolveAttachmentStatus(conversationId, state)
 
   return (
-    <div className="group relative h-12 max-w-[min(40vw,12rem)] shrink-0">
+    <div className="group relative h-10 max-w-[min(42cqw,9rem)] shrink-0 @[18rem]/prompt-input:h-12 @[18rem]/prompt-input:max-w-[min(42cqw,12rem)]">
       <AttachmentRemoveButton onClick={onRemove} />
       <div className="relative h-full max-w-full overflow-hidden rounded-md border border-border/50 bg-muted/40">
         {!imgFailed ? (
@@ -60,48 +58,24 @@ function ChatPromptImageThumb({
             alt=""
             src={file.url}
             draggable={false}
-            className="h-12 w-auto max-w-[min(40vw,12rem)] object-cover"
+            className="h-10 w-auto max-w-[min(42cqw,9rem)] object-cover @[18rem]/prompt-input:h-12 @[18rem]/prompt-input:max-w-[min(42cqw,12rem)]"
             onError={() => setImgFailed(true)}
           />
         ) : (
           <div
-            className="flex h-12 min-w-[4rem] items-center justify-center bg-muted px-2 text-[10px] text-muted-foreground"
+            className="flex h-10 min-w-[3.5rem] items-center justify-center bg-muted px-2 text-[9px] text-muted-foreground @[18rem]/prompt-input:h-12 @[18rem]/prompt-input:min-w-[4rem] @[18rem]/prompt-input:text-[10px]"
             title={file.filename || undefined}
           >
             预览失败
           </div>
         )}
 
-        {showPending && (
-          <span className="pointer-events-none absolute right-1 bottom-1 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[9px] text-yellow-800 shadow-sm">
-            待上传
-          </span>
-        )}
-
-        {showUploading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60">
-            <Spinner className="size-5 text-muted-foreground" />
-          </div>
-        )}
-
-        {showDone && !showUploading && (
-          <span
-            className="pointer-events-none absolute right-1 bottom-1 flex size-3 items-center justify-center rounded-full bg-green-600 text-xs text-white shadow-sm"
-            aria-hidden
-          >
-            ✓
-          </span>
-        )}
-
-        {showError && !showUploading && (
-          <span
-            className="pointer-events-none absolute right-1 bottom-1 flex size-5 cursor-help items-center justify-center rounded-full bg-red-600 text-[11px] font-semibold text-white shadow-sm"
-            title={state?.error}
-            aria-label={state?.error}
-          >
-            ✗
-          </span>
-        )}
+        {statusVariant ? (
+          <AttachmentStatusDot
+            variant={statusVariant}
+            detail={statusVariant === "error" ? state?.error : undefined}
+          />
+        ) : null}
       </div>
     </div>
   )

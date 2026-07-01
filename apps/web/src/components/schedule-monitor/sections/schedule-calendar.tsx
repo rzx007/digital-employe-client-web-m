@@ -23,7 +23,7 @@ function formatHoverDateLabel(dateStr: string): string {
 }
 
 function countDayTasks(dayData: ScheduleDay): number {
-  return dayData.employees.reduce((sum, emp) => sum + emp.tasks.length, 0)
+  return dayData.runs.length
 }
 
 function ScheduleDayHoverContent({
@@ -33,26 +33,38 @@ function ScheduleDayHoverContent({
   dateStr: string
   dayData: ScheduleDay
 }) {
-  const totalTasks = countDayTasks(dayData)
+  const totalRuns = countDayTasks(dayData)
   return (
     <div className="flex flex-col gap-0">
-      <p className="text-[11px] font-medium leading-snug text-foreground">
+      <p className="text-[11px] leading-snug font-medium text-foreground">
         {formatHoverDateLabel(dateStr)}
       </p>
       <p className="mt-0.5 text-[10px] text-muted-foreground">
-        {totalTasks} 个任务 · {dayData.employees.length} 人
+        {totalRuns} 次运行
       </p>
       <ul className="mt-1.5 max-h-32 space-y-1 overflow-y-auto border-t border-border/50 pt-1.5">
-        {dayData.employees.map((emp) => (
+        {dayData.runs.map((run) => (
           <li
-            key={emp.employee_id}
+            key={`${run.plan_id}-${run.time}`}
             className="flex items-center justify-between gap-2 text-[10px]"
           >
             <span className="min-w-0 truncate font-medium text-foreground">
-              {emp.employee_name}
+              {run.title}
             </span>
-            <span className="shrink-0 rounded-md bg-muted px-1.5 py-px tabular-nums text-muted-foreground">
-              {emp.tasks.length}
+            <span className="flex shrink-0 items-center gap-1">
+              <span className="text-muted-foreground tabular-nums">
+                {run.time}
+              </span>
+              <span
+                className={cn(
+                  "rounded-md px-1.5 py-px",
+                  run.schedule_kind === "recurring"
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {run.schedule_kind === "recurring" ? "循环" : "单次"}
+              </span>
             </span>
           </li>
         ))}
@@ -62,21 +74,19 @@ function ScheduleDayHoverContent({
 }
 
 function getLevel(dayData: ScheduleDay): 0 | 1 | 2 | 3 {
-  const totalTasks = dayData.employees.reduce(
-    (sum, emp) => sum + emp.tasks.length,
-    0
-  )
-  if (totalTasks === 0) return 0
-  if (totalTasks <= 5) return 1
-  if (totalTasks <= 8) return 2
+  const totalRuns = dayData.runs.length
+  if (totalRuns === 0) return 0
+  if (totalRuns <= 5) return 1
+  if (totalRuns <= 8) return 2
   return 3
 }
 
+// 热力档用主题色 primary + 不同不透明度，随明暗/皮肤自适应（不写死 dark: 变体）。
 const LEVEL_COLORS: Record<number, string> = {
   0: "bg-muted-foreground/10 border-muted-foreground/10",
-  1: "bg-emerald-200 border-emerald-300 dark:bg-emerald-900/70 dark:border-emerald-800/70",
-  2: "bg-emerald-400 border-emerald-500 dark:bg-emerald-600/70 dark:border-emerald-500/70",
-  3: "bg-emerald-600 border-emerald-700 dark:bg-emerald-800/70 dark:border-emerald-700/70",
+  1: "bg-primary/25 border-primary/25",
+  2: "bg-primary/55 border-primary/55",
+  3: "bg-primary border-primary",
 }
 
 function getCalendarGrid(year: number, month: number) {
@@ -185,7 +195,8 @@ export function ScheduleCalendar({
         </div>
       </div>
 
-      <div className="mb-1 grid grid-cols-7 justify-items-center gap-x-1 gap-y-1">
+      {/* 表头与格子用同一套固定列宽模板(每列 1.5rem),逐列 1:1 对齐,不随面板宽度浮动 */}
+      <div className="mx-auto mb-1 grid w-fit grid-cols-[repeat(7,1.8rem)] justify-items-center gap-1">
         {WEEKDAY_LABELS.map((label) => (
           <div
             key={label}
@@ -196,23 +207,23 @@ export function ScheduleCalendar({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 justify-items-center gap-x-1 gap-y-1">
+      <div className="mx-auto grid w-fit grid-cols-[repeat(7,1.8rem)] justify-items-center gap-1">
         {cells.map((day, i) => {
           if (day == null) {
-            return <div key={`empty-${i}`} />
+            return <div key={`empty-${i}`} className="size-6.5" />
           }
 
           const dateStr = formatDateStr(overview.year, overview.month, day)
           const dayData = dayMap.get(dateStr)
           const level = dayData ? getLevel(dayData) : 0
           const isToday = dateStr === todayStr
-          const hasSchedule = dayData && dayData.employees.length > 0
+          const hasSchedule = dayData && dayData.runs.length > 0
 
           const buttonProps = {
             type: "button" as const,
             disabled: !dayData || !hasSchedule,
             className: cn(
-              "size-4 rounded-sm border transition-colors",
+              "size-6.5 rounded-sm border transition-colors",
               LEVEL_COLORS[level],
               isToday &&
               "ring-1 ring-ring ring-offset-1 ring-offset-background",
@@ -223,14 +234,10 @@ export function ScheduleCalendar({
           }
 
           if (hasSchedule && dayData) {
-            const totalTasks = countDayTasks(dayData)
-            const hoverTitle = `${formatHoverDateLabel(dateStr)} · ${totalTasks} 个任务 · ${dayData.employees.length} 人`
+            const totalRuns = countDayTasks(dayData)
+            const hoverTitle = `${formatHoverDateLabel(dateStr)} · ${totalRuns} 次运行`
             return (
-              <HoverCard
-                key={dateStr}
-                openDelay={120}
-                closeDelay={80}
-              >
+              <HoverCard key={dateStr} openDelay={120} closeDelay={80}>
                 <HoverCardTrigger asChild>
                   <button {...buttonProps} title={hoverTitle} />
                 </HoverCardTrigger>
@@ -254,19 +261,19 @@ export function ScheduleCalendar({
 
       <div className="mt-2 flex items-center justify-end gap-3">
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-muted-foreground/8" />
+          <span className="size-2.5 rounded-sm bg-muted-foreground/10" />
           <span className="text-[10px] text-muted-foreground">无</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-50 dark:bg-emerald-950/40" />
+          <span className="size-2.5 rounded-sm bg-primary/25" />
           <span className="text-[10px] text-muted-foreground">少</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-100 dark:bg-emerald-900/35" />
+          <span className="size-2.5 rounded-sm bg-primary/55" />
           <span className="text-[10px] text-muted-foreground">中</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="size-2.5 rounded-sm bg-emerald-200 dark:bg-emerald-800/45" />
+          <span className="size-2.5 rounded-sm bg-primary" />
           <span className="text-[10px] text-muted-foreground">多</span>
         </div>
       </div>

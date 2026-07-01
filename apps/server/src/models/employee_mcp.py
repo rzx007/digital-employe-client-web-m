@@ -19,6 +19,7 @@ class EmployeeMcp(Base):
     employee_id: Mapped[int] = mapped_column(
         ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    user_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     mcp_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
     mcp_server_name: Mapped[str | None] = mapped_column(String(255), nullable=True)

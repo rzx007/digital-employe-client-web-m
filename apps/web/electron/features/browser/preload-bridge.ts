@@ -1,0 +1,79 @@
+import { IpcChannels } from "../../shared/ipc-channels"
+import { invoke, onChannel } from "../../preload/invoke"
+
+export interface BrowserUrlChangeEvent {
+  url: string
+  title: string
+  canGoBack: boolean
+  canGoForward: boolean
+}
+
+export interface BrowserLoadErrorEvent {
+  errorCode: number
+  errorDescription: string
+  url: string
+}
+
+export interface BrowserConfirmationRequestEvent {
+  id: string
+  message: string
+  refOrSelector: string
+  screenshotBase64?: string
+  conversationId?: string | null
+}
+
+export interface BrowserRequestOpenEvent {
+  url: string
+  conversationId?: string | null
+}
+
+export interface BrowserViewportBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export const browserBridge = {
+  open: (url: string) => invoke(IpcChannels.browserOpen, url),
+  navigate: (url: string) => invoke(IpcChannels.browserNavigate, url),
+  goBack: () => invoke(IpcChannels.browserGoBack),
+  goForward: () => invoke(IpcChannels.browserGoForward),
+  resize: (widthRatio: number) =>
+    invoke(IpcChannels.browserResize, widthRatio),
+  hide: () => invoke(IpcChannels.browserHide),
+  show: () => invoke(IpcChannels.browserShow),
+  close: () => invoke(IpcChannels.browserClose),
+  onUrlChange: (callback: (data: BrowserUrlChangeEvent) => void) =>
+    onChannel("browser:url-change", (data) => {
+      callback(data as BrowserUrlChangeEvent)
+    }),
+  onLoadError: (callback: (data: BrowserLoadErrorEvent) => void) =>
+    onChannel("browser:load-error", (data) => {
+      callback(data as BrowserLoadErrorEvent)
+    }),
+  onConfirmationRequest: (
+    callback: (data: BrowserConfirmationRequestEvent) => void
+  ) =>
+    onChannel("browser:confirmation-request", (data) => {
+      callback(data as BrowserConfirmationRequestEvent)
+    }),
+  onRequestOpen: (callback: (data: BrowserRequestOpenEvent) => void) =>
+    onChannel("browser:request-open", (data) => {
+      callback(data as BrowserRequestOpenEvent)
+    }),
+  onRequestClose: (
+    callback: (data: { conversationId?: string | null }) => void
+  ) =>
+    onChannel("browser:request-close", (data) => {
+      callback((data ?? {}) as { conversationId?: string | null })
+    }),
+  resolveConfirmation: (id: string, approved: boolean) =>
+    invoke(IpcChannels.browserConfirmResolve, id, approved),
+  syncBounds: (bounds: BrowserViewportBounds) =>
+    invoke(IpcChannels.browserSyncBounds, bounds),
+  onLayoutChanged: (callback: () => void) =>
+    onChannel("browser:layout-changed", () => {
+      callback()
+    }),
+}

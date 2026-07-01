@@ -1,11 +1,30 @@
 from __future__ import annotations
 
+import threading
+from contextlib import contextmanager
 from functools import lru_cache
+from typing import Iterator
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from src.core.config import get_settings, resolve_sqlite_path
+
+# 桌面端单文件 SQLite：NullPool 每请求新建连接，并发仍须串行化 ORM 访问。
+SQLITE_ACCESS_LOCK = threading.RLock()
+
+
+@contextmanager
+def sqlite_db_session() -> Iterator[Session]:
+    """线程安全的短生命周期 Session（总管 Tool、流式 flush 等）。"""
+    SQLITE_ACCESS_LOCK.acquire()
+    db = get_session_local()()
+    try:
+        yield db
+    finally:
+        db.close()
+        SQLITE_ACCESS_LOCK.release()
 
 
 @lru_cache(maxsize=1)
@@ -16,6 +35,7 @@ def get_engine() -> Engine:
     engine = create_engine(
         f"sqlite:///{sqlite_path}",
         connect_args={"check_same_thread": False, "timeout": 30.0},
+        poolclass=NullPool,
     )
 
     @event.listens_for(engine, "connect")

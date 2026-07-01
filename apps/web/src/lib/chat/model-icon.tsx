@@ -6,7 +6,9 @@ import QwenIcon from "@/icons/Qwen"
 
 export type ModelIconComponent = ComponentType<SVGProps<SVGSVGElement>>
 
-export function getModelIcon(model: string | null | undefined): ModelIconComponent {
+export function getModelIcon(
+  model: string | null | undefined
+): ModelIconComponent {
   const normalizedModel = model?.toLowerCase().trim() || ""
 
   if (

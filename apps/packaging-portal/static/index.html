@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BobanStaff 打包门户</title>
+    <style>
+      :root {
+        --bg: #0f1419;
+        --surface: #1a2332;
+        --border: #2d3a4d;
+        --text: #e7edf5;
+        --muted: #8b9cb3;
+        --accent: #3b82f6;
+        --accent-hover: #2563eb;
+        --ok: #22c55e;
+        --warn: #f59e0b;
+        --err: #ef4444;
+        --radius: 10px;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 24px 20px 48px;
+      }
+      header {
+        margin-bottom: 28px;
+      }
+      header h1 {
+        margin: 0 0 6px;
+        font-size: 1.6rem;
+        font-weight: 600;
+      }
+      header p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+      .grid {
+        display: grid;
+        gap: 20px;
+      }
+      @media (min-width: 900px) {
+        .grid-2 {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px 20px;
+      }
+      section h2 {
+        margin: 0 0 14px;
+        font-size: 1.05rem;
+        font-weight: 600;
+      }
+      label {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--text);
+        font: inherit;
+        margin-bottom: 12px;
+      }
+      textarea {
+        min-height: 140px;
+        font-family: ui-monospace, monospace;
+        font-size: 0.82rem;
+      }
+      button {
+        cursor: pointer;
+        border: none;
+        border-radius: 6px;
+        padding: 9px 16px;
+        font: inherit;
+        font-weight: 500;
+        background: var(--accent);
+        color: #fff;
+      }
+      button:hover {
+        background: var(--accent-hover);
+      }
+      button.secondary {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+      button.secondary:hover {
+        border-color: var(--muted);
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .projects {
+        display: grid;
+        gap: 10px;
+      }
+      .project-card {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg);
+      }
+      .project-card img {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+        border-radius: 6px;
+        background: #fff;
+      }
+      .project-card .name {
+        font-weight: 600;
+      }
+      .project-card .slug {
+        font-size: 0.82rem;
+        color: var(--muted);
+      }
+      .project-card button {
+        margin-left: auto;
+        padding: 6px 12px;
+        font-size: 0.85rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      th {
+        color: var(--muted);
+        font-weight: 500;
+      }
+      a {
+        color: var(--accent);
+      }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: lowercase;
+      }
+      .badge.pending,
+      .badge.created,
+      .badge.waiting_for_resource,
+      .badge.preparing {
+        background: #334155;
+        color: #cbd5e1;
+      }
+      .badge.running {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+      .badge.success {
+        background: #14532d;
+        color: #86efac;
+      }
+      .badge.failed,
+      .badge.canceled {
+        background: #450a0a;
+        color: #fca5a5;
+      }
+      .toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        max-width: 360px;
+        padding: 12px 16px;
+        border-radius: 8px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        display: none;
+        z-index: 100;
+      }
+      .toast.show {
+        display: block;
+      }
+      .toast.err {
+        border-color: var(--err);
+      }
+      .empty {
+        color: var(--muted);
+        font-size: 0.9rem;
+        padding: 8px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>BobanStaff 打包门户</h1>
+        <p>管理品牌资源 · 触发 Windows 在线包 CI · 查看打包记录</p>
+      </header>
+
+      <div class="grid grid-2">
+        <section>
+          <h2>品牌项目</h2>
+          <div id="projects" class="projects">
+            <div class="empty">加载中…</div>
+          </div>
+          <div class="row" style="margin-top: 12px">
+            <button type="button" class="secondary" id="btn-reload-projects">
+              刷新列表
+            </button>
+          </div>
+        </section>
+
+        <section>
+          <h2>上传 / 更新品牌包</h2>
+          <form id="upload-form">
+            <label for="slug">项目 slug（小写，如 guowang）</label>
+            <input id="slug" name="slug" required pattern="[a-z0-9][a-z0-9_-]*" />
+
+            <label for="triggered_by">操作人（可选）</label>
+            <input id="triggered_by" name="triggered_by" placeholder="姓名或工号" />
+
+            <label for="brand_json">brand.json</label>
+            <textarea id="brand_json" name="brand_json" required></textarea>
+
+            <label for="logo">logo.png</label>
+            <input id="logo" name="logo" type="file" accept="image/png,image/jpeg" />
+
+            <label for="icon_ico">icon.ico（安装包 exe 图标）</label>
+            <input id="icon_ico" name="icon_ico" type="file" accept=".ico" />
+
+            <label for="icon_png">icon.png（可选）</label>
+            <input id="icon_png" name="icon_png" type="file" accept="image/png" />
+
+            <button type="submit">提交到资源库</button>
+          </form>
+        </section>
+      </div>
+
+      <section style="margin-top: 20px">
+        <h2>触发 Windows 品牌包构建</h2>
+        <form id="build-form" class="grid grid-2">
+          <div>
+            <label for="build_slug">品牌项目</label>
+            <select id="build_slug" required></select>
+
+            <label for="git_ref">主仓库分支 / tag</label>
+            <input id="git_ref" name="git_ref" placeholder="默认 dev" />
+
+            <label for="assets_ref">资源库分支</label>
+            <input id="assets_ref" name="assets_ref" value="main" />
+          </div>
+          <div>
+            <label for="build_by">触发人（可选）</label>
+            <input id="build_by" name="build_by" />
+
+            <p style="color: var(--muted); font-size: 0.85rem; margin: 0 0 12px">
+              将调用 <strong>gitlab.bobandata.com</strong> Pipeline Trigger，运行
+              <code>build:windows:branded</code>（win-builder Windows 构建机）。
+              216 仅存放品牌资源；安装包在 win-builder 本机产出。
+            </p>
+            <button type="submit">开始打包</button>
+          </div>
+        </form>
+      </section>
+
+      <section style="margin-top: 20px">
+        <div class="row" style="justify-content: space-between; margin-bottom: 12px">
+          <h2 style="margin: 0">打包记录</h2>
+          <button type="button" class="secondary" id="btn-reload-builds">
+            刷新状态
+          </button>
+        </div>
+        <div style="overflow-x: auto">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>项目</th>
+                <th>分支</th>
+                <th>状态</th>
+                <th>触发人</th>
+                <th>时间</th>
+                <th>流水线</th>
+              </tr>
+            </thead>
+            <tbody id="builds-body">
+              <tr>
+                <td colspan="7" class="empty">加载中…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+      const DEFAULT_BRAND = `{
+  "productName": "数字员工",
+  "logos": {
+    "app": "logo.png",
+    "login": "logo.png"
+  }
+}`
+
+      const toastEl = document.getElementById("toast")
+      let settings = { default_git_ref: "dev" }
+
+      function toast(msg, isErr) {
+        toastEl.textContent = msg
+        toastEl.className = "toast show" + (isErr ? " err" : "")
+        setTimeout(() => toastEl.classList.remove("show"), 4000)
+      }
+
+      async function api(path, opts) {
+        const r = await fetch(path, opts)
+        const text = await r.text()
+        let data = null
+        try {
+          data = text ? JSON.parse(text) : null
+        } catch {
+          data = { detail: text }
+        }
+        if (!r.ok) {
+          const detail =
+            typeof data?.detail === "string"
+              ? data.detail
+              : JSON.stringify(data?.detail || data)
+          throw new Error(detail || r.statusText)
+        }
+        return data
+      }
+
+      function statusBadge(s) {
+        const cls = (s || "pending").replace(/ /g, "_")
+        return `<span class="badge ${cls}">${s || "pending"}</span>`
+      }
+
+      function fmtTime(iso) {
+        if (!iso) return "—"
+        try {
+          return new Date(iso).toLocaleString("zh-CN")
+        } catch {
+          return iso
+        }
+      }
+
+      async function loadSettings() {
+        settings = await api("/api/settings")
+        document.getElementById("git_ref").placeholder =
+          "默认 " + settings.default_git_ref
+      }
+
+      async function loadProjects() {
+        const box = document.getElementById("projects")
+        const select = document.getElementById("build_slug")
+        try {
+          const data = await api("/api/projects")
+          if (!data.projects.length) {
+            box.innerHTML = '<div class="empty">暂无项目，请先上传品牌包</div>'
+            select.innerHTML = '<option value="">—</option>'
+            return
+          }
+          box.innerHTML = data.projects
+            .map((p) => {
+              const name =
+                p.meta?.displayName || p.brand?.productName || p.slug
+              return `<div class="project-card">
+                <div>
+                  <div class="name">${escapeHtml(name)}</div>
+                  <div class="slug">${escapeHtml(p.slug)}</div>
+                </div>
+                <button type="button" data-slug="${escapeAttr(p.slug)}" class="edit-btn">编辑</button>
+              </div>`
+            })
+            .join("")
+          select.innerHTML = data.projects
+            .map(
+              (p) =>
+                `<option value="${escapeAttr(p.slug)}">${escapeHtml(p.slug)}</option>`
+            )
+            .join("")
+          box.querySelectorAll(".edit-btn").forEach((btn) => {
+            btn.addEventListener("click", () => editProject(btn.dataset.slug))
+          })
+        } catch (e) {
+          box.innerHTML = `<div class="empty">加载失败: ${escapeHtml(e.message)}</div>`
+        }
+      }
+
+      async function editProject(slug) {
+        document.getElementById("slug").value = slug
+        try {
+          const data = await api("/api/projects")
+          const p = data.projects.find((x) => x.slug === slug)
+          if (p?.brand) {
+            document.getElementById("brand_json").value = JSON.stringify(
+              p.brand,
+              null,
+              2
+            )
+          }
+          window.scrollTo({ top: 0, behavior: "smooth" })
+        } catch (e) {
+          toast(e.message, true)
+        }
+      }
+
+      async function loadBuilds(refresh) {
+        const body = document.getElementById("builds-body")
+        try {
+          const data = await api("/api/builds?limit=30")
+          if (!data.builds.length) {
+            body.innerHTML =
+              '<tr><td colspan="7" class="empty">暂无打包记录</td></tr>'
+            return
+          }
+          if (refresh) {
+            for (const b of data.builds.slice(0, 10)) {
+              if (b.pipeline_id && !["success", "failed", "canceled"].includes(b.status)) {
+                await api(`/api/builds/${b.id}?refresh=1`).catch(() => {})
+              }
+            }
+            const refreshed = await api("/api/builds?limit=30")
+            data.builds = refreshed.builds
+          }
+          body.innerHTML = data.builds
+            .map(
+              (b) => `<tr>
+              <td>${b.id}</td>
+              <td>${escapeHtml(b.project_slug)}</td>
+              <td><code>${escapeHtml(b.git_ref)}</code></td>
+              <td>${statusBadge(b.status)}</td>
+              <td>${escapeHtml(b.triggered_by || "—")}</td>
+              <td>${fmtTime(b.created_at)}</td>
+              <td>${
+                b.pipeline_url
+                  ? `<a href="${escapeAttr(b.pipeline_url)}" target="_blank" rel="noopener">#${b.pipeline_id || "?"}</a>`
+                  : "—"
+              }</td>
+            </tr>`
+            )
+            .join("")
+        } catch (e) {
+          body.innerHTML = `<tr><td colspan="7" class="empty">${escapeHtml(e.message)}</td></tr>`
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+      }
+
+      function escapeAttr(s) {
+        return escapeHtml(s).replace(/'/g, "&#39;")
+      }
+
+      document.getElementById("brand_json").value = DEFAULT_BRAND
+
+      document.getElementById("upload-form").addEventListener("submit", async (e) => {
+        e.preventDefault()
+        const fd = new FormData()
+        const slug = document.getElementById("slug").value.trim()
+        fd.append("brand_json", document.getElementById("brand_json").value)
+        fd.append(
+          "triggered_by",
+          document.getElementById("triggered_by").value.trim()
+        )
+        for (const id of ["logo", "icon_ico", "icon_png"]) {
+          const f = document.getElementById(id).files[0]
+          if (f) fd.append(id, f)
+        }
+        try {
+          const res = await api(`/api/projects/${encodeURIComponent(slug)}/upload`, {
+            method: "POST",
+            body: fd,
+          })
+          toast(`已提交资源库 commit ${res.commit.slice(0, 8)}`)
+          await loadProjects()
+        } catch (err) {
+          toast(err.message, true)
+        }
+      })
+
+      document.getElementById("build-form").addEventListener("submit", async (e) => {
+        e.preventDefault()
+        const payload = {
+          project_slug: document.getElementById("build_slug").value,
+          git_ref: document.getElementById("git_ref").value.trim(),
+          assets_ref: document.getElementById("assets_ref").value.trim() || "main",
+          triggered_by: document.getElementById("build_by").value.trim(),
+        }
+        try {
+          const row = await api("/api/builds", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+          toast(`已触发流水线 #${row.pipeline_id}`)
+          await loadBuilds(false)
+        } catch (err) {
+          toast(err.message, true)
+        }
+      })
+
+      document.getElementById("btn-reload-projects").addEventListener("click", loadProjects)
+      document.getElementById("btn-reload-builds").addEventListener("click", () =>
+        loadBuilds(true)
+      )
+
+      ;(async () => {
+        await loadSettings()
+        await loadProjects()
+        await loadBuilds(false)
+        setInterval(() => loadBuilds(true), 60000)
+      })()
+    </script>
+  </body>
+</html>

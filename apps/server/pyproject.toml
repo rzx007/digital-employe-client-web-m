@@ -1,11 +1,11 @@
 [project]
-name = "micro-agent"
+name = "digital-employee-client"
 version = "0.1.0"
 description = "A natural language to SQL query agent powered by LangChain's DeepAgents framework and OpenAI GPT-4"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
-    "deepagents==0.5.9",
+    "deepagents==0.6.7",
     "apscheduler>=3.10.4",
     "langchain>=1.2.3",
     "langchain-openai>=1.0.2",
@@ -19,19 +19,39 @@ dependencies = [
     "PyMySQL>=1.0.0",
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
-    "jwt>=1.4.0",
     "PyJWT>=2.8.0",
     "python-multipart>=0.0.27",
     "authlib>=1.7.0",
     "httpx>=0.27.0",
     "itsdangerous>=2.1.0",
     "pyyaml>=6.0",
+    "cryptography>=42.0",
+    "digital-employee-activation-core",
+    "pypdf>=5.0",
+    "openpyxl>=3.1",
+    "python-docx>=1.1",
+    "pillow>=12.2.0",
+    "lark-oapi>=1.4.0",
+    "segno>=1.6.0",
 ]
 [dependency-groups]
 dev = [
-    "micro-agent",
+    "digital-employee-client",
     "pyinstaller>=6.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    # workspace 包构建所需（CI --frozen + --no-build-isolation）
+    # editables: hatchling 可编辑安装(build_editable)需要；--no-build-isolation 下
+    # 不会从 extra-build-dependencies 注入，必须真实装进 .venv
+    "hatchling",
+    "editables",
+    "setuptools>=61.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
 [project.urls]
 Repository = "https://github.com/langchain-ai/deepagents/tree/master/examples/text-to-sql-agent"
 
@@ -42,10 +62,6 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["*"]
 
-[tool.uv.workspace]
-members = [
-    ".",
-]
-
 [tool.uv.sources]
 micro-agent = { workspace = true }
+digital-employee-activation-core = { workspace = true }

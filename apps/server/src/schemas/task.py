@@ -97,51 +97,58 @@ class TaskExecutionLogRead(BaseModel):
     started_at: datetime
     ended_at: datetime | None
     duration_ms: int | None
+    rework_count: int = 0
+    last_heartbeat_at: datetime | None = None
     confirm_url: str | None = None
     confirm_execution_result: bool | None = None
     result_confirmed: bool = False
     is_read: bool = False
     conversation_id: int | None = None
+    orchestrator_conversation_id: int | None = None
     skill_rating: TaskExecutionSkillRatingRead | None = None
 
-    @field_serializer("started_at", "ended_at")
+    @field_serializer("started_at", "ended_at", "last_heartbeat_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:
         if value is None:
             return None
         return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
-class MonthlyCalendarTaskRead(BaseModel):
-    is_active: bool
-    task_type: int | None
-    task_id: int
-    task_name: str
-    employee_id: int
-    employee_name: str | None
-    cron_expression: str
-    cron_description: str
-    cron_expression_type: str
-
-
-class MonthlyCalendarEmployeeRead(BaseModel):
-    employee_id: int
-    employee_name: str | None
-    tasks: list[MonthlyCalendarTaskRead]
-    shift_id: int | None
-    shift_name: str | None
-    shift_schedule: dict[str, Any]
+class MonthlyCalendarRunRead(BaseModel):
+    plan_id: int
+    title: str
+    schedule_kind: str
+    time: str
+    cron: str | None
 
 
 class MonthlyCalendarDayRead(BaseModel):
     day: int
     date: str
-    employees: list[MonthlyCalendarEmployeeRead]
+    runs: list[MonthlyCalendarRunRead]
 
 
 class MonthlyCalendarRead(BaseModel):
     year: int
     month: int
     days: dict[str, MonthlyCalendarDayRead]
+
+
+class ExecutionMetricsRead(BaseModel):
+    days: int
+    start_at: datetime
+    end_at: datetime
+    total_finished: int
+    success: int
+    failed: int
+    timeout: int
+    cancelled: int
+    failure_count: int
+    failure_rate: float | None = None
+
+    @field_serializer("start_at", "end_at")
+    def serialize_datetime(self, value: datetime) -> str:
+        return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class TodayTaskRead(BaseModel):
@@ -159,4 +166,12 @@ class TodayTaskRead(BaseModel):
     ended_at: str | None = None
     duration_ms: int | None = None
     conversation_id: int | None = None
+    is_plan: bool = False
+    plan_id: int | None = None
+    run_seq: int | None = None
+
+
+class ToolFootprintRead(BaseModel):
+    tool_count: int
+    parts: list[dict[str, Any]]
 

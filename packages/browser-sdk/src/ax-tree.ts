@@ -1,0 +1,111 @@
+// 把 CDP Accessibility.getFullAXTree 的节点数组解析为 @eN 引用列表。
+// 支持多 frame：每个 frame 一组节点（各建独立 nodeMap，AXNodeId 仅 frame 内唯一），
+// @eN 计数器/截断上限全局共享、连续编号。纯函数、无 Electron 依赖，便于单测（见 ax-tree.test.ts）。
+
+export interface RefNode {
+  ref: string
+  role: string
+  name: string | null | undefined
+  value: string | null | undefined
+  backendNodeId: number
+  depth: number
+}
+
+export interface AxNode {
+  // CDP 的 AXNode.nodeId / childIds 是 string（AXNodeId），不是 number。
+  nodeId?: string
+  ignored?: boolean
+  role?: { value?: string }
+  name?: { value?: string }
+  value?: { value?: string }
+  backendDOMNodeId?: number
+  childIds?: string[]
+}
+
+const MASKED_ROLES = new Set(["password"])
+
+export function buildRefs(
+  framesNodes: unknown[][],
+  maxNodes: number,
+  opts: { compact?: boolean; maxDepth?: number; scopeSelector?: string } = {}
+): RefNode[] {
+  const { compact = false, maxDepth } = opts
+  const refs: RefNode[] = []
+  let counter = 0
+
+  const walkFrame = (nodes: unknown[]) => {
+    const nodeMap = new Map<string, AxNode>()
+    for (const n of nodes) {
+      const node = n as AxNode
+      if (node.nodeId != null) nodeMap.set(String(node.nodeId), node)
+    }
+
+    const walk = (node: AxNode, depth: number) => {
+      if (refs.length >= maxNodes) return
+      if (maxDepth !== undefined && depth > maxDepth) return
+      const role = node.role?.value ?? "generic"
+      // ignored 节点（wrapper / 布局容器）自身不暴露，但子节点可能是真正的可交互控件——
+      // 必须透明穿透继续遍历，否则整棵子树被剪。
+      if (node.ignored) {
+        if (node.childIds) {
+          for (const childId of node.childIds) {
+            const child = nodeMap.get(String(childId))
+            if (child) walk(child, depth)
+          }
+        }
+        return
+      }
+      if (MASKED_ROLES.has(role)) {
+        refs.push({
+          ref: `@e${counter++}`,
+          role,
+          name: "[masked]",
+          value: null,
+          backendNodeId: node.backendDOMNodeId ?? 0,
+          depth,
+        })
+        return
+      }
+      if (
+        ["presentation", "none"].includes(role) &&
+        !node.name?.value &&
+        depth > 2
+      ) {
+        return
+      }
+
+      refs.push({
+        ref: `@e${counter++}`,
+        role,
+        name: compact
+          ? (node.name?.value ?? undefined)
+          : (node.name?.value ?? null),
+        value: compact
+          ? (node.value?.value ?? undefined)
+          : (node.value?.value ?? null),
+        backendNodeId: node.backendDOMNodeId ?? 0,
+        depth,
+      })
+
+      if (node.childIds) {
+        for (const childId of node.childIds) {
+          const child = nodeMap.get(String(childId))
+          if (child) walk(child, depth + 1)
+        }
+      }
+    }
+
+    const root = nodes.find(
+      (n) => (n as AxNode).role?.value === "RootWebArea"
+    ) as AxNode | undefined
+    if (root) walk(root, 0)
+    else for (const n of nodes) walk(n as AxNode, 0)
+  }
+
+  for (const nodes of framesNodes) {
+    if (refs.length >= maxNodes) break
+    walkFrame(nodes)
+  }
+
+  return refs
+}

@@ -1,7 +1,7 @@
 # 多智能体任务编排系统 — 实施文档
 
-> **版本**：v1.0  
-> **状态**：规划阶段  
+> **版本**：v1.1  
+> **状态**：核心能力已落地（编排 Agent、流式执行、workspace 事件）；本文档兼作架构说明与变更记录。  
 > **目标**：从"手动填表式排班"演进为"自然语言对话式任务分发"，通过总管助手（Orchestrator Agent）智能拆解用户意图，自动匹配数字员工并执行。
 
 ---
@@ -27,15 +27,41 @@
 | 总管助手 | 仅前端展示层（任务执行记录监控），无实际 Agent | `curator-view.tsx` |
 | **全局通知** | **无**，前端只能轮询 `TaskExecutionLog` 表 | — |
 
-### 1.2 总管助手当前状态
+### 1.2 总管助手当前状态（2026-05 更新）
 
-前端已有"总管助手"概念（`PRIMARY_CURATOR`，`src/lib/mock-data/ai-employees.ts:38`），但：
-- **不是真实的 Agent**：只是 `CuratorView` 组件，展示所有员工的 `TaskExecutionLog` 记录
-- **输入框被 disabled**：`curator-view.tsx:173` — `disabled={true}`
-- **没有 Conversation 持久化**：`CURATOR_PINNED_CONVERSATION_ID = "curator-executions"` 是虚拟会话
-- **没有后端路由**：`POST /chat/conversations/{cid}/stream` 需要 `target_type="employee"|"group"`，不支持 `"curator"`
+已实现（与本文档早期「规划阶段」描述不同）：
 
-### 1.3 需要保留的设计
+| 能力 | 实现 |
+|------|------|
+| Orchestrator Agent | `apps/server/src/service/agent/orchestrator/`，`ChatService` 在 `target_type=curator` 时路由 |
+| 会话持久化 | `Conversation.target_type="curator"`，每工作空间可有多条总管会话 |
+| 默认会话 | `GET .../chat/curator/conversation` → `ensure_curator_conversation`（优先 `title='总管对话'`） |
+| 总管聊天 UI | `CuratorView`：消息流 + 按会话过滤的执行时间线（`orchestrator_conversation_id`） |
+| 新建对话 | `DraftChatView` + `ChatPanel`；**首条发送后仍留在草稿视图**（不切 `CuratorView`，除非用户从会话列表选中已有会话） |
+| 全工作区概况 | 联系人详情 `CuratorOverviewSection`（`useAllTaskExecutions`），非会话列表项 |
+| 编排关联 | `OrchestrationPlan.conversation_id`、`EmployeeTask.source_conversation_id`、`TaskExecutionLog.orchestrator_conversation_id` |
+
+前端路由（`chat-view.tsx`）：
+
+- 总管 + 草稿 / 无选中会话 → `DraftChatView`
+- 总管 + 已选真实 `conversationId` → `CuratorView`
+- 员工 / 群组逻辑不变
+
+相关文档：`apps/server/docs/compatibility-inventory.md` §11、`docs/external-task-guide.md`、`docs/task-lifecycle.md`（会话 ID 语义）、`apps/server/docs/orchestrator-employee-stream-isolation.md`（总管/员工 SSE 隔离）。
+
+### 1.3 总管多会话（阶段一～三摘要）
+
+| 阶段 | 内容 |
+|------|------|
+| 一 | 查询隔离：`GET .../tasks/executions?orchestrator_conversation_id=`、`GET .../orchestration/plans?conversation_id=` |
+| 二 | 落库 + 回填：`source_conversation_id`、`orchestrator_conversation_id`；编排写入与定时总管任务优先绑定来源会话 |
+| 三 | 前端多会话列表、`ensure` 默认会话、bootstrap 空列表时创建默认会话；清空会话 scoped 删除执行 log |
+
+**注意**：已移除会话列表固定项「任务执行结果」（原虚拟 ID `curator-executions`），全工作区执行概况仅在联系人面板展示。
+
+**草稿与 bootstrap**：`useBootstrapCuratorDefaultConversation` 在 `isDraftConversation` 为 true 时不调用 ensure，避免「新建对话」被自动选中默认会话顶掉。
+
+### 1.4 需要保留的设计
 
 以下设计良好，应保留：
 - `EmployeeTask` 模型（员工任务绑定 cron + skill + user_prompt）
@@ -1057,33 +1083,23 @@ def build_employee_capability_context(db: Session, workspace_id: int) -> str:
     return header + "\n" + "\n".join(lines)
 ```
 
-### 5.7 前端 CuratorView 状态机
+### 5.7 前端总管 UI 状态机（2026-05）
 
 ```
-┌──────────────┐    发送消息     ┌──────────────┐
-│  Draft View  │ ──────────────> │  Streaming   │
-│  (欢迎词+输入) │                │  (SSE  流)    │
-└──────────────┘                └──────┬───────┘
-                                       │
-                         收到 plan_generated 事件
-                                       │
-                                       ▼
-                               ┌──────────────┐
-                               │ 等待确认      │
-                               │ (Plan Card)  │
-                               └──┬───────┬───┘
-                         确认执行  │       │  取消
-                                  ▼       ▼
-                          ┌──────────┐ ┌──────────┐
-                          │ 执行中    │ │ 已取消    │
-                          │ (进度条)  │ └──────────┘
-                          └────┬─────┘
-                               │ 全部完成
-                               ▼
-                          ┌──────────┐
-                          │ 完成汇总  │
-                          └──────────┘
+联系人选总管
+    │
+    ├─ isDraftConversation 或 无 selectedConversationId
+    │       → DraftChatView（ChatPanel + CuratorEmptyWelcome）
+    │       → 首条消息创建 curator 会话后仍留在此视图（产品约定）
+    │
+    └─ 已选真实 conversationId
+            → CuratorView（专用 composer + 消息/执行时间线）
+
+会话列表为空且非草稿 → bootstrap ensure 默认会话并选中
+用户点「新建对话」→ enterDraftConversation → bootstrap 不抢焦点
 ```
+
+编排确认 / 执行进度仍在 `CuratorView` 时间线与 `OrchestrationPlanCard` 等组件中展示；草稿视图主要用于发起新会话的第一轮输入。
 
 ---
 
@@ -1123,7 +1139,7 @@ def build_employee_capability_context(db: Session, workspace_id: int) -> str:
 | `apps/web/src/lib/chat/message-classifier.ts` | 新增编排事件类型 |
 | `apps/web/src/lib/chat/sse-parts-builder.ts` | 新增编排 SSE 解析 |
 | `apps/web/src/stores/chat-store.ts` | 新增 curator 相关状态 |
-| `apps/web/src/lib/constants.ts` | 新增 curator 相关常量 |
+| `apps/web/src/lib/constants.ts` | `curatorUnreadKey` 等（已移除虚拟会话 `curator-executions` 固定项） |
 
 ---
 
@@ -1185,10 +1201,10 @@ def build_employee_capability_context(db: Session, workspace_id: int) -> str:
 | `apps/server/src/service/orchestrator_agent.py` | **总管 Agent 工厂** + 3 个 LangChain Tool |
 | `apps/server/src/service/workspace_events.py` | 工作空间级 SSE 事件通道 |
 | `apps/server/src/api/orchestration_api.py` | 编排 API (list/get/confirm/cancel) |
-| `apps/web/src/components/chat/curator/curator-view-root.tsx` | 三态路由 |
-| `apps/web/src/components/chat/curator/curator-monitor-view.tsx` | 监控模式 |
-| `apps/web/src/components/chat/curator/curator-draft-view.tsx` | 草稿模式 |
-| `apps/web/src/components/chat/curator/curator-conversation-view.tsx` | 对话模式（含编排卡片 + 进度条） |
+| `apps/web/src/components/chat/curator/curator-view.tsx` | 总管已选会话：聊天 + 执行时间线 |
+| `apps/web/src/components/chat/curator/curator-empty-welcome.tsx` | 总管欢迎/引导（草稿与空会话） |
+| `apps/web/src/components/chat/views/chat-draft-view.tsx` | 总管新建对话草稿（共用 ChatPanel） |
+| `apps/web/src/hooks/use-bootstrap-curator-conversations.ts` | 空列表 ensure 默认会话 |
 | `apps/web/src/components/chat/orchestration-plan-card.tsx` | 确认卡片 |
 | `apps/web/src/components/chat/task-progress-bar.tsx` | 实时进度条 |
 | `apps/web/src/components/chat/cron-preview-badge.tsx` | Cron 中文预览 |

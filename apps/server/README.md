@@ -177,25 +177,6 @@ local-employees/
 - 目录名就是 skill 名
 - 对话请求会按员工名或 `employee_code` 查本地目录
 
-## 员工同步接口的作用
-
-接口：
-
-```text
-GET /workspaces/{workspace_id}/employees/sync
-```
-
-这个接口会：
-
-- 从配置（`REMOTE_API_BASE_URL + EMPLOYEE_ZIP_PATH`）下载员工 ZIP
-- 解压到仓库根目录的 `local-employees/`
-- 提取员工元数据
-- 写入数据库
-
-它的价值主要是“导入员工索引和元数据”，不是本地 skills 开发的必要前置步骤。
-
-如果你现在是本地开发模式，并且 skills 都放在 `local-employees/`，那么就不要把“先同步员工”当成技能生效的前提。
-
 ## 常用接口
 
 ### Workspace
@@ -209,7 +190,6 @@ GET /workspaces/{workspace_id}/employees/sync
 
 ### Employee
 
-- `GET /workspaces/{workspace_id}/employees/sync`
 - `GET /workspaces/{workspace_id}/employees`
 - `GET /employees/{employee_id}`
 - `PUT /employees/{employee_id}`
@@ -223,7 +203,8 @@ GET /workspaces/{workspace_id}/employees/sync
 ### Chat
 
 - `POST /chat/conversations`
-- `GET /chat/conversations`
+- `GET /workspaces/{workspace_id}/chat/conversations`（按 `target_type` + `target_id` 列表）
+- `DELETE /workspaces/{workspace_id}/chat/conversations`（按 `target_type` + `target_id` 批量删除，含 checkpoint）
 - `GET /chat/conversations/{conversation_id}/messages`
 - `DELETE /chat/conversations/{conversation_id}`
 - `GET /chat/conversations/{conversation_id}/stream`

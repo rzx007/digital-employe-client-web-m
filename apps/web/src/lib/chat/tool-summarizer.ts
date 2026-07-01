@@ -1,3 +1,11 @@
+import {
+  getToolDisplay,
+  INTENT_MAX_LENGTH,
+  isBusinessTool,
+  normalizeShellIntent,
+  SHELL_TOOL_NAMES,
+} from "./tool-label-registry"
+
 const MAX_LABEL_LENGTH = 60
 
 function extractBasename(path: string): string {
@@ -12,21 +20,6 @@ export interface ToolCallSummary {
   icon: string
 }
 
-const TOOL_META: Record<
-  string,
-  { icon: string; verb: string; pathKey?: string }
-> = {
-  read_file: { icon: "📄", verb: "读取", pathKey: "file_path" },
-  write_file: { icon: "✏️", verb: "创建", pathKey: "file_path" },
-  edit_file: { icon: "✏️", verb: "编辑", pathKey: "file_path" },
-  execute: { icon: "⚡", verb: "执行" },
-  ls: { icon: "📁", verb: "列出目录", pathKey: "path" },
-  download_files: { icon: "📥", verb: "下载", pathKey: "paths" },
-  upload_files: { icon: "📤", verb: "上传", pathKey: "files" },
-  write_todos: { icon: "📋", verb: "规划任务" },
-  create_orchestration_plan: { icon: "📋", verb: "生成编排计划" },
-}
-
 function extractToolName(type: string): string {
   if (type.startsWith("tool-")) {
     return type.slice(5)
@@ -38,28 +31,42 @@ function truncate(text: string, max = MAX_LABEL_LENGTH): string {
   return text.length > max ? text.slice(0, max - 1) + "..." : text
 }
 
+function shortMarketSkillSlug(slug: unknown): string | null {
+  if (typeof slug !== "string" || !slug.trim()) return null
+  const parts = slug.trim().split("-")
+  const tail = parts.slice(-3).join("-")
+  return truncate(tail || slug.trim(), 36)
+}
+
 function extractScriptBasename(command: string): string | null {
   const match = command.match(/([^\s/\\]+\.(?:py|sh|js|ts))\b/)
   return match ? match[1] : null
 }
 
-export const SIMPLE_LABELS: Record<string, { running: string; done: string; error: string }> = {
-  execute: { running: "正在执行命令...", done: "执行完成", error: "执行失败" },
-  read_file: { running: "正在读取文件...", done: "读取完成", error: "读取失败" },
-  write_file: { running: "正在创建文件...", done: "创建完成", error: "创建失败" },
-  edit_file: { running: "正在编辑文件...", done: "编辑完成", error: "编辑失败" },
-  ls: { running: "正在查看目录...", done: "查看完成", error: "查看失败" },
-  download_files: { running: "正在下载...", done: "下载完成", error: "下载失败" },
-  upload_files: { running: "正在上传...", done: "上传完成", error: "上传失败" },
-  write_todos: { running: "正在规划任务...", done: "任务已规划", error: "规划失败" },
-  glob: { running: "正在搜索文件...", done: "搜索完成", error: "搜索失败" },
+function labelFromIntent(input?: Record<string, unknown>): string | null {
+  const normalized = normalizeShellIntent(input?.intent)
+  if (!normalized) return null
+  return truncate(normalized, INTENT_MAX_LENGTH)
 }
 
-export function getSimpleLabel(
+function summarizeShellCommand(
   toolName: string,
-  state: "running" | "done" | "error"
-): string {
-  return SIMPLE_LABELS[toolName]?.[state] ?? (state === "running" ? "处理中..." : state === "error" ? "操作失败" : "已完成")
+  display: { icon: string; verb: string },
+  input?: Record<string, unknown>
+): ToolCallSummary {
+  const fromIntent = labelFromIntent(input)
+  if (fromIntent) {
+    return { toolName, label: fromIntent, icon: display.icon }
+  }
+  const cmd = input?.command
+  if (typeof cmd === "string") {
+    const script = extractScriptBasename(cmd)
+    const label = script
+      ? `${display.verb} ${script}`
+      : truncate(`${display.verb} ${cmd}`)
+    return { toolName, label, icon: display.icon }
+  }
+  return { toolName, label: display.verb, icon: display.icon }
 }
 
 export function summarizeToolCall(options: {
@@ -67,17 +74,87 @@ export function summarizeToolCall(options: {
   input?: unknown
 }): ToolCallSummary {
   const toolName = extractToolName(options.type)
-  const meta = TOOL_META[toolName]
+  const display = getToolDisplay(toolName)
   const input = options.input as Record<string, unknown> | undefined
 
-  if (!meta) {
+  // 并行子任务（deepagents task 工具）：task 未注册进 TOOL_DISPLAY_MAP，会落到
+  // 下面 !display 的兜底分支返回光秃的「task」。故在兜底前先处理：用子任务描述
+  // 当标签，让用户一眼看出每个并行子任务在干什么。
+  if (toolName === "task") {
+    const desc = input?.description
+    const subType =
+      typeof input?.subagent_type === "string" ? input.subagent_type : ""
+    const label =
+      typeof desc === "string" && desc.trim()
+        ? `子任务 · ${truncate(desc.trim())}`
+        : subType
+          ? `子任务 · ${subType}`
+          : "子任务"
+    return { toolName, label, icon: "🧩" }
+  }
+
+  if (!display) {
     return { toolName, label: toolName, icon: "🔧" }
   }
 
-  let filePath: string | undefined
+  if (SHELL_TOOL_NAMES.has(toolName)) {
+    return summarizeShellCommand(toolName, display, input)
+  }
 
-  if (meta.pathKey && input) {
-    const raw = input[meta.pathKey]
+  if (isBusinessTool(toolName)) {
+    if (toolName === "get_market_skill_detail") {
+      const short = shortMarketSkillSlug(input?.skill_slug)
+      return {
+        toolName,
+        label: short ? `预览技能 ${short}` : display.label,
+        icon: display.icon,
+      }
+    }
+    if (toolName === "get_workspace_skill_detail") {
+      const name =
+        typeof input?.skill_name === "string" ? input.skill_name.trim() : ""
+      const lid = input?.local_id
+      const label = name
+        ? `预览技能 ${truncate(name, 20)}`
+        : typeof lid === "number"
+          ? `预览技能 #${lid}`
+          : display.label
+      return { toolName, label, icon: display.icon }
+    }
+    if (toolName === "install_market_skill") {
+      const short = shortMarketSkillSlug(input?.skill_slug)
+      return {
+        toolName,
+        label: short ? `安装技能 ${short}` : display.label,
+        icon: display.icon,
+      }
+    }
+    if (toolName === "search_market_skills") {
+      const q = input?.query
+      const label =
+        typeof q === "string" && q.trim()
+          ? `搜索技能「${truncate(q.trim(), 24)}」`
+          : display.label
+      return { toolName, label, icon: display.icon }
+    }
+    if (toolName === "web_search") {
+      const q = input?.query
+      const label =
+        typeof q === "string" && q.trim()
+          ? `联网搜索「${truncate(q.trim(), 24)}」`
+          : display.label
+      return { toolName, label, icon: display.icon }
+    }
+    return { toolName, label: display.label, icon: display.icon }
+  }
+
+  if (toolName === "write_todos") {
+    return { toolName, label: display.label, icon: display.icon }
+  }
+
+  let filePath: string | undefined
+  if (display.pathKey && input) {
+    const raw = input[display.pathKey]
     if (typeof raw === "string") {
       filePath = raw
     } else if (Array.isArray(raw) && raw.length > 0) {
@@ -85,26 +162,12 @@ export function summarizeToolCall(options: {
     }
   }
 
-  if (toolName === "execute" && input?.command) {
-    const cmd = String(input.command)
-    const script = extractScriptBasename(cmd)
-    const label = script
-      ? `${meta.verb} ${script}`
-      : truncate(`${meta.verb} ${cmd}`)
-    return { toolName, label, icon: meta.icon }
-  }
-
-  if (toolName === "write_todos") {
-    return { toolName, label: "任务列表", icon: meta.icon }
-  }
-
   const displayName = filePath ? extractBasename(filePath) : undefined
-
   const label = displayName
-    ? `${meta.verb} ${truncate(displayName)}`
-    : meta.verb
+    ? `${display.verb} ${truncate(displayName)}`
+    : display.label
 
-  return { toolName, label, filePath, icon: meta.icon }
+  return { toolName, label, filePath, icon: display.icon }
 }
 
 // ── Skill path detection ────────────────────────────────────
@@ -122,23 +185,26 @@ export function isSkillToolCall(input: unknown, toolName: string): boolean {
   const obj = input as Record<string, unknown>
   const val = obj[pathKey]
   if (typeof val !== "string") return false
-  return val.startsWith("/skills/") || val.startsWith("/skills-draft/")
+  // 真实路径含 skills/ 或 skills-draft/ 目录段（去虚拟前缀后按段匹配）
+  return /(^|\/)skills(?:-draft)?\//.test(val.replace(/\\/g, "/"))
 }
 
-export function extractSkillName(input: unknown, toolName: string): string | null {
+export function extractSkillName(
+  input: unknown,
+  toolName: string
+): string | null {
   const pathKey = SKILL_PATH_KEYS[toolName]
   if (!pathKey || !input || typeof input !== "object") return null
   const obj = input as Record<string, unknown>
   const val = obj[pathKey]
   if (typeof val !== "string") return null
-  const match = val.match(/\/skills-(?:draft\/|\/)([^/]+)/)
+  // 取 skills/ 或 skills-draft/ 段之后的技能目录名（真实路径或旧虚拟路径均适用）
+  const match = val.replace(/\\/g, "/").match(/(?:^|\/)skills(?:-draft)?\/([^/]+)/)
   if (match) return match[1]
   return null
 }
 
-export function summarizeToolGroup(
-  summaries: ToolCallSummary[]
-): string {
+export function summarizeToolGroup(summaries: ToolCallSummary[]): string {
   if (summaries.length === 0) return ""
   if (summaries.length === 1) return summaries[0].label
 
@@ -148,8 +214,7 @@ export function summarizeToolGroup(
   }
 
   const parts = Array.from(counts.entries()).map(([name, count]) => {
-    const meta = TOOL_META[name]
-    const verb = meta?.verb ?? name
+    const verb = getToolDisplay(name)?.verb ?? name
     return count > 1 ? `${count} 次${verb}` : verb
   })
 

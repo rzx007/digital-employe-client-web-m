@@ -1,0 +1,23 @@
+{
+  "name": "@workspace/browserctl-daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "bin": { "browserctl-daemon": "./src/index.ts" },
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@workspace/browser-sdk": "workspace:*",
+    "chrome-launcher": "^1.1.0",
+    "chrome-remote-interface": "^0.33.0"
+  },
+  "devDependencies": {
+    "@types/chrome-remote-interface": "^0.31.0",
+    "@types/node": "^25.9.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  }
+}

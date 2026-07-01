@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  [data-theme="light"]{
+    --bg: oklch(0.98 0.0035 248);
+    --surface: oklch(1 0 0);
+    --surface-2: oklch(0.985 0.004 248);
+    --surface-3: oklch(0.963 0.006 248);
+    --rail: oklch(0.255 0.042 252);
+    --rail-2: oklch(0.215 0.042 252);
+    --rail-text: oklch(0.73 0.025 252);
+    --ink: oklch(0.255 0.02 256);
+    --ink-2: oklch(0.4 0.018 256);
+    --muted: oklch(0.535 0.015 256);
+    --faint: oklch(0.665 0.012 256);
+    --line: oklch(0.935 0.004 250);
+    --line-2: oklch(0.895 0.005 250);
+    --brand: oklch(0.505 0.12 244);
+    --brand-ink: oklch(0.435 0.125 246);
+    --brand-soft: oklch(0.962 0.03 246);
+    --pos: oklch(0.58 0.12 160);
+    --pos-soft: oklch(0.955 0.045 160);
+    --neg: oklch(0.57 0.16 26);
+    --neg-soft: oklch(0.96 0.03 26);
+    --accent: oklch(0.74 0.13 74); --accent-ink: oklch(0.56 0.13 66); --accent-soft: oklch(0.93 0.06 80);
+    --shadow: 0 1px 1px rgba(18,28,54,.04), 0 4px 12px -2px rgba(18,28,54,.06);
+    --shadow-lg: 0 30px 80px -12px rgba(18,28,54,.22);
+  }
+  [data-theme="dark"]{
+    --bg: oklch(0.168 0.012 248);
+    --surface: oklch(0.214 0.013 248);
+    --surface-2: oklch(0.244 0.013 248);
+    --surface-3: oklch(0.27 0.013 248);
+    --rail: oklch(0.152 0.014 248);
+    --rail-2: oklch(0.13 0.014 248);
+    --rail-text: oklch(0.7 0.018 248);
+    --ink: oklch(0.95 0.005 248);
+    --ink-2: oklch(0.8 0.01 248);
+    --muted: oklch(0.66 0.012 248);
+    --faint: oklch(0.55 0.012 248);
+    --line: oklch(0.305 0.012 248);
+    --line-2: oklch(0.37 0.012 248);
+    --brand: oklch(0.68 0.1 242);
+    --brand-ink: oklch(0.74 0.1 242);
+    --brand-soft: oklch(0.3 0.045 242);
+    --pos: oklch(0.72 0.13 158);
+    --pos-soft: oklch(0.32 0.05 158);
+    --neg: oklch(0.7 0.16 28);
+    --neg-soft: oklch(0.33 0.05 28);
+    --accent: oklch(0.8 0.13 78); --accent-ink: oklch(0.82 0.12 78); --accent-soft: oklch(0.34 0.06 70);
+    --shadow: 0 1px 2px rgba(0,0,0,.35);
+    --shadow-lg: 0 28px 80px rgba(0,0,0,.6);
+  }
+  /* === 精致靛蓝 / Klein === */
+  [data-dir="klein"][data-theme="light"]{ --bg:oklch(0.985 0.005 285); --surface:oklch(1 0 0); --surface-2:oklch(0.984 0.006 283); --surface-3:oklch(0.963 0.009 283); --rail:oklch(0.215 0.075 277); --rail-2:oklch(0.175 0.075 277); --rail-text:oklch(0.76 0.04 280); --ink:oklch(0.245 0.03 285); --ink-2:oklch(0.39 0.025 285); --muted:oklch(0.53 0.02 285); --faint:oklch(0.66 0.016 285); --line:oklch(0.93 0.007 283); --line-2:oklch(0.89 0.009 283); --brand:oklch(0.42 0.205 268); --brand-ink:oklch(0.36 0.2 268); --brand-soft:oklch(0.952 0.05 275); --accent:oklch(0.66 0.16 248); --accent-ink:oklch(0.54 0.16 250); --accent-soft:oklch(0.94 0.055 252); }
+  [data-dir="klein"][data-theme="dark"]{ --bg:oklch(0.175 0.025 280); --surface:oklch(0.218 0.027 280); --surface-2:oklch(0.248 0.027 280); --surface-3:oklch(0.275 0.027 280); --rail:oklch(0.15 0.04 278); --rail-2:oklch(0.125 0.04 278); --rail-text:oklch(0.72 0.03 280); --ink:oklch(0.95 0.01 285); --ink-2:oklch(0.8 0.015 285); --muted:oklch(0.66 0.018 285); --faint:oklch(0.55 0.018 285); --line:oklch(0.32 0.022 280); --line-2:oklch(0.38 0.022 280); --brand:oklch(0.62 0.19 270); --brand-ink:oklch(0.7 0.17 270); --brand-soft:oklch(0.31 0.08 274); --accent:oklch(0.72 0.15 250); --accent-ink:oklch(0.74 0.14 250); --accent-soft:oklch(0.33 0.07 252); }
+  /* === 科技极简 / Graphite+Cyan === */
+  [data-dir="graphite"][data-theme="light"]{ --bg:oklch(0.982 0.003 220); --surface:oklch(1 0 0); --surface-2:oklch(0.98 0.003 220); --surface-3:oklch(0.96 0.004 220); --rail:oklch(0.2 0.008 220); --rail-2:oklch(0.16 0.008 220); --rail-text:oklch(0.72 0.006 220); --ink:oklch(0.21 0.008 225); --ink-2:oklch(0.38 0.006 225); --muted:oklch(0.52 0.006 225); --faint:oklch(0.66 0.005 225); --line:oklch(0.925 0.003 220); --line-2:oklch(0.88 0.004 220); --brand:oklch(0.53 0.115 210); --brand-ink:oklch(0.45 0.12 212); --brand-soft:oklch(0.95 0.04 208); --accent:oklch(0.7 0.14 192); --accent-ink:oklch(0.52 0.12 196); --accent-soft:oklch(0.93 0.05 195); }
+  [data-dir="graphite"][data-theme="dark"]{ --bg:oklch(0.15 0.004 220); --surface:oklch(0.19 0.005 220); --surface-2:oklch(0.224 0.005 220); --surface-3:oklch(0.25 0.005 220); --rail:oklch(0.115 0.005 220); --rail-2:oklch(0.095 0.005 220); --rail-text:oklch(0.7 0.006 220); --ink:oklch(0.96 0.004 225); --ink-2:oklch(0.8 0.005 225); --muted:oklch(0.64 0.006 225); --faint:oklch(0.52 0.006 225); --line:oklch(0.29 0.005 220); --line-2:oklch(0.35 0.005 220); --brand:oklch(0.66 0.13 200); --brand-ink:oklch(0.72 0.12 200); --brand-soft:oklch(0.29 0.06 205); --accent:oklch(0.78 0.14 188); --accent-ink:oklch(0.8 0.13 188); --accent-soft:oklch(0.3 0.06 192); }
+  /* === 温暖亲和 / Warm clay === */
+  [data-dir="warm"][data-theme="light"]{ --bg:oklch(0.985 0.009 75); --surface:oklch(0.997 0.004 75); --surface-2:oklch(0.982 0.011 72); --surface-3:oklch(0.96 0.015 70); --rail:oklch(0.265 0.03 50); --rail-2:oklch(0.225 0.03 50); --rail-text:oklch(0.75 0.025 60); --ink:oklch(0.265 0.022 58); --ink-2:oklch(0.4 0.02 58); --muted:oklch(0.525 0.018 58); --faint:oklch(0.655 0.016 62); --line:oklch(0.92 0.013 68); --line-2:oklch(0.88 0.015 66); --brand:oklch(0.55 0.13 46); --brand-ink:oklch(0.47 0.14 43); --brand-soft:oklch(0.955 0.035 58); --accent:oklch(0.62 0.09 182); --accent-ink:oklch(0.5 0.09 186); --accent-soft:oklch(0.93 0.04 185); }
+  [data-dir="warm"][data-theme="dark"]{ --bg:oklch(0.192 0.013 52); --surface:oklch(0.232 0.014 52); --surface-2:oklch(0.262 0.014 52); --surface-3:oklch(0.288 0.014 52); --rail:oklch(0.152 0.015 48); --rail-2:oklch(0.128 0.015 48); --rail-text:oklch(0.73 0.022 58); --ink:oklch(0.952 0.008 62); --ink-2:oklch(0.8 0.012 62); --muted:oklch(0.66 0.015 60); --faint:oklch(0.56 0.015 60); --line:oklch(0.322 0.013 52); --line-2:oklch(0.38 0.013 52); --brand:oklch(0.68 0.13 50); --brand-ink:oklch(0.73 0.12 50); --brand-soft:oklch(0.32 0.05 46); --accent:oklch(0.74 0.1 186); --accent-ink:oklch(0.76 0.095 186); --accent-soft:oklch(0.32 0.05 188); }
+  /* === 经典蓝 / 原图 shadcn 靓蓝 === */
+  [data-dir="blue"][data-theme="light"]{ --bg:oklch(0.976 0.004 258); --surface:oklch(1 0 0); --surface-2:oklch(0.983 0.005 258); --surface-3:oklch(0.962 0.007 258); --rail:oklch(0.25 0.085 266); --rail-2:oklch(0.21 0.085 266); --rail-text:oklch(0.76 0.045 264); --ink:oklch(0.25 0.022 262); --ink-2:oklch(0.39 0.02 262); --muted:oklch(0.53 0.018 262); --faint:oklch(0.66 0.014 262); --line:oklch(0.93 0.006 258); --line-2:oklch(0.89 0.008 258); --brand:oklch(0.488 0.215 264); --brand-ink:oklch(0.43 0.215 264); --brand-soft:oklch(0.955 0.045 266); --accent:oklch(0.62 0.17 250); --accent-ink:oklch(0.52 0.17 252); --accent-soft:oklch(0.94 0.055 255); }
+  [data-dir="blue"][data-theme="dark"]{ --bg:oklch(0.172 0.016 263); --surface:oklch(0.216 0.017 263); --surface-2:oklch(0.246 0.017 263); --surface-3:oklch(0.273 0.017 263); --rail:oklch(0.15 0.035 266); --rail-2:oklch(0.125 0.035 266); --rail-text:oklch(0.73 0.03 264); --ink:oklch(0.95 0.01 262); --ink-2:oklch(0.8 0.014 262); --muted:oklch(0.66 0.016 262); --faint:oklch(0.55 0.016 262); --line:oklch(0.31 0.018 263); --line-2:oklch(0.37 0.018 263); --brand:oklch(0.6 0.2 264); --brand-ink:oklch(0.67 0.18 264); --brand-soft:oklch(0.3 0.08 266); --accent:oklch(0.7 0.16 252); --accent-ink:oklch(0.72 0.15 252); --accent-soft:oklch(0.32 0.07 255); }
+  @keyframes om-pulse { 0%,100%{ opacity:1; } 50%{ opacity:.3; } }
+  .om-ico { font-family:'Material Symbols Rounded'; font-weight:400; font-style:normal; line-height:1; letter-spacing:normal; display:inline-block; -webkit-font-smoothing:antialiased; }
+  .om-sb::-webkit-scrollbar{ width:8px; height:8px; }
+  .om-sb::-webkit-scrollbar-thumb{ background:var(--line-2); border-radius:8px; }
+  .om-sb::-webkit-scrollbar-track{ background:transparent; }
+</style>
+</helmet>
+
+<div style="min-height:100vh; width:100%; background:radial-gradient(130% 120% at 50% -10%, #f3f5fa 0%, #e9edf4 55%, #dee3ed 100%); display:flex; align-items:center; justify-content:center; padding:30px; font-family:'IBM Plex Sans','PingFang SC','Microsoft YaHei',sans-serif;">
+
+  <div style="position:fixed; top:16px; left:16px; z-index:60; display:flex; align-items:center; gap:5px; padding:5px 8px 5px 6px; background:rgba(20,26,38,.74); backdrop-filter:blur(8px); border-radius:12px; box-shadow:0 4px 14px rgba(0,0,0,.25); font-family:'IBM Plex Sans',sans-serif;">
+    <span style="font-size:9.5px; color:#8b94a6; font-family:'IBM Plex Mono',monospace; letter-spacing:1px; padding:0 4px;">方向</span>
+    <button onClick="{{ setPetrol }}" title="沉稳权威" style="position:relative; display:flex; align-items:center; gap:6px; border:none; cursor:pointer; padding:5px 9px; border-radius:8px; font-family:inherit; font-size:11.5px; font-weight:500; color:#dfe4ee; background:transparent;">
+      <sc-if value="{{ isPetrol }}"><span style="position:absolute; inset:0; background:rgba(255,255,255,.15); border-radius:8px;"></span></sc-if>
+      <span style="position:relative; width:9px; height:9px; border-radius:50%; background:oklch(0.5 0.12 244); box-shadow:0 0 0 2px rgba(255,255,255,.12);"></span><span style="position:relative;">沉稳</span>
+    </button>
+    <button onClick="{{ setKlein }}" title="精致靛蓝" style="position:relative; display:flex; align-items:center; gap:6px; border:none; cursor:pointer; padding:5px 9px; border-radius:8px; font-family:inherit; font-size:11.5px; font-weight:500; color:#dfe4ee; background:transparent;">
+      <sc-if value="{{ isKlein }}"><span style="position:absolute; inset:0; background:rgba(255,255,255,.15); border-radius:8px;"></span></sc-if>
+      <span style="position:relative; width:9px; height:9px; border-radius:50%; background:oklch(0.43 0.21 268); box-shadow:0 0 0 2px rgba(255,255,255,.12);"></span><span style="position:relative;">靛蓝</span>
+    </button>
+    <button onClick="{{ setGraphite }}" title="科技极简" style="position:relative; display:flex; align-items:center; gap:6px; border:none; cursor:pointer; padding:5px 9px; border-radius:8px; font-family:inherit; font-size:11.5px; font-weight:500; color:#dfe4ee; background:transparent;">
+      <sc-if value="{{ isGraphite }}"><span style="position:absolute; inset:0; background:rgba(255,255,255,.15); border-radius:8px;"></span></sc-if>
+      <span style="position:relative; width:9px; height:9px; border-radius:50%; background:oklch(0.62 0.14 198); box-shadow:0 0 0 2px rgba(255,255,255,.12);"></span><span style="position:relative;">极简</span>
+    </button>
+    <button onClick="{{ setWarm }}" title="温暖亲和" style="position:relative; display:flex; align-items:center; gap:6px; border:none; cursor:pointer; padding:5px 9px; border-radius:8px; font-family:inherit; font-size:11.5px; font-weight:500; color:#dfe4ee; background:transparent;">
+      <sc-if value="{{ isWarm }}"><span style="position:absolute; inset:0; background:rgba(255,255,255,.15); border-radius:8px;"></span></sc-if>
+      <span style="position:relative; width:9px; height:9px; border-radius:50%; background:oklch(0.58 0.14 46); box-shadow:0 0 0 2px rgba(255,255,255,.12);"></span><span style="position:relative;">温暖</span>
+    </button>
+    <button onClick="{{ setBlue }}" title="经典蓝（原图）" style="position:relative; display:flex; align-items:center; gap:6px; border:none; cursor:pointer; padding:5px 9px; border-radius:8px; font-family:inherit; font-size:11.5px; font-weight:500; color:#dfe4ee; background:transparent;">
+      <sc-if value="{{ isBlue }}"><span style="position:absolute; inset:0; background:rgba(255,255,255,.15); border-radius:8px;"></span></sc-if>
+      <span style="position:relative; width:9px; height:9px; border-radius:50%; background:oklch(0.49 0.22 264); box-shadow:0 0 0 2px rgba(255,255,255,.12);"></span><span style="position:relative;">经典</span>
+    </button>
+  </div>
+
+  <div style="position:fixed; top:16px; right:22px; z-index:60; display:flex; gap:8px;">
+    <div style="display:flex; gap:2px; padding:3px; background:rgba(20,26,38,.72); backdrop-filter:blur(8px); border-radius:10px; box-shadow:0 4px 14px rgba(0,0,0,.25);">
+      <button onClick="{{ setWB }}" style="display:flex; align-items:center; gap:5px; border:none; cursor:pointer; padding:6px 11px; border-radius:7px; font-family:inherit; font-size:12px; font-weight:500; color:#cdd3df; background:transparent;">
+        <sc-if value="{{ isWB }}"><span style="position:absolute"></span></sc-if>
+        <span class="om-ico" style="font-size:15px;">grid_view</span>工作台
+      </button>
+      <button onClick="{{ setChat }}" style="border:none; cursor:pointer; padding:6px 11px; border-radius:7px; font-family:inherit; font-size:12px; font-weight:500; color:#cdd3df; background:transparent; display:flex; align-items:center; gap:5px;">
+        <span class="om-ico" style="font-size:15px;">forum</span>对话
+      </button>
+    </div>
+    <button onClick="{{ toggleTheme }}" style="display:flex; align-items:center; justify-content:center; width:38px; border:none; cursor:pointer; border-radius:10px; color:#cdd3df; background:rgba(20,26,38,.72); backdrop-filter:blur(8px); box-shadow:0 4px 14px rgba(0,0,0,.25);">
+      <sc-if value="{{ isLight }}"><span class="om-ico" style="font-size:18px;">dark_mode</span></sc-if>
+      <sc-if value="{{ isDark }}"><span class="om-ico" style="font-size:18px;">light_mode</span></sc-if>
+    </button>
+  </div>
+
+  <div data-theme="{{ theme }}" data-dir="{{ dir }}" style="width:1460px; height:912px; flex-shrink:0; background:var(--bg); border-radius:14px; box-shadow:var(--shadow-lg); overflow:hidden; display:flex; flex-direction:column; color:var(--ink); border:1px solid rgba(0,0,0,.08); font-size:13px;">
+
+    <!-- ===== Title bar ===== -->
+    <div style="height:44px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:0 14px; background:var(--surface); border-bottom:1px solid var(--line);">
+      <div style="display:flex; align-items:center; gap:9px;">
+        <div style="position:relative; width:23px; height:23px; border-radius:7px; background:linear-gradient(140deg, var(--brand) 0%, var(--brand-ink) 100%); display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.22);">
+          <span class="om-ico" style="font-size:15px; color:#fff;">hub</span>
+          <span style="position:absolute; right:-3px; top:-3px; width:8px; height:8px; border-radius:50%; background:var(--accent); border:1.5px solid var(--surface);"></span>
+        </div>
+        <span style="font-weight:600; font-size:13.5px; letter-spacing:.2px;">数字员工</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:500; letter-spacing:.8px; color:var(--faint); border:1px solid var(--line-2); padding:1px 5px; border-radius:5px;">BOBAN&nbsp;STAFF</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:2px;">
+        <div style="width:34px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:7px; color:var(--muted);" style-hover="background:var(--surface-2);"><span class="om-ico" style="font-size:17px;">remove</span></div>
+        <div style="width:34px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:7px; color:var(--muted);" style-hover="background:var(--surface-2);"><span class="om-ico" style="font-size:14px;">crop_square</span></div>
+        <div style="width:34px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:7px; color:var(--muted);" style-hover="background:var(--neg); color:#fff;"><span class="om-ico" style="font-size:17px;">close</span></div>
+      </div>
+    </div>
+
+    <!-- ===== Middle: rail + screen ===== -->
+    <div style="flex:1; display:flex; min-height:0;">
+
+      <!-- Rail -->
+      <div style="width:56px; flex-shrink:0; background:var(--rail); display:flex; flex-direction:column; align-items:center; padding:11px 0 12px; gap:5px;">
+        <div style="width:36px; height:36px; border-radius:10px; background:linear-gradient(145deg, var(--brand) 0%, var(--brand-ink) 100%); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; font-size:14px; box-shadow:0 2px 6px rgba(0,0,0,.3); border:1.5px solid rgba(255,255,255,.14);">管</div>
+        <div style="width:24px; height:1px; background:rgba(255,255,255,.1); margin:6px 0;"></div>
+
+        <button onClick="{{ setWB }}" style="position:relative; width:42px; height:40px; border:none; background:transparent; border-radius:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--rail-text);">
+          <sc-if value="{{ isWB }}">
+            <span style="position:absolute; inset:0; background:rgba(255,255,255,.09); border-radius:11px;"></span>
+            <span style="position:absolute; left:-9px; top:10px; width:3px; height:20px; border-radius:2px; background:var(--accent);"></span>
+            <span class="om-ico" style="font-size:21px; position:relative; color:#fff; font-variation-settings:'FILL' 1;">grid_view</span>
+          </sc-if>
+          <sc-if value="{{ isChat }}"><span class="om-ico" style="font-size:21px;">grid_view</span></sc-if>
+        </button>
+
+        <button onClick="{{ setChat }}" style="position:relative; width:42px; height:40px; border:none; background:transparent; border-radius:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--rail-text);">
+          <sc-if value="{{ isChat }}">
+            <span style="position:absolute; inset:0; background:rgba(255,255,255,.09); border-radius:11px;"></span>
+            <span style="position:absolute; left:-9px; top:10px; width:3px; height:20px; border-radius:2px; background:var(--accent);"></span>
+            <span class="om-ico" style="font-size:21px; position:relative; color:#fff; font-variation-settings:'FILL' 1;">forum</span>
+          </sc-if>
+          <sc-if value="{{ isWB }}"><span class="om-ico" style="font-size:21px;">forum</span></sc-if>
+        </button>
+
+        <button style="width:42px; height:40px; border:none; background:transparent; border-radius:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--rail-text);"><span class="om-ico" style="font-size:21px;">group</span></button>
+        <button style="width:42px; height:40px; border:none; background:transparent; border-radius:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--rail-text);"><span class="om-ico" style="font-size:21px;">auto_awesome</span></button>
+
+        <div style="flex:1;"></div>
+        <button style="width:42px; height:40px; border:none; background:transparent; border-radius:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--rail-text);"><span class="om-ico" style="font-size:20px;">notifications</span></button>
+        <button style="width:42px; height:40px; border:none; background:transparent; border-radius:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--rail-text);"><span class="om-ico" style="font-size:20px;">settings</span></button>
+      </div>
+
+      <!-- ============ WORKBENCH ============ -->
+      <sc-if value="{{ isWB }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+        <!-- content header -->
+        <div style="height:46px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:0 18px; background:var(--surface); border-bottom:1px solid var(--line);">
+          <div style="display:flex; align-items:center; gap:11px;">
+            <span style="width:3px; height:15px; border-radius:2px; background:var(--accent);"></span>
+            <span style="font-size:15px; font-weight:600;">工作台</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:1.2px; color:var(--faint);">WORKBENCH</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:7px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted);">
+            <span style="display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:20px; background:var(--pos-soft); color:var(--pos); font-weight:500;"><span style="width:6px; height:6px; border-radius:50%; background:var(--pos); animation:om-pulse 2s infinite;"></span>实时同步</span>
+            <span style="color:var(--faint);">2026-06-25&nbsp;13:51</span>
+          </div>
+        </div>
+
+        <!-- 3 columns -->
+        <div class="om-sb" style="flex:1; min-height:0; overflow:hidden; display:flex; gap:14px; padding:16px;">
+
+          <!-- LEFT col -->
+          <div class="om-sb" style="width:300px; flex-shrink:0; overflow-y:auto; display:flex; flex-direction:column; gap:18px; padding-right:2px;">
+
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                <span style="width:3px; height:13px; border-radius:2px; background:var(--accent);"></span>
+                <span style="font-size:13px; font-weight:600;">考核指标</span>
+              </div>
+              <div style="background:var(--surface); border:1px solid var(--line); border-radius:13px; box-shadow:var(--shadow); overflow:hidden;">
+                <div style="padding:15px 15px 13px;">
+                  <div style="display:flex; align-items:flex-start; justify-content:space-between;">
+                    <div>
+                      <div style="font-size:15px; font-weight:600; letter-spacing:.2px;">系统管理员</div>
+                      <div style="font-size:11px; color:var(--faint); font-family:'IBM Plex Mono',monospace; margin-top:3px;">2026 年 6 月</div>
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-size:10.5px; color:var(--faint);">工号</div>
+                      <div style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--ink-2); margin-top:2px;">——</div>
+                    </div>
+                  </div>
+                  <div style="height:1px; background:var(--line); margin:14px 0;"></div>
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-size:11.5px; color:var(--muted); display:inline-flex; align-items:center; gap:4px;">月度绩效 <span class="om-ico" style="font-size:13px; color:var(--faint);">info</span></span>
+                    <span style="font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:600; letter-spacing:-.5px;">0.00</span>
+                  </div>
+                  <div style="height:7px; border-radius:6px; background:var(--surface-3); overflow:hidden;"><div style="width:4%; height:100%; border-radius:6px; background:linear-gradient(90deg, var(--brand), var(--brand-ink));"></div></div>
+                </div>
+                <div style="display:flex; border-top:1px solid var(--line); background:var(--surface-2);">
+                  <div style="flex:1; padding:12px 15px;">
+                    <div style="font-size:10.5px; color:var(--faint); margin-bottom:4px;">当月金额</div>
+                    <div style="font-family:'IBM Plex Mono',monospace; font-size:16px; font-weight:600;">¥0.00</div>
+                  </div>
+                  <div style="width:1px; background:var(--line);"></div>
+                  <div style="flex:1; padding:12px 15px; text-align:right;">
+                    <div style="font-size:10.5px; color:var(--faint); margin-bottom:4px;">排名</div>
+                    <div style="font-size:12px; color:var(--muted);">暂无排名 ——</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                <span style="width:3px; height:13px; border-radius:2px; background:var(--accent);"></span>
+                <span style="font-size:13px; font-weight:600;">日程</span>
+              </div>
+              <div style="background:var(--surface); border:1px solid var(--line); border-radius:13px; box-shadow:var(--shadow); padding:14px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                  <span style="font-size:12px; font-weight:600; color:var(--ink-2);">排班概览</span>
+                  <div style="display:flex; align-items:center; gap:4px;">
+                    <button style="width:24px; height:24px; border:1px solid var(--line); border-radius:7px; background:var(--surface); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--muted);"><span class="om-ico" style="font-size:15px;">chevron_left</span></button>
+                    <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; min-width:78px; text-align:center; color:var(--ink-2);">2026 / 06</span>
+                    <button style="width:24px; height:24px; border:1px solid var(--line); border-radius:7px; background:var(--surface); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--muted);"><span class="om-ico" style="font-size:15px;">chevron_right</span></button>
+                  </div>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:6px;">
+                  <sc-for list="{{ weekdays }}" as="w" hint-placeholder-count="7"><div style="text-align:center; font-size:10px; color:var(--faint); font-family:'IBM Plex Mono',monospace;">{{ w }}</div></sc-for>
+                </div>
+                {{ calendarGrid }}
+                <div style="display:flex; align-items:center; justify-content:flex-end; gap:11px; margin-top:11px; font-size:10px; color:var(--faint);">
+                  <span style="display:inline-flex; align-items:center; gap:4px;"><span style="width:9px; height:9px; border-radius:3px; background:var(--surface-3); border:1px solid var(--line);"></span>无</span>
+                  <span style="display:inline-flex; align-items:center; gap:4px;"><span style="width:9px; height:9px; border-radius:3px; background:color-mix(in oklch, var(--brand) 24%, transparent);"></span>少</span>
+                  <span style="display:inline-flex; align-items:center; gap:4px;"><span style="width:9px; height:9px; border-radius:3px; background:color-mix(in oklch, var(--brand) 50%, transparent);"></span>中</span>
+                  <span style="display:inline-flex; align-items:center; gap:4px;"><span style="width:9px; height:9px; border-radius:3px; background:var(--brand);"></span>多</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="width:3px; height:13px; border-radius:2px; background:var(--accent);"></span>
+                  <span style="font-size:13px; font-weight:600;">今日任务</span>
+                </div>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--faint);">6 项</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <sc-for list="{{ tasks }}" as="task" hint-placeholder-count="5">
+                  <div style="background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:11px 12px; box-shadow:var(--shadow);">
+                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+                      <span style="font-size:12.5px; font-weight:500; line-height:1.4; color:var(--ink);">{{ task.title }}</span>
+                      <sc-if value="{{ task.isWait }}"><span style="flex-shrink:0; display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:500; padding:3px 8px; border-radius:20px; background:var(--surface-3); color:var(--muted);"><span style="width:5px; height:5px; border-radius:50%; background:var(--muted);"></span>等待</span></sc-if>
+                      <sc-if value="{{ task.isSuccess }}"><span style="flex-shrink:0; display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:500; padding:3px 8px; border-radius:20px; background:var(--pos-soft); color:var(--pos);"><span style="width:5px; height:5px; border-radius:50%; background:var(--pos);"></span>成功</span></sc-if>
+                      <sc-if value="{{ task.isCancel }}"><span style="flex-shrink:0; display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:500; padding:3px 8px; border-radius:20px; background:var(--neg-soft); color:var(--neg);"><span class="om-ico" style="font-size:11px;">close</span>已取消</span></sc-if>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:7px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint);">
+                      <span style="color:var(--brand-ink); font-weight:500;">{{ task.plan }}</span>
+                      <span style="display:inline-flex; align-items:center; gap:3px;"><span class="om-ico" style="font-size:12px;">schedule</span>{{ task.time }}</span>
+                      <span>{{ task.dur }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- CENTER col -->
+          <div class="om-sb" style="flex:1; min-width:0; overflow-y:auto; display:flex; flex-direction:column; gap:14px; padding-right:2px;">
+
+            <div style="display:flex; align-items:center; gap:6px;">
+              <button style="display:flex; align-items:center; gap:6px; padding:7px 13px; border-radius:9px; border:1px solid var(--line); background:var(--surface); cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--ink); box-shadow:var(--shadow);"><span class="om-ico" style="font-size:16px; color:var(--brand);">dashboard</span>看板</button>
+              <button style="display:flex; align-items:center; gap:6px; padding:7px 13px; border-radius:9px; border:1px solid transparent; background:transparent; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500; color:var(--muted);"><span class="om-ico" style="font-size:16px;">html</span>永303_FA方案</button>
+            </div>
+
+            <div style="display:flex; gap:14px;">
+              <div style="flex:1; background:var(--surface); border:1px solid var(--line); border-radius:13px; box-shadow:var(--shadow); padding:15px 16px 8px;">
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:6px;">
+                  <div>
+                    <div style="font-size:13.5px; font-weight:600;">本周热搜热度趋势</div>
+                    <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint); margin-top:3px;">2026-06-22 ~ 06-25</div>
+                  </div>
+                  <span style="display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:500; font-family:'IBM Plex Mono',monospace; padding:3px 8px; border-radius:20px; background:var(--pos-soft); color:var(--pos);"><span class="om-ico" style="font-size:13px;">trending_up</span>+18%</span>
+                </div>
+                <div style="height:128px;">{{ trendChart }}</div>
+                <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--faint); padding:6px 4px 4px;">
+                  <span>06-23</span><span>06-24</span><span>06-25</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="background:var(--surface); border:1px solid var(--line); border-radius:13px; box-shadow:var(--shadow); padding:15px 16px;">
+              <div style="margin-bottom:14px;">
+                <div style="font-size:13.5px; font-weight:600;">今日任务完成情况</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint); margin-top:3px;">2026-06-25</div>
+              </div>
+              <div style="display:flex; gap:14px;">
+                <div style="flex:1; border:1px solid var(--line); border-radius:11px; padding:14px 15px; background:var(--surface-2); position:relative; overflow:hidden;">
+                  <span style="position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--brand);"></span>
+                  <div style="font-size:11.5px; color:var(--muted); margin-bottom:9px;">已完成任务</div>
+                  <div style="display:flex; align-items:flex-end; gap:9px;">
+                    <span style="font-family:'IBM Plex Mono',monospace; font-size:34px; font-weight:600; line-height:.9; letter-spacing:-1px;">8</span>
+                    <span style="display:inline-flex; align-items:center; gap:3px; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; padding:3px 7px; border-radius:6px; background:var(--pos-soft); color:var(--pos); margin-bottom:4px;"><span class="om-ico" style="font-size:13px;">north_east</span>+2</span>
+                  </div>
+                </div>
+                <div style="flex:1; border:1px solid var(--line); border-radius:11px; padding:14px 15px; background:var(--surface-2); position:relative; overflow:hidden;">
+                  <span style="position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent);"></span>
+                  <div style="font-size:11.5px; color:var(--muted); margin-bottom:9px;">进行中任务</div>
+                  <div style="display:flex; align-items:flex-end; gap:9px;">
+                    <span style="font-family:'IBM Plex Mono',monospace; font-size:34px; font-weight:600; line-height:.9; letter-spacing:-1px;">2</span>
+                    <span style="display:inline-flex; align-items:center; gap:3px; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; padding:3px 7px; border-radius:6px; background:var(--neg-soft); color:var(--neg); margin-bottom:4px;"><span class="om-ico" style="font-size:13px;">south_east</span>-1</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="background:var(--surface); border:1px solid var(--line); border-radius:13px; box-shadow:var(--shadow); overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:15px 16px 12px;">
+                <div>
+                  <div style="font-size:13.5px; font-weight:600; display:flex; align-items:center; gap:7px;">今日抖音热搜 <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; letter-spacing:.5px; color:var(--accent-ink); background:var(--accent-soft); padding:1px 6px; border-radius:5px;">TOP 10</span></div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint); margin-top:4px;">2026-06-25</div>
+                </div>
+                <span class="om-ico" style="font-size:18px; color:var(--faint);">open_in_full</span>
+              </div>
+              <div style="display:grid; grid-template-columns:54px 1fr 90px; padding:7px 16px; background:var(--surface-2); border-top:1px solid var(--line); border-bottom:1px solid var(--line); font-size:10.5px; color:var(--faint); font-family:'IBM Plex Mono',monospace; letter-spacing:.5px;">
+                <span>排名</span><span>话题名称</span><span style="text-align:right;">热度</span>
+              </div>
+              <sc-for list="{{ top10 }}" as="row" hint-placeholder-count="10">
+                <div style="display:grid; grid-template-columns:54px 1fr 90px; align-items:center; padding:9px 16px; border-bottom:1px solid var(--line);">
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; color:{{ row.rankColor }}; background:{{ row.rankBg }};">{{ row.rank }}</span>
+                  <span style="font-size:12.5px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ row.title }}</span>
+                  <span style="text-align:right; font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:500; color:var(--ink-2);">{{ row.heat }}<span style="color:var(--faint); font-size:10px;"> 万</span></span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:flex; gap:14px;">
+              <div style="flex:1; background:var(--surface); border:1px solid var(--line); border-radius:13px; box-shadow:var(--shadow); padding:15px 16px 8px;">
+                <div style="font-size:12.5px; font-weight:600;">今日抖音热搜热度曲线</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--faint); margin-top:3px; margin-bottom:8px;">2026-06-25 · TOP10</div>
+                <div style="height:104px;">{{ declineChart }}</div>
+              </div>
+              <div style="flex:1; background:var(--surface); border:1px solid var(--line); border-radius:13px; box-shadow:var(--shadow); padding:15px 16px 8px;">
+                <div style="font-size:12.5px; font-weight:600;">今日抖音热搜热度分布</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--faint); margin-top:3px; margin-bottom:8px;">2026-06-25 · TOP10</div>
+                <div style="height:104px;">{{ barChart }}</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- RIGHT col: chat panel -->
+          <div style="width:352px; flex-shrink:0; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--line); border-radius:13px; box-shadow:var(--shadow); overflow:hidden;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--line);">
+              <div style="display:flex; align-items:center; gap:9px;">
+                <div style="width:30px; height:30px; border-radius:9px; background:linear-gradient(145deg, var(--brand), var(--brand-ink)); display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.2);"><span class="om-ico" style="font-size:17px; color:#fff;">smart_toy</span></div>
+                <div>
+                  <div style="font-size:13px; font-weight:600;">总管助手</div>
+                  <div style="font-size:10.5px; color:var(--faint); margin-top:1px;">创建测试文件</div>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:1px; color:var(--muted);">
+                <span class="om-ico" style="font-size:18px; padding:5px;">history</span>
+                <span class="om-ico" style="font-size:18px; padding:5px;">folder_open</span>
+                <span class="om-ico" style="font-size:18px; padding:5px;">more_horiz</span>
+              </div>
+            </div>
+
+            <div class="om-sb" style="flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:14px; background:var(--surface-2);">
+              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:10.5px; color:var(--faint);">系统管理员</span>
+                  <div style="width:20px; height:20px; border-radius:6px; background:var(--brand); color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600;">管</div>
+                </div>
+                <div style="background:var(--brand); color:#fff; padding:9px 13px; border-radius:13px 13px 4px 13px; font-size:12.5px; max-width:80%;">支持哪些小组件</div>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:7px;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <div style="width:20px; height:20px; border-radius:6px; background:linear-gradient(145deg, var(--brand), var(--brand-ink)); display:flex; align-items:center; justify-content:center;"><span class="om-ico" style="font-size:12px; color:#fff;">smart_toy</span></div>
+                  <span style="font-size:10.5px; color:var(--faint);">总管助手</span>
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--faint); margin-left:auto;">13:41</span>
+                </div>
+                <div style="font-size:12.5px; color:var(--ink-2); line-height:1.5;">目前支持的组件类型如下：</div>
+                <div style="border:1px solid var(--line); border-radius:11px; overflow:hidden; background:var(--surface);">
+                  <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:6px 10px; border-bottom:1px solid var(--line); color:var(--faint);">
+                    <span class="om-ico" style="font-size:14px;">content_copy</span><span class="om-ico" style="font-size:14px;">download</span><span class="om-ico" style="font-size:14px;">open_in_full</span>
+                  </div>
+                  <div style="display:grid; grid-template-columns:64px 56px 1fr; padding:7px 11px; background:var(--surface-2); border-bottom:1px solid var(--line); font-size:10px; color:var(--faint); font-family:'IBM Plex Mono',monospace; letter-spacing:.5px;">
+                    <span>类型</span><span>说明</span><span>适用场景</span>
+                  </div>
+                  <sc-for list="{{ compTypes }}" as="c" hint-placeholder-count="7">
+                    <div style="display:grid; grid-template-columns:64px 56px 1fr; align-items:center; padding:8px 11px; border-bottom:1px solid var(--line);">
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; color:var(--brand-ink);">{{ c.type }}</span>
+                      <span style="font-size:11px; color:var(--ink-2);">{{ c.name }}</span>
+                      <span style="font-size:10.5px; color:var(--muted); line-height:1.35;">{{ c.scene }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-size:11.5px; color:var(--faint); font-style:italic;">目前没有饼图类型。</div>
+              </div>
+
+              <div>
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:7px;">
+                  <span style="font-size:11px; font-weight:600; color:var(--ink-2);">团队交付物</span>
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#fff; background:var(--accent-ink); padding:0 6px; border-radius:9px;">1</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:11px; padding:11px 12px; border:1px solid var(--line); border-radius:11px; background:var(--surface);">
+                  <div style="width:32px; height:32px; border-radius:8px; background:var(--accent-soft); display:flex; align-items:center; justify-content:center;"><span class="om-ico" style="font-size:18px; color:var(--accent-ink);">description</span></div>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-size:12px; font-weight:500; font-family:'IBM Plex Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">抖音热搜榜单.md</div>
+                    <div style="font-size:10px; color:var(--faint); margin-top:2px; display:flex; gap:7px;"><span style="color:var(--pos);">● 已创建</span><span>913 字符</span></div>
+                  </div>
+                  <span class="om-ico" style="font-size:18px; color:var(--muted);">download</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="padding:11px 12px; border-top:1px solid var(--line); background:var(--surface);">
+              <div style="border:1px solid var(--line); border-radius:12px; background:var(--surface-2); padding:9px 11px;">
+                <div style="font-size:12px; color:var(--faint); margin-bottom:9px;">需要新帮手？前往招聘页添加数字员工</div>
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                  <div style="display:flex; align-items:center; gap:8px; color:var(--muted);">
+                    <span class="om-ico" style="font-size:18px;">add</span>
+                    <span style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:3px 8px; border:1px solid var(--line); border-radius:7px; background:var(--surface);"><span class="om-ico" style="font-size:13px;">folder</span>目录 · 询问</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="om-ico" style="font-size:18px; color:var(--muted);">mic</span>
+                    <button style="width:30px; height:30px; border:none; border-radius:9px; background:var(--brand); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer;"><span class="om-ico" style="font-size:17px;">arrow_upward</span></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ============ CHAT / TASK EXECUTION ============ -->
+      <sc-if value="{{ isChat }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1; display:flex; min-width:0;">
+
+        <!-- conversation sidebar -->
+        <div style="width:252px; flex-shrink:0; background:var(--surface); border-right:1px solid var(--line); display:flex; flex-direction:column;">
+          <div style="padding:12px 13px; border-bottom:1px solid var(--line);">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border:1px solid var(--line); border-radius:10px; background:var(--surface-2); cursor:pointer;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="om-ico" style="font-size:17px; color:var(--brand);">folder_open</span>
+                <span style="font-size:12.5px; font-weight:600;">系统管理员的工作空间</span>
+              </div>
+              <span class="om-ico" style="font-size:18px; color:var(--muted);">expand_more</span>
+            </div>
+          </div>
+          <div style="padding:11px 13px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="flex:1; display:flex; align-items:center; gap:7px; padding:7px 10px; border:1px solid var(--line); border-radius:9px; background:var(--surface-2);">
+                <span class="om-ico" style="font-size:15px; color:var(--faint);">search</span>
+                <span style="font-size:12px; color:var(--faint);">搜索对话…</span>
+              </div>
+              <button style="width:32px; height:32px; border:1px solid var(--line); border-radius:9px; background:var(--surface); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--brand);"><span class="om-ico" style="font-size:18px;">add</span></button>
+            </div>
+          </div>
+          <div class="om-sb" style="flex:1; overflow-y:auto; padding:0 9px;">
+            <sc-for list="{{ convs }}" as="cv" hint-placeholder-count="3">
+              <sc-if value="{{ cv.active }}">
+                <div style="display:flex; align-items:center; gap:9px; padding:10px 11px; border-radius:10px; margin-bottom:3px; background:var(--brand-soft); position:relative;">
+                  <span style="position:absolute; left:0; top:9px; bottom:9px; width:3px; border-radius:2px; background:var(--brand);"></span>
+                  <div style="width:26px; height:26px; border-radius:7px; background:linear-gradient(145deg, var(--brand), var(--brand-ink)); display:flex; align-items:center; justify-content:center;"><span class="om-ico" style="font-size:15px; color:#fff;">smart_toy</span></div>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-size:12.5px; font-weight:600; color:var(--brand-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ cv.title }}</div>
+                    <div style="font-size:10px; color:var(--brand-ink); opacity:.7; margin-top:2px; font-family:'IBM Plex Mono',monospace;">{{ cv.time }}</div>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ cv.inactive }}">
+                <div style="display:flex; align-items:center; gap:9px; padding:10px 11px; border-radius:10px; margin-bottom:3px;">
+                  <div style="width:26px; height:26px; border-radius:7px; background:var(--surface-3); display:flex; align-items:center; justify-content:center;"><span class="om-ico" style="font-size:15px; color:var(--muted);">chat_bubble</span></div>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-size:12.5px; font-weight:500; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ cv.title }}</div>
+                    <div style="font-size:10px; color:var(--faint); margin-top:2px; font-family:'IBM Plex Mono',monospace;">{{ cv.time }}</div>
+                  </div>
+                </div>
+              </sc-if>
+            </sc-for>
+            <div style="display:flex; align-items:center; gap:6px; padding:9px 11px; margin-top:6px; font-size:11.5px; color:var(--muted);">
+              <span class="om-ico" style="font-size:15px;">chevron_right</span>定时任务 <span style="font-family:'IBM Plex Mono',monospace; color:var(--faint);">(3)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- thread -->
+        <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+          <div style="height:58px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:0 22px; background:var(--surface); border-bottom:1px solid var(--line);">
+            <div style="display:flex; align-items:center; gap:11px;">
+              <div style="position:relative; width:34px; height:34px; border-radius:9px; background:linear-gradient(145deg, var(--brand), var(--brand-ink)); display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.2);">
+                <span class="om-ico" style="font-size:19px; color:#fff;">smart_toy</span>
+                <span style="position:absolute; right:-2px; bottom:-2px; width:9px; height:9px; border-radius:50%; background:var(--pos); border:2px solid var(--surface);"></span>
+              </div>
+              <div>
+                <div style="font-size:14px; font-weight:600;">永303 FA仿真分析</div>
+                <div style="font-size:11px; color:var(--faint); margin-top:1px;">分发任务 · 查看员工执行结果</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:3px; color:var(--muted);">
+              <span class="om-ico" style="font-size:19px; padding:6px;">notifications</span>
+              <span class="om-ico" style="font-size:19px; padding:6px;">folder_open</span>
+              <span class="om-ico" style="font-size:19px; padding:6px;">more_horiz</span>
+            </div>
+          </div>
+
+          <div class="om-sb" style="flex:1; overflow-y:auto; background:var(--bg);">
+            <div style="max-width:880px; margin:0 auto; padding:26px 24px 30px; display:flex; flex-direction:column; gap:20px;">
+
+              <!-- assistant result -->
+              <div style="display:flex; gap:11px;">
+                <div style="width:30px; height:30px; flex-shrink:0; border-radius:8px; background:linear-gradient(145deg, var(--brand), var(--brand-ink)); display:flex; align-items:center; justify-content:center;"><span class="om-ico" style="font-size:17px; color:#fff;">smart_toy</span></div>
+                <div style="flex:1; min-width:0;">
+                  <div style="background:var(--surface); border:1px solid var(--line); border-radius:13px; box-shadow:var(--shadow); overflow:hidden;">
+                    <div style="display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line);">
+                      <span style="width:3px; height:14px; border-radius:2px; background:var(--accent);"></span>
+                      <span style="font-size:13px; font-weight:600;">FA 故障隔离方案对比</span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--faint); margin-left:auto;">5 个方案</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1.3fr 1fr; padding:9px 16px; background:var(--surface-2); border-bottom:1px solid var(--line); font-size:10.5px; color:var(--faint); font-family:'IBM Plex Mono',monospace; letter-spacing:.5px;">
+                      <span>方案</span><span>跳闸开关</span><span style="text-align:right;">失电负荷</span>
+                    </div>
+                    <sc-for list="{{ faPlans }}" as="p" hint-placeholder-count="5">
+                      <div style="display:grid; grid-template-columns:1fr 1.3fr 1fr; align-items:center; padding:11px 16px; border-bottom:1px solid var(--line); background:{{ p.rowBg }};">
+                        <span style="font-size:12.5px; font-weight:500; display:flex; align-items:center; gap:7px;">{{ p.name }}<sc-if value="{{ p.best }}"><span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; font-weight:600; color:var(--accent-ink); background:var(--accent-soft); padding:1px 6px; border-radius:5px;">推荐</span></sc-if></span>
+                        <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-2);">{{ p.sw }}</span>
+                        <span style="text-align:right; font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600; color:{{ p.loadColor }};">{{ p.load }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:9px; margin-top:11px; flex-wrap:wrap;">
+                    <span style="font-size:11.5px; color:var(--muted);">交付物：</span>
+                    <span style="display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface); font-family:'IBM Plex Mono',monospace; font-size:11px;"><span class="om-ico" style="font-size:14px; color:var(--brand);">html</span>永303_FA方案.html</span>
+                    <span style="display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface); font-family:'IBM Plex Mono',monospace; font-size:11px;"><span class="om-ico" style="font-size:14px; color:var(--accent-ink);">data_object</span>fa_trace_20260625.json</span>
+                  </div>
+
+                  <div style="margin-top:16px; border:1px solid var(--neg-soft); border-radius:12px; overflow:hidden;">
+                    <div style="display:flex; align-items:center; gap:8px; padding:11px 14px; background:var(--neg-soft);">
+                      <span class="om-ico" style="font-size:17px; color:var(--neg);">cancel</span>
+                      <span style="font-size:12.5px; font-weight:600; color:var(--neg);">飞书查询研发部开发任务</span>
+                      <span style="font-size:11px; color:var(--neg); opacity:.8;">已取消</span>
+                    </div>
+                    <div style="padding:12px 14px; background:var(--surface);">
+                      <div style="font-size:12.5px; color:var(--ink-2); line-height:1.55;">任务被系统中止，未能完成查询和添加到工作台。</div>
+                      <div style="font-size:12.5px; color:var(--ink-2); line-height:1.6; margin-top:9px;"><span style="font-weight:600; color:var(--brand-ink);">建议：</span>如需重新查询飞书研发部开发任务，可以再派一次，我先检查一下飞书助手的 <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; background:var(--surface-3); padding:1px 5px; border-radius:4px;">lark-cli</span> 环境是否就绪，避免再次取消。要重新试试吗？</div>
+                    </div>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:6px; margin-top:9px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint);"><span class="om-ico" style="font-size:13px;">content_copy</span>耗时 57 秒</div>
+                </div>
+              </div>
+
+              <!-- user -->
+              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+                <div style="display:flex; align-items:center; gap:7px;">
+                  <span style="font-size:11px; color:var(--faint);">系统管理员</span>
+                  <div style="width:24px; height:24px; border-radius:7px; background:var(--brand); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600;">管</div>
+                </div>
+                <div style="background:var(--brand); color:#fff; padding:10px 15px; border-radius:14px 14px 4px 14px; font-size:13px; font-weight:500;">好</div>
+              </div>
+
+              <!-- assistant plan -->
+              <div style="display:flex; gap:11px;">
+                <div style="width:30px; height:30px; flex-shrink:0; border-radius:8px; background:linear-gradient(145deg, var(--brand), var(--brand-ink)); display:flex; align-items:center; justify-content:center;"><span class="om-ico" style="font-size:17px; color:#fff;">smart_toy</span></div>
+                <div style="flex:1; min-width:0;">
+                  <div style="display:flex; align-items:center; gap:7px; margin-bottom:8px;">
+                    <span style="font-size:12px; font-weight:600;">总管助手</span>
+                    <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--faint);">13:51</span>
+                  </div>
+                  <div style="background:var(--surface); border:1px solid var(--line); border-radius:13px; box-shadow:var(--shadow); overflow:hidden;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:13px 16px;">
+                      <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:28px; height:28px; border-radius:8px; background:var(--brand-soft); display:flex; align-items:center; justify-content:center;"><span class="om-ico" style="font-size:16px; color:var(--brand-ink);">account_tree</span></div>
+                        <div>
+                          <div style="font-size:13px; font-weight:600;">编排计划已生成</div>
+                          <div style="font-size:11px; color:var(--faint); margin-top:2px;">飞书查询研发部开发任务并添加到工作台</div>
+                        </div>
+                      </div>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint);">1 项</span>
+                    </div>
+                    <div style="padding:0 16px 7px;">
+                      <span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; color:var(--pos);"><span class="om-ico" style="font-size:15px;">check_circle</span>已完成</span>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 16px; margin:0 12px 12px; border-radius:10px; background:var(--pos-soft);">
+                      <span style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-2);"><span style="width:6px; height:6px; border-radius:50%; background:var(--pos);"></span>查询研发部开发任务并添加到工作台</span>
+                      <span style="display:flex; align-items:center; gap:9px; font-size:11px;">
+                        <span style="color:var(--muted);">飞书助手</span>
+                        <span style="color:var(--brand-ink); font-weight:500;">查看</span>
+                        <span style="color:var(--brand-ink); font-weight:500;">改改</span>
+                        <span style="color:var(--pos); font-weight:600;">成功</span>
+                      </span>
+                    </div>
+                  </div>
+                  <div style="font-size:12.5px; color:var(--ink-2); line-height:1.6; margin-top:12px;">已生成编排计划 <span style="font-family:'IBM Plex Mono',monospace; color:var(--brand-ink); font-weight:600;">#18</span>，再次派给 <span style="font-weight:600;">飞书助手</span> 查询研发部开发任务。</div>
+                  <div style="font-size:12.5px; color:var(--ink-2); line-height:1.6; margin-top:7px;">请确认是否执行？回复「<span style="font-weight:600; color:var(--brand-ink);">确认</span>」或点击卡片上的确认按钮即可启动。</div>
+                  <div style="display:inline-flex; align-items:center; gap:7px; margin-top:13px; padding:7px 13px; border:1px solid var(--line); border-radius:9px; background:var(--surface); font-size:11.5px; color:var(--muted);"><span class="om-ico" style="font-size:15px; color:var(--accent-ink); animation:om-pulse 1.4s infinite;">progress_activity</span>1 个任务在执行</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- input -->
+          <div style="flex-shrink:0; padding:14px 24px 18px; background:var(--bg);">
+            <div style="max-width:880px; margin:0 auto; border:1px solid var(--line); border-radius:14px; background:var(--surface); box-shadow:var(--shadow); padding:12px 14px;">
+              <div style="font-size:12.5px; color:var(--faint); margin-bottom:11px;">不熟悉操作？查看使用指南，快速上手常用功能</div>
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="om-ico" style="font-size:19px; color:var(--muted);">add</span>
+                  <span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; padding:4px 9px; border:1px solid var(--line); border-radius:8px; background:var(--surface-2); color:var(--muted);"><span class="om-ico" style="font-size:14px;">folder</span>目录 · 询问</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="om-ico" style="font-size:19px; color:var(--muted);">mic</span>
+                  <button style="width:34px; height:34px; border:none; border-radius:10px; background:var(--brand); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer;"><span class="om-ico" style="font-size:19px;">arrow_upward</span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+    </div>
+
+    <!-- ===== Status bar ===== -->
+    <div style="height:27px; flex-shrink:0; display:flex; align-items:center; gap:13px; padding:0 16px; background:var(--surface); border-top:1px solid var(--line); font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted);">
+      <span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:6px; height:6px; border-radius:50%; background:var(--pos); animation:om-pulse 2s infinite;"></span>在线</span>
+      <span style="color:var(--line-2);">·</span><span>并行</span>
+      <span style="color:var(--line-2);">·</span><span>Agent 空闲</span>
+      <span style="margin-left:auto; color:var(--faint);">v0.1.22</span>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1460,&quot;height&quot;:912},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;},&quot;screen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;workbench&quot;,&quot;chat&quot;],&quot;default&quot;:&quot;workbench&quot;,&quot;tsType&quot;:&quot;'workbench'|'chat'&quot;},&quot;dir&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;petrol&quot;,&quot;klein&quot;,&quot;graphite&quot;,&quot;warm&quot;,&quot;blue&quot;],&quot;default&quot;:&quot;petrol&quot;,&quot;tsType&quot;:&quot;'petrol'|'klein'|'graphite'|'warm'|'blue'&quot;}}">
+class Component extends DCLogic {
+  state = { screen: null, theme: null, dir: null };
+
+  charts() {
+    const grad = (id) => React.createElement('linearGradient', { id, x1: 0, y1: 0, x2: 0, y2: 1 },
+      React.createElement('stop', { offset: '0%', style: { stopColor: 'var(--brand)', stopOpacity: 0.2 } }),
+      React.createElement('stop', { offset: '100%', style: { stopColor: 'var(--brand)', stopOpacity: 0 } })
+    );
+    const lineChart = (id, lineD, areaD) => React.createElement('svg',
+      { viewBox: '0 0 620 150', preserveAspectRatio: 'none', style: { width: '100%', height: '100%', display: 'block' } },
+      React.createElement('defs', null, grad(id)),
+      React.createElement('path', { d: areaD, style: { fill: 'url(#' + id + ')' } }),
+      React.createElement('path', { d: lineD, vectorEffect: 'non-scaling-stroke', style: { fill: 'none', stroke: 'var(--brand)', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round' } })
+    );
+    const trendLine = 'M0 88 C 90 86, 150 104, 232 104 C 320 104, 384 66, 470 50 C 540 38, 582 32, 620 28';
+    const decLine = 'M0 32 C 80 32, 132 40, 200 58 C 252 71, 292 100, 362 108 C 432 114, 520 116, 620 117';
+    const close = (d) => d + ' L 620 150 L 0 150 Z';
+
+    const vals = [1215, 1212, 1201, 1180, 1092, 1089, 962, 958, 956, 943];
+    const mx = 1245, mn = 880;
+    const bars = vals.map((v, i) => {
+      const h = 16 + (v - mn) / (mx - mn) * 122;
+      return React.createElement('rect', { key: i, x: i * 62 + 13, y: 150 - h, width: 36, height: h, rx: 3,
+        style: { fill: 'var(--brand)', fillOpacity: 0.92 - i * 0.05 } });
+    });
+    const barChart = React.createElement('svg',
+      { viewBox: '0 0 620 150', preserveAspectRatio: 'none', style: { width: '100%', height: '100%', display: 'block' } }, bars);
+
+    return {
+      trendChart: lineChart('omg1', trendLine, close(trendLine)),
+      declineChart: lineChart('omg2', decLine, close(decLine)),
+      barChart
+    };
+  }
+
+  calendar() {
+    const lv = { 2: 1, 3: 1, 16: 1, 17: 2, 18: 1, 19: 2, 20: 3, 21: 2, 22: 3, 23: 2, 24: 2, 25: 3 };
+    const pct = [0, 24, 50, 86];
+    const cells = [];
+    for (let d = 1; d <= 30; d++) {
+      const l = lv[d] || 0;
+      const today = d === 25;
+      const bg = l === 0 ? 'var(--surface-3)' : 'color-mix(in oklch, var(--brand) ' + pct[l] + '%, transparent)';
+      cells.push(React.createElement('div', { key: d, style: {
+        height: '27px', borderRadius: '6px', background: bg,
+        border: today ? '1.5px solid var(--accent)' : (l === 0 ? '1px solid var(--line)' : '1px solid transparent'),
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '10.5px', fontFamily: "'IBM Plex Mono', monospace",
+        color: l >= 3 ? '#fff' : (l === 2 ? 'var(--ink)' : 'var(--muted)'),
+        fontWeight: today ? 700 : 400
+      } }, d));
+    }
+    return React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: '4px' } }, cells);
+  }
+
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const screen = this.state.screen ?? this.props.screen ?? 'workbench';
+    const dir = this.state.dir ?? this.props.dir ?? 'petrol';
+
+    const top10 = [
+      { rank: 1, title: '当我把旅行做成票根', heat: '1215' },
+      { rank: 2, title: '安徽高考分数线公布', heat: '1212' },
+      { rank: 3, title: '国产大飞机C919首飞延安', heat: '1201' },
+      { rank: 4, title: '南非1:0韩国', heat: '1180' },
+      { rank: 5, title: '我的高考出分时刻', heat: '1092' },
+      { rank: 6, title: '第一视角查分vlog', heat: '1089' },
+      { rank: 7, title: '高考出分名场面', heat: '962' },
+      { rank: 8, title: '晒晒我的高考成绩', heat: '958' },
+      { rank: 9, title: '高考后的独白', heat: '956' },
+      { rank: 10, title: '委内瑞拉1分钟2次7级以上强震', heat: '943' }
+    ].map(r => ({
+      ...r,
+      rankColor: r.rank <= 3 ? 'var(--accent-ink)' : 'var(--faint)',
+      rankBg: r.rank <= 3 ? 'var(--accent-soft)' : 'transparent'
+    }));
+
+    const tasks = [
+      { title: '定时提醒：📝 该写周报啦！', plan: '编排计划', time: '16:00', dur: '', status: 'wait' },
+      { title: '每天晚上8点提醒看世界杯', plan: '编排计划 · 第3轮', time: '20:00', dur: '', status: 'wait' },
+      { title: '飞书查询研发部开发任务并添加到工作台', plan: '编排计划 · 第1轮', time: '13:51', dur: '13m18s', status: 'success' },
+      { title: '查询今日抖音热搜并固定到工作台', plan: '编排计划 · 第1轮', time: '13:04', dur: '55.6s', status: 'success' },
+      { title: '飞书查询研发部开发任务并添加到工作台', plan: '编排计划 · 第1轮', time: '11:27', dur: '7m43s', status: 'cancel' },
+      { title: '永303 FA故障仿真分析', plan: '编排计划 · 第1轮', time: '10:57', dur: '1m26s', status: 'success' }
+    ].map(t => ({ ...t, isWait: t.status === 'wait', isSuccess: t.status === 'success', isCancel: t.status === 'cancel' }));
+
+    const compTypes = [
+      { type: 'kpi', name: '关键指标', scene: '展示数值、单位、变化趋势（↑↓），如完成数、增长率' },
+      { type: 'line', name: '折线图', scene: '展示随时间变化的趋势，如热度走势' },
+      { type: 'bar', name: '柱状图', scene: '对比各项目数值大小，如排名对比' },
+      { type: 'area', name: '面积图', scene: '展示累积趋势，如流量累积' },
+      { type: 'table', name: '表格', scene: '展示结构化数据，如榜单、清单' },
+      { type: 'progress', name: '进度条', scene: '展示完成度百分比，如任务进度' },
+      { type: 'list', name: '列表', scene: '展示待办/状态清单，如任务列表' }
+    ];
+
+    const faPlans = [
+      { name: '方案1', sw: '永30301FTU', load: '6', best: true },
+      { name: '方案2', sw: '永30303FTU', load: '2' },
+      { name: '方案3', sw: '花1905FTU', load: '1' },
+      { name: '方案4', sw: '永30302FTU', load: '2' },
+      { name: '方案5', sw: '永30304FTU', load: '1' }
+    ].map(p => ({
+      ...p,
+      rowBg: p.best ? 'var(--brand-soft)' : 'transparent',
+      loadColor: p.best ? 'var(--accent-ink)' : 'var(--ink)'
+    }));
+
+    const convs = [
+      { title: '永303 FA仿真分析', time: '不到 1 分钟前', active: true },
+      { title: '创建测试文件', time: '43 分钟前', active: false },
+      { title: '两分钟提醒吃饭', time: '2 天前', active: false }
+    ].map(c => ({ ...c, inactive: !c.active }));
+
+    const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+
+    return {
+      theme, dir,
+      isLight: theme === 'light', isDark: theme === 'dark',
+      isWB: screen === 'workbench', isChat: screen === 'chat',
+      isPetrol: dir === 'petrol', isKlein: dir === 'klein', isGraphite: dir === 'graphite', isWarm: dir === 'warm', isBlue: dir === 'blue',
+      setWB: () => this.setState({ screen: 'workbench' }),
+      setChat: () => this.setState({ screen: 'chat' }),
+      setPetrol: () => this.setState({ dir: 'petrol' }),
+      setKlein: () => this.setState({ dir: 'klein' }),
+      setGraphite: () => this.setState({ dir: 'graphite' }),
+      setWarm: () => this.setState({ dir: 'warm' }),
+      setBlue: () => this.setState({ dir: 'blue' }),
+      toggleTheme: () => this.setState({ theme: theme === 'light' ? 'dark' : 'light' }),
+      top10, tasks, compTypes, faPlans, convs, weekdays,
+      calendarGrid: this.calendar(),
+      ...this.charts()
+    };
+  }
+}
+</script>
+</body>
+</html>

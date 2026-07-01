@@ -1,0 +1,96 @@
+// @see https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.boban-staff-next.app",
+  "asar": true,
+  "productName": "BobanStaff",
+  "directories": {
+    "output": "release"
+  },
+  "publish": {
+    "provider": "generic",
+    "url": "http://10.172.246.179:5002"
+  },
+  "files": [
+    "dist",
+    "dist-electron",
+    "build"
+  ],
+  "extraResources": [
+    {
+      // 品牌资源包（运行时可热替换）：default/ 兜底 + 各品牌示例。
+      // 部署时 deploy.sh 可把选定品牌拷到 resources/branding/active/。
+      "from": "branding",
+      "to": "branding"
+    },
+    {
+      "from": "py-server",
+      "to": "py-server",
+      "filter": [
+        "**/*",
+        "!data/**",
+        "!logs/**",
+        "!tmp/**"
+      ]
+    },
+    {
+      // browserctl CLI（resources/browserctl），用 Electron 自带 node 运行
+      "from": "../../packages/browserctl",
+      "to": "browserctl",
+      "filter": [
+        "src/**",
+        "bin/**",
+        "package.json"
+      ]
+    }
+  ],
+  "afterPack": "afterPack.cjs",
+  "mac": {
+    "target": [
+      "dmg",
+      "zip"
+    ],
+    "artifactName": "BobanStaffNext-Offline-Mac-${version}-Installer.${ext}"
+  },
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "BobanStaffNext-Offline-Windows-${version}-Setup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "deb",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ],
+    "category": "Office",
+    "artifactName": "BobanStaff-Offline-Linux-arm64-${version}.${ext}"
+  },
+  // 包改名 digital-employee → boban-staff（dpkg 包名取自 package.json 的 name）。两包
+  // 文件都落在 /opt/BobanStaff/*，老机器升级时若不声明替换关系，dpkg -i 会与已装的
+  // digital-employee 撞「文件覆盖」而失败。声明 Conflicts/Replaces/Provides 让 dpkg 装
+  // 新包时自动卸旧包，无需每台机器现场改 deploy.sh。见 scripts/activation/deploy.sh.boban-rename.patch.md
+  "deb": {
+    "fpm": [
+      "--conflicts", "digital-employee",
+      "--replaces", "digital-employee",
+      "--provides", "digital-employee"
+    ]
+  }
+}

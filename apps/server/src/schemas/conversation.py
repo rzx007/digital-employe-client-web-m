@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_serializer, field_validator
 from pydantic_core.core_schema import NoneSchema
 
 
-TargetType = Literal["employee", "group", "curator"]
+TargetType = Literal["employee", "curator"]
 MessageRole = Literal["user", "assistant", "tool"]
 
 
@@ -17,15 +17,30 @@ class ConversationCreate(BaseModel):
     title: str | None = Field(default=NoneSchema)
 
 
+class ConversationUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
+class ConversationTitleSuggestRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=12000)
+
+
+class ConversationTitleSuggestResponse(BaseModel):
+    title: str
+    source: Literal["rule", "llm", "fallback"]
+
+
 class ConversationRead(BaseModel):
     id: int
     workspace_id: int
+    user_id: str | None = None
     target_type: TargetType
     target_id: int
     title: str | None
     status: str = "idle"
     created_at: datetime
     updated_at: datetime
+    session_flags: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -34,12 +49,16 @@ class ConversationRead(BaseModel):
         return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
+class ConversationsBulkDeleteResult(BaseModel):
+    deleted_count: int
+    deleted_ids: list[int]
+
+
 class ConversationMessageRead(BaseModel):
     id: int
     conversation_id: int
     role: MessageRole
     content: str | None
-    chunk_json: str | None
     stream_state: str | None = None
     stream_cursor: int | None = None
     extra_meta: dict | None = None
@@ -92,3 +111,25 @@ class StreamConversationRequest(BaseModel):
     question: str
     debug_content_only: bool = False
     extra_meta: dict | None = None
+
+
+class ApproveRequest(BaseModel):
+    message_id: int
+    decisions: list[dict]
+    destructive_hitl: dict | None = None
+    external_dir: dict | None = None
+
+
+class ExternalDirModeRead(BaseModel):
+    mode: str
+
+
+class ExternalDirModeUpdate(BaseModel):
+    mode: str
+
+
+class OrchestratorSkillRead(BaseModel):
+    """总管固定技能（供主对话斜杠菜单）。"""
+
+    name: str
+    description: str = ""

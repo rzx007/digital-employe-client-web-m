@@ -1,5 +1,10 @@
 import type { UIMessage } from "ai"
 
+import {
+  resolveUserMessageDisplay,
+  type ToolUiActionKind,
+} from "./tool-ui-action"
+
 /** 流式错误事件注入 text part 时的前缀标记 */
 export const ERROR_MARKER = "⚠️ERROR:"
 
@@ -11,37 +16,66 @@ function stripErrorMarker(text: string): string {
   return text.slice(ERROR_MARKER.length).trim()
 }
 
-import {
-  summarizeToolCall,
-  isSkillToolCall,
-  extractSkillName,
-  type ToolCallSummary,
-} from "./tool-summarizer"
-import {
-  getFileChangesFromUIMessage,
-  type FileChangeItem,
-} from "./file-change-utils"
-
-type ToolUIPart = Extract<
-  UIMessage["parts"][number],
-  { type: `tool-${string}`; toolCallId: string }
->
-
-function isToolUIPart(part: UIMessage["parts"][number]): part is ToolUIPart {
-  return part.type.startsWith("tool-") && "toolCallId" in part
+/** 将常见英文网络/工具错误转为中文展示 */
+export function localizeErrorMessage(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed) return trimmed
+  const lower = trimmed.toLowerCase()
+  if (lower.includes("tool result too large")) {
+    return (
+      "工具返回内容过大，已写入内部缓存。请缩小查询范围" +
+      "（例如只查单个员工），或直接用 update_employee 传入 skill_ids。"
+    )
+  }
+  if (lower.includes("connection error")) {
+    return "无法连接当前语言模型，请检查设置中的 API Key、Base URL 与模型名称。"
+  }
+  if (lower.includes("server disconnected without sending a response")) {
+    return "远程服务未响应（连接已断开），请稍后重试。"
+  }
+  if (lower.includes("timed out") || lower.includes("timeout")) {
+    return "远程服务请求超时，请稍后重试。"
+  }
+  if (lower.includes("connection refused") || lower.includes("connect error")) {
+    return "无法连接远程服务，请检查网络与模型配置。"
+  }
+  if (lower.includes("network error") || lower.includes("failed to fetch")) {
+    return "网络请求失败，请检查网络连接。"
+  }
+  if (trimmed.startsWith("错误：") || trimmed.startsWith("错误:")) {
+    return trimmed
+  }
+  if (trimmed.startsWith("无法连接当前语言模型")) {
+    return trimmed
+  }
+  return trimmed
 }
 
-export interface ToolGroupItem {
+export function formatErrorDisplayText(text: string): string {
+  const raw = isErrorText(text) ? stripErrorMarker(text) : text
+  return localizeErrorMessage(raw)
+}
+
+import { isSkillToolCall, extractSkillName } from "./tool-summarizer"
+import {
+  getFileChangesFromUIMessage,
+  messageHasFileOutputs,
+  type FileChangeItem,
+} from "./file-change-utils"
+import { isReasoningTextPart } from "./langchain-reasoning-text"
+import { isSummarizationTextPart } from "./langchain-summarization-text"
+import { collapseWriteTodosBlocks } from "./collapse-write-todos-blocks"
+import { collapseDocumentPlanBlocks } from "./hitl/collapse-document-plan-blocks"
+import { mergeConsecutiveToolGroups } from "./merge-consecutive-tool-groups"
+import type { TodoItem } from "@/components/chat/message-blocks/tool-shared"
+import { normalizeToolPart } from "./tools/normalize-tool-part"
+import { isToolUIPart } from "./tools/tool-part"
+import type { ToolViewModel } from "./tools/tool-view-model"
+import { getToolBlockFromRegistry } from "./tools/block-registry"
+import type { ClarifyAnswerItem } from "./hitl"
+
+export type ToolGroupItem = ToolViewModel & {
   key: string
-  toolCallId: string
-  toolName: string
-  type: string
-  state: string
-  summary: ToolCallSummary
-  resultText: string | null
-  input: unknown
-  preliminary: boolean
-  part: ToolUIPart
 }
 
 export interface SkillExploreItem {
@@ -58,11 +92,169 @@ export interface SkillExploreItem {
 export type ClassifiedBlock =
   | { kind: "thinking"; key: string; text: string }
   | { kind: "tool-group"; key: string; tools: ToolGroupItem[]; summary: string }
-  | { kind: "skill-exploration"; key: string; items: SkillExploreItem[]; thinkingText?: string }
-  | { kind: "plan-generated"; key: string; toolCallId: string; input: unknown; state: string }
+  | {
+      kind: "todo-plan"
+      key: string
+      tool: ToolGroupItem
+      todos: TodoItem[]
+    }
+  | {
+      kind: "skill-exploration"
+      key: string
+      items: SkillExploreItem[]
+      thinkingText?: string
+    }
+  | {
+      kind: "plan-generated"
+      key: string
+      toolCallId: string
+      input: unknown
+      state: string
+      resultText: string | null
+    }
+  | {
+      kind: "recruitment-candidates"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+      preliminary?: boolean
+    }
+  | {
+      kind: "employee-hired"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+      preliminary?: boolean
+    }
+  | {
+      kind: "employees-hired"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+      preliminary?: boolean
+    }
+  | {
+      kind: "employee-detail"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+      preliminary?: boolean
+    }
+  | {
+      kind: "employee-updated"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+      preliminary?: boolean
+    }
+  | {
+      kind: "employee-deleted"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+      preliminary?: boolean
+    }
+  | {
+      kind: "tasks-deleted"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+      preliminary?: boolean
+    }
+  | {
+      kind: "employees-dismissed"
+      key: string
+      toolCallId: string
+      state: string
+      resultText: string | null
+      preliminary?: boolean
+    }
+  | {
+      kind: "destructive-delete"
+      key: string
+      toolCallId: string
+      toolName: string
+      state: string
+      input: unknown
+      resultText: string | null
+    }
+  | { kind: "summarization-checkpoint"; key: string; text: string }
+  | {
+      kind: "user-action-summary"
+      key: string
+      text: string
+      uiAction?: ToolUiActionKind
+    }
   | { kind: "final-response"; key: string; text: string }
-  | { kind: "file-changes"; key: string; files: FileChangeItem[] }
+  | {
+      kind: "file-changes"
+      key: string
+      files: FileChangeItem[]
+      /** true=来自 file_outputs 权威来源（应与资源树求交集）；false=parts 流式兜底（不过滤）。 */
+      authoritative: boolean
+    }
+  | {
+      kind: "draft-skill-save"
+      key: string
+      skillName: string
+      skillPath: string
+    }
   | { kind: "error"; key: string; text: string }
+  | {
+      kind: "document-plan"
+      key: string
+      toolCallId: string
+      input: unknown
+      state: string
+      resultText: string | null
+    }
+  | {
+      kind: "bug-report"
+      key: string
+      toolCallId: string
+      input: unknown
+      state: string
+      resultText: string | null
+    }
+  | {
+      kind: "clarifying-answers"
+      key: string
+      toolCallId: string
+      items: ClarifyAnswerItem[]
+      /** tool part 为 output-error，与正常作答区分 */
+      outputError?: boolean
+    }
+  | {
+      kind: "document-plan-approved"
+      key: string
+      toolCallId: string
+      resultText: string
+    }
+  | {
+      kind: "orchestrator-task-summary"
+      key: string
+      heading: string
+      body: string
+      runStatus: string | null
+      employeeConversationId: number | null
+      taskId: number | null
+    }
+  | {
+      kind: "external_dir_authorization"
+      key: string
+      toolCallId: string
+      toolName: string
+      state: string
+      input: unknown
+      resultText: string | null
+    }
 
 interface ClassifyMessagePartsOptions {
   includeFileChanges?: boolean
@@ -73,39 +265,152 @@ const THINK_CLOSE_RE = /\n?\s*<\/think\s*>?\n?/s
 const THINK_BLOCK_RE = /<think\s*>?[\s\S]*?<\/think\s*>?\n?/g
 
 function stripThinkTags(text: string): string {
-  return text
-    .replace(THINK_OPEN_RE, "")
-    .replace(THINK_CLOSE_RE, "")
-    .trim()
+  return text.replace(THINK_OPEN_RE, "").replace(THINK_CLOSE_RE, "").trim()
 }
 
 function stripThinkSections(text: string): string {
   return text.replace(THINK_BLOCK_RE, "").trim()
 }
 
-function extractResultText(part: ToolUIPart): string | null {
-  if (!("output" in part) || !part.output) {
-    return null
+/**
+ * 把 final-response/纯聊天文本里的 <think> 拆出来：思考内容归 thinking、其余归正文。
+ *
+ * - 完整 `<think>…</think>` 块 → 内容并入 thinking，从正文移除；
+ * - 末尾未闭合的 `<think>…`（流式进行中）→ 自该处起全部当 thinking，之前的当正文。
+ *
+ * 这样无论有没有工具调用，inline `<think>` 的思考都能显示，而不是像旧逻辑那样
+ * 被 stripThinkSections 整段丢弃。
+ */
+function splitThinkContent(raw: string): {
+  thinking: string
+  response: string
+} {
+  let thinking = ""
+  const completed = raw.replace(THINK_BLOCK_RE, (block) => {
+    const inner = stripThinkTags(block)
+    if (inner) thinking += (thinking ? "\n" : "") + inner
+    return ""
+  })
+  const openMatch = completed.match(/<think\s*>?/)
+  if (openMatch && openMatch.index !== undefined) {
+    const tail = completed
+      .slice(openMatch.index)
+      .replace(THINK_OPEN_RE, "")
+      .trim()
+    if (tail) thinking += (thinking ? "\n" : "") + tail
+    return {
+      thinking: thinking.trim(),
+      response: completed.slice(0, openMatch.index).trim(),
+    }
   }
-
-  if (typeof part.output === "string") {
-    return part.output || null
-  }
-
-  if (typeof part.output !== "object") {
-    return null
-  }
-
-  const output = part.output as Record<string, unknown>
-  if (typeof output.text === "string" && output.text) {
-    return output.text
-  }
-
-  return null
+  return { thinking: thinking.trim(), response: completed.trim() }
 }
 
-function isPreliminary(part: ToolUIPart): boolean {
-  return "preliminary" in part && (part as Record<string, unknown>).preliminary === true
+/**
+ * 把一段（可能含 inline <think>）的 final-response 文本拆分入块：
+ * 先推思考块（若有），再推 error/final-response。供「工具后正文」与「纯聊天正文」复用。
+ */
+function pushThinkAwareResponseBlocks(
+  blocks: ClassifiedBlock[],
+  messageId: string,
+  rawText: string,
+  keySuffix: string
+): void {
+  const { thinking, response } = splitThinkContent(rawText)
+  if (thinking) {
+    blocks.push({
+      kind: "thinking",
+      key: `${messageId}:thinking:${keySuffix}`,
+      text: thinking,
+    })
+  }
+  if (!response) return
+  if (isErrorText(response)) {
+    blocks.push({
+      kind: "error",
+      key: `${messageId}:error:${keySuffix}`,
+      text: formatErrorDisplayText(response),
+    })
+  } else {
+    blocks.push({
+      kind: "final-response",
+      key: `${messageId}:response:${keySuffix}`,
+      text: response,
+    })
+  }
+}
+
+function mergeSummarizationCheckpointBlock(
+  blocks: ClassifiedBlock[],
+  messageId: string,
+  partIndex: number,
+  rawText: string
+) {
+  const text = stripThinkSections(rawText)
+  if (!text.trim()) return
+
+  const last = blocks[blocks.length - 1]
+  if (last?.kind === "summarization-checkpoint") {
+    last.text += (last.text.trim() ? "\n" : "") + text
+    return
+  }
+
+  blocks.push({
+    kind: "summarization-checkpoint",
+    key: `${messageId}:summarization:${partIndex}`,
+    text,
+  })
+}
+
+function extractOrchestratorTaskSummary(
+  message: UIMessage
+): ClassifiedBlock | null {
+  const meta = (message as unknown as { metadata?: unknown }).metadata
+  if (!meta || typeof meta !== "object") return null
+  const m = meta as Record<string, unknown>
+  if (m.source !== "orchestrator_execution_summary") return null
+
+  let rawText = ""
+  for (const p of message.parts) {
+    if (p.type === "text" && "text" in p && typeof p.text === "string") {
+      rawText += p.text
+    }
+  }
+  rawText = rawText.trim()
+  if (
+    !rawText &&
+    typeof (message as unknown as { content?: unknown }).content === "string"
+  ) {
+    rawText = (
+      (message as unknown as { content?: string }).content ?? ""
+    ).trim()
+  }
+  if (!rawText) return null
+
+  const firstLineBreak = rawText.indexOf("\n")
+  const heading = (
+    firstLineBreak === -1 ? rawText : rawText.slice(0, firstLineBreak)
+  ).trim()
+  const body = (firstLineBreak === -1 ? "" : rawText.slice(firstLineBreak + 1))
+    .replace(/\n*可点击下方卡片进入员工对话查看详情。\s*$/u, "")
+    .trim()
+
+  const runStatus = typeof m.run_status === "string" ? m.run_status : null
+  const employeeConversationId =
+    typeof m.employee_conversation_id === "number"
+      ? m.employee_conversation_id
+      : null
+  const taskId = typeof m.task_id === "number" ? m.task_id : null
+
+  return {
+    kind: "orchestrator-task-summary",
+    key: `${message.id}:orch-summary`,
+    heading,
+    body,
+    runStatus,
+    employeeConversationId,
+    taskId,
+  }
 }
 
 /**
@@ -124,30 +429,65 @@ export function classifyMessageParts(
   const parts = message.parts
   if (parts.length === 0) return []
 
+  if (message.role === "user") {
+    const userAction = resolveUserMessageDisplay(message)
+    if (userAction) {
+      return [
+        {
+          kind: "user-action-summary",
+          key: `${message.id}:user-action`,
+          text: userAction.displayText,
+          uiAction: userAction.uiAction,
+        },
+      ]
+    }
+  }
+
+  const orchestratorSummary = extractOrchestratorTaskSummary(message)
+  if (orchestratorSummary) {
+    return [orchestratorSummary]
+  }
+
   const hasAnyTool = parts.some(isToolUIPart)
 
   if (!hasAnyTool) {
-    const text = parts
-      .filter((p) => p.type === "text" && "text" in p && p.text)
-      .map((p) => ("text" in p ? p.text : ""))
-      .join("")
+    const out: ClassifiedBlock[] = []
+    let responseAccum = ""
 
-    if (!text) return []
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]
+      if (p.type !== "text" || !("text" in p) || !p.text) continue
 
-    const cleaned = stripThinkSections(text)
-    if (isErrorText(cleaned)) {
-      return [{
-        kind: "error",
-        key: `${message.id}:error:0`,
-        text: stripErrorMarker(cleaned),
-      }]
+      // reasoning_content 流：恒为思考块，不并入正文。
+      if (isReasoningTextPart(p)) {
+        if (responseAccum.trim()) {
+          pushThinkAwareResponseBlocks(out, message.id, responseAccum, `${i}`)
+          responseAccum = ""
+        }
+        const reasoning = p.text.trim()
+        if (reasoning) {
+          out.push({
+            kind: "thinking",
+            key: `${message.id}:reasoning:${i}`,
+            text: reasoning,
+          })
+        }
+      } else if (isSummarizationTextPart(p)) {
+        if (responseAccum.trim()) {
+          pushThinkAwareResponseBlocks(out, message.id, responseAccum, `${i}`)
+          responseAccum = ""
+        }
+        mergeSummarizationCheckpointBlock(out, message.id, i, p.text)
+      } else {
+        responseAccum += p.text
+      }
     }
 
-    return [{
-      kind: "final-response",
-      key: `${message.id}:response:0`,
-      text: cleaned,
-    }]
+    if (responseAccum.trim()) {
+      pushThinkAwareResponseBlocks(out, message.id, responseAccum, "final")
+    }
+
+    return out
   }
 
   const lastToolIndex = parts.reduce(
@@ -163,65 +503,53 @@ export function classifyMessageParts(
    @param part - 工具调用部分
    * @param index - 该部分在消息部分数组中的索引
    */
-  function pushSingleTool(part: ToolUIPart, index: number) {
-    const toolInput = "input" in part ? (part as ToolUIPart).input : undefined
-    const summary = summarizeToolCall({
-      type: part.type,
-      input: toolInput,
-    })
+  function pushSingleTool(part: UIMessage["parts"][number], index: number) {
+    if (!isToolUIPart(part)) return
+    const vm = normalizeToolPart(part)
 
-    if (summary.toolName === "create_orchestration_plan") {
-      blocks.push({
-        kind: "plan-generated",
-        key: `${message.id}:plan:${index}`,
-        toolCallId: part.toolCallId,
-        input: toolInput,
-        state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
-      })
+    const registryBlock = getToolBlockFromRegistry(vm, message.id, index)
+    if (registryBlock) {
+      if (Array.isArray(registryBlock)) {
+        blocks.push(...registryBlock)
+      } else {
+        blocks.push(registryBlock)
+      }
       return
     }
 
     // 检查当前工具调用是否属于技能类工具，如果是则构建并添加技能探索项
-    if (isSkillToolCall(toolInput, summary.toolName)) {
+    if (isSkillToolCall(vm.input, vm.toolName)) {
       // 提取技能名称
-      const skillName = extractSkillName(toolInput, summary.toolName)
+      const skillName = extractSkillName(vm.input, vm.toolName)
       // 根据技能名称和文件路径生成显示用的基础名称
       const basename = skillName
-        ? `${skillName}/${summary.filePath?.split("/").pop() ?? ""}`
-        : (summary.filePath?.split("/").pop() ?? summary.toolName)
+        ? `${skillName}/${vm.summary.filePath?.split("/").pop() ?? ""}`
+        : (vm.summary.filePath?.split("/").pop() ?? vm.toolName)
 
       // 构造技能探索项并加入列表，随后终止当前处理流程
       skillExploreItems.push({
-        key: `${message.id}:skill-explore:${part.toolCallId}:${index}`,
-        toolCallId: part.toolCallId,
-        toolName: summary.toolName,
-        state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
-        label: `${SKILL_EXPLORE_VERB[summary.toolName] ?? "读取"} ${basename}`,
+        key: `${message.id}:skill-explore:${vm.toolCallId}:${index}`,
+        toolCallId: vm.toolCallId,
+        toolName: vm.toolName,
+        state: vm.state,
+        label: `${SKILL_EXPLORE_VERB[vm.toolName] ?? "读取"} ${basename}`,
         skillName,
-        input: toolInput,
-        resultText: extractResultText(part),
+        input: vm.input,
+        resultText: vm.resultText,
       })
       return
     }
 
     const tool: ToolGroupItem = {
-      key: `${message.id}:tool:${part.toolCallId}:${index}`,
-      toolCallId: part.toolCallId,
-      toolName: summary.toolName,
-      type: part.type,
-      state: ("state" in part ? (part as ToolUIPart).state : "unknown") as string,
-      summary,
-      resultText: extractResultText(part),
-      input: toolInput,
-      preliminary: isPreliminary(part),
-      part,
+      ...vm,
+      key: `${message.id}:tool:${vm.toolCallId}:${index}`,
     }
 
     blocks.push({
       kind: "tool-group",
       key: `${message.id}:tgroup:${index}`,
       tools: [tool],
-      summary: summary.label,
+      summary: vm.summary.label,
     })
   }
 
@@ -266,6 +594,40 @@ export function classifyMessageParts(
 
     // 处理文本类型的部分：区分最终响应和思考内容
     if (part.type === "text" && "text" in part && part.text) {
+      // reasoning_content 流（DeepSeek/Qwen3 思考增量）：恒定渲染为思考块，
+      // 不受工具位置影响、不并入正文。已是纯思考文本，无需剥 <think> 标签。
+      if (isReasoningTextPart(part)) {
+        flushSkillExplore("end")
+        const reasoning = part.text.trim()
+        if (reasoning) {
+          if (skillExploreOpen) {
+            skillThinkingText += (skillThinkingText ? "\n" : "") + reasoning
+          } else {
+            blocks.push({
+              kind: "thinking",
+              key: `${message.id}:reasoning:${i}`,
+              text: reasoning,
+            })
+          }
+        }
+        continue
+      }
+
+      if (isSummarizationTextPart(part)) {
+        flushSkillExplore("end")
+        if (i > lastToolIndex && responseText) {
+          pushThinkAwareResponseBlocks(
+            blocks,
+            message.id,
+            responseText,
+            `flush-${i}`
+          )
+          responseText = ""
+        }
+        mergeSummarizationCheckpointBlock(blocks, message.id, i, part.text)
+        continue
+      }
+
       const cleaned = stripThinkTags(part.text)
 
       // 如果当前索引在最后一个工具调用之后，则视为最终响应（累积避免 markdown 跨 part 断裂）
@@ -291,15 +653,18 @@ export function classifyMessageParts(
     // 处理工具 UI 部分：识别技能调用并管理技能探索状态
     if (isToolUIPart(part)) {
       const toolInput = "input" in part ? (part as ToolUIPart).input : undefined
-      const toolName = part.type.startsWith("tool-") ? part.type.slice(5) : part.type
+      const toolName = part.type.startsWith("tool-")
+        ? part.type.slice(5)
+        : part.type
       const isSkill = isSkillToolCall(toolInput, toolName)
 
       // 检测到技能开始且未开启探索模式时，初始化技能探索状态并合并之前的思考内容
       if (isSkill && !skillExploreOpen) {
         skillExploreOpen = true
-        const prevThinking = blocks.length > 0 && blocks[blocks.length - 1].kind === "thinking"
-          ? blocks.pop() as Extract<ClassifiedBlock, { kind: "thinking" }>
-          : null
+        const prevThinking =
+          blocks.length > 0 && blocks[blocks.length - 1].kind === "thinking"
+            ? (blocks.pop() as Extract<ClassifiedBlock, { kind: "thinking" }>)
+            : null
         if (prevThinking) {
           skillThinkingText = prevThinking.text
         }
@@ -318,35 +683,40 @@ export function classifyMessageParts(
   flushSkillExplore("end")
 
   if (responseText) {
-    const cleaned = stripThinkSections(responseText)
-    if (isErrorText(cleaned)) {
-      blocks.push({
-        kind: "error",
-        key: `${message.id}:error:final`,
-        text: stripErrorMarker(cleaned),
-      })
-    } else {
-      blocks.push({
-        kind: "final-response",
-        key: `${message.id}:response:final`,
-        text: cleaned,
-      })
-    }
+    pushThinkAwareResponseBlocks(blocks, message.id, responseText, "final")
   }
 
   const shouldIncludeFileChanges = options.includeFileChanges === true
   const fileChanges = shouldIncludeFileChanges
     ? getFileChangesFromUIMessage(message)
     : []
-  if (fileChanges.length > 0) {
+  // file_outputs 权威来源 → 卡片侧应与资源树求交集消除已删/空文件；parts 兜底则不过滤
+  // （流式刚结束、资源树未刷新时保留即时反馈）。
+  const fileChangesAuthoritative = messageHasFileOutputs(message)
+  // 草稿技能改由 DraftSkillSaveCard 卡片承载，文件变更面板里去重移除，避免重复。
+  const panelFileChanges = fileChanges.filter((c) => c.kind !== "skill-folder")
+  if (panelFileChanges.length > 0) {
     blocks.push({
       kind: "file-changes",
       key: `${message.id}:file-changes`,
-      files: fileChanges,
+      files: panelFileChanges,
+      authoritative: fileChangesAuthoritative,
     })
   }
+  for (const item of fileChanges) {
+    if (item.kind === "skill-folder") {
+      blocks.push({
+        kind: "draft-skill-save",
+        key: `draft-skill-save:${item.path}`,
+        skillName: item.title,
+        skillPath: item.path,
+      })
+    }
+  }
 
-  return blocks
+  return collapseDocumentPlanBlocks(
+    collapseWriteTodosBlocks(mergeConsecutiveToolGroups(blocks))
+  )
 }
 
 /**
@@ -420,6 +790,15 @@ export function classifyMessageParts(
  *   | "tool-group"        — 普通工具调用 (含 input/output/state)
  *   | "skill-exploration" — 连续技能探索调用合并为折叠块 (默认收起)
  *   | "plan-generated"    — 编排计划卡片 (create_orchestration_plan)
+ *   | "recruitment-candidates" — 招聘候选人卡片 (recruit_employee)
+ *   | "employee-hired"    — 入职工牌卡片 (hire_employee)
+ *   | "employees-hired"   — 批量入职工牌卡片 (hire_employees)
+ *   | "employee-detail"   — 员工详情卡片 (get_employee)
+ *   | "employee-updated"  — 员工更新卡片 (update_employee)
+ *   | "employee-deleted"  — 员工解聘卡片 (delete_employee)
+ *   | "tasks-deleted"     — 批量删除任务卡片 (delete_tasks_batch)
+ *   | "employees-dismissed" — 批量解聘卡片 (delete_employees_batch)
+ *   | "destructive-delete" — 危险删除确认卡 (delete_employee/delete_employees_batch/delete_task/delete_tasks_batch pending)
  *   | "final-response"    — 所有工具调用完成后的最终回复
  *   | "file-changes"      — write_file/edit_file 产生的文件变更卡片
  */

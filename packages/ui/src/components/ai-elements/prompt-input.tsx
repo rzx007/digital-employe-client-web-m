@@ -31,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@workspace/ui/components/select"
-import { Spinner } from "@workspace/ui/components/spinner"
 import {
   Tooltip,
   TooltipContent,
@@ -488,6 +487,12 @@ export const PromptInputActionAddScreenshot = ({
 export interface PromptInputMessage {
   text: string
   files: FileUIPart[]
+  /** 语音消息载荷：录音器产出，由视图层负责上传与发送 */
+  voice?: {
+    durationMs: number
+    waveform: number[]
+    blob: Blob
+  }
 }
 
 export type PromptInputProps = Omit<
@@ -1229,9 +1234,7 @@ export const PromptInputSubmit = ({
 
   let Icon = <CornerDownLeftIcon className="size-4" />
 
-  if (status === "submitted") {
-    Icon = <Spinner />
-  } else if (status === "streaming") {
+  if (status === "submitted" || status === "streaming") {
     Icon = <SquareIcon className="size-4" />
   } else if (status === "error") {
     Icon = <XIcon className="size-4" />
@@ -1251,7 +1254,7 @@ export const PromptInputSubmit = ({
 
   return (
     <InputGroupButton
-      aria-label={isGenerating ? "Stop" : "Submit"}
+      aria-label={isGenerating ? "停止生成" : "Submit"}
       className={cn(className)}
       onClick={handleClick}
       size={size}

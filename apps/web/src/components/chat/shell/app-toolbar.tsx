@@ -1,11 +1,10 @@
 import * as React from "react"
+import { useEffect } from "react"
 import {
   IconMessage,
   IconMessage2Filled,
   IconUser,
   IconUserFilled,
-  IconCalendar,
-  IconCalendarFilled,
   IconLayoutDashboard,
   IconLayoutDashboardFilled,
   IconSettings,
@@ -30,35 +29,12 @@ import {
 } from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
+import { withElectronApi } from "@/lib/electron/host"
 import { useChatStore, type ActiveTab } from "@/stores/chat-store"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
 import { NotificationBell } from "../notifications/notification-center"
 
-// 导入所有头像资源
-import Avatar1 from "@/assets/avaters/1.png"
-import Avatar2 from "@/assets/avaters/2.png"
-import Avatar3 from "@/assets/avaters/3.png"
-import Avatar4 from "@/assets/avaters/4.png"
-import Avatar5 from "@/assets/avaters/5.png"
-import Avatar6 from "@/assets/avaters/6.png"
-import Avatar7 from "@/assets/avaters/7.png"
-import Avatar8 from "@/assets/avaters/8.png"
-import Avatar9 from "@/assets/avaters/9.png"
-import { useEffect } from "react"
-
-// 头像映射
-const avatars = [
-  Avatar1,
-  Avatar2,
-  Avatar3,
-  Avatar4,
-  Avatar5,
-  Avatar6,
-  Avatar7,
-  Avatar8,
-  Avatar9,
-  Avatar1, // 第10个使用第1个头像
-]
+import { UserAvatar } from "@/components/user-avatar"
 
 const tabs: {
   id: ActiveTab
@@ -66,37 +42,31 @@ const tabs: {
   iconFilled: React.ComponentType<{ className?: string }>
   label: string
 }[] = [
-    {
-      id: "workbench",
-      icon: IconLayoutDashboard,
-      iconFilled: IconLayoutDashboardFilled,
-      label: "工作台",
-    },
-    {
-      id: "chat",
-      icon: IconMessage,
-      iconFilled: IconMessage2Filled,
-      label: "对话",
-    },
-    {
-      id: "contacts",
-      icon: IconUser,
-      iconFilled: IconUserFilled,
-      label: "联系人",
-    },
-    {
-      id: "calendar",
-      icon: IconCalendar,
-      iconFilled: IconCalendarFilled,
-      label: "日历",
-    },
-    {
-      id: "skills",
-      icon: IconSparkles,
-      iconFilled: IconSparklesFilled,
-      label: "技能管理",
-    },
-  ]
+  {
+    id: "workbench",
+    icon: IconLayoutDashboard,
+    iconFilled: IconLayoutDashboardFilled,
+    label: "工作台",
+  },
+  {
+    id: "chat",
+    icon: IconMessage,
+    iconFilled: IconMessage2Filled,
+    label: "对话",
+  },
+  {
+    id: "contacts",
+    icon: IconUser,
+    iconFilled: IconUserFilled,
+    label: "联系人",
+  },
+  {
+    id: "skills",
+    icon: IconSparkles,
+    iconFilled: IconSparklesFilled,
+    label: "技能管理",
+  },
+]
 
 export function AppToolbar({
   className,
@@ -108,21 +78,15 @@ export function AppToolbar({
   const user = useAuthStore((s) => s.user)
   const restoreSession = useAuthStore((s) => s.restoreSession)
   useEffect(() => {
-    ; (async () => {
+    ;(async () => {
       await restoreSession()
     })()
   }, [restoreSession])
   const [showLogoutDialog, setShowLogoutDialog] = React.useState(false)
 
   const totalUnread = useConversationStatusStore((s) =>
-    Object.values(s.unreadCounts).reduce((sum, n) => sum + n, 0),
+    Object.values(s.unreadCounts).reduce((sum, n) => sum + n, 0)
   )
-
-  // 根据用户ID计算头像索引（1-10）
-  const getAvatarIndex = () => {
-    if (!user?.id) return 0
-    return parseInt(user.id.toString()) % 10
-  }
 
   const handleLogout = () => {
     setShowLogoutDialog(false)
@@ -156,8 +120,8 @@ export function AppToolbar({
         {...props}
       >
         <div className="mb-4 overflow-hidden rounded">
-          <img
-            src={avatars[getAvatarIndex()]}
+          <UserAvatar
+            userId={user?.id}
             alt={user?.name || "用户"}
             className="size-10 object-cover"
           />
@@ -174,9 +138,6 @@ export function AppToolbar({
                     "relative size-10 rounded-lg",
                     activeTab === tab.id && "bg-accent text-accent-foreground"
                   )}
-                  data-tour-id={
-                    tab.id === "contacts" ? "contacts-tab" : undefined
-                  }
                   onClick={() => setActiveTab(tab.id)}
                 >
                   {activeTab === tab.id ? (
@@ -185,7 +146,7 @@ export function AppToolbar({
                     <tab.icon className="size-6" />
                   )}
                   {tab.id === "chat" && totalUnread > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] text-white">
+                    <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] text-white">
                       {totalUnread > 99 ? "99" : totalUnread}
                     </span>
                   )}
@@ -199,9 +160,7 @@ export function AppToolbar({
         </nav>
 
         <div className="mt-auto flex flex-col gap-2">
-          <div data-tour-id="notification-bell">
-            <NotificationBell />
-          </div>
+          <NotificationBell />
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -209,8 +168,9 @@ export function AppToolbar({
                 variant="ghost"
                 size="icon"
                 className="size-10 rounded-lg text-muted-foreground hover:text-foreground"
-                data-tour-id="settings-btn"
-                onClick={() => window.electronApi?.openSettings()}
+                onClick={() =>
+                  void withElectronApi((api) => api.openSettings())
+                }
               >
                 <IconSettings className="size-5" />
               </Button>

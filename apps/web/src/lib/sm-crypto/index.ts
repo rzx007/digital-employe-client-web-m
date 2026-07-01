@@ -1,8 +1,8 @@
-import { BigInteger } from 'jsbn'
-import { encodeDer, decodeDer } from './asn1'
-import SM3Digest from './sm3'
-import SM2Cipher from './sm2'
-import * as _ from './utils'
+import { BigInteger } from "jsbn"
+import { encodeDer, decodeDer } from "./asn1"
+import SM3Digest from "./sm3"
+import SM2Cipher from "./sm2"
+import * as _ from "./utils"
 
 const { G, curve, n } = _.generateEcparam()
 const C1C2C3 = 0
@@ -24,7 +24,11 @@ interface VerifyOptions {
 /**
  * 加密
  */
-export function doEncrypt(msg: string, publicKey: string, cipherMode = 1): string {
+export function doEncrypt(
+  msg: string,
+  publicKey: string,
+  cipherMode = 1
+): string {
   const cipher = new SM2Cipher()
   const msgArray = _.hexToArray(_.parseUtf8StringToHex(msg))
 
@@ -50,7 +54,11 @@ export function doEncrypt(msg: string, publicKey: string, cipherMode = 1): strin
 /**
  * 解密
  */
-export function doDecrypt(encryptData: string, privateKey: string, cipherMode = 1): string {
+export function doDecrypt(
+  encryptData: string,
+  privateKey: string,
+  cipherMode = 1
+): string {
   const cipher = new SM2Cipher()
 
   privateKey = new BigInteger(privateKey, 16)
@@ -81,16 +89,23 @@ export function doDecrypt(encryptData: string, privateKey: string, cipherMode = 
     const decryptData = _.arrayToUtf8(data)
     return decryptData
   } else {
-    return ''
+    return ""
   }
 }
 
 /**
  * 签名
  */
-export function doSignature(msg: string | ArrayBuffer, privateKey: string, options: SignatureOptions = {}): string {
+export function doSignature(
+  msg: string | ArrayBuffer,
+  privateKey: string,
+  options: SignatureOptions = {}
+): string {
   const { pointPool, der, hash, publicKey, userId } = options
-  let hashHex = typeof msg === 'string' ? _.parseUtf8StringToHex(msg) : _.parseArrayBufferToHex(msg)
+  let hashHex =
+    typeof msg === "string"
+      ? _.parseUtf8StringToHex(msg)
+      : _.parseArrayBufferToHex(msg)
 
   if (hash) {
     // sm3杂凑
@@ -143,10 +158,13 @@ export function doVerifySignature(
   msg: string | ArrayBuffer,
   signHex: string,
   publicKey: string,
-  options: VerifyOptions = {},
+  options: VerifyOptions = {}
 ): boolean {
   const { der, hash, userId } = options
-  let hashHex = typeof msg === 'string' ? _.parseUtf8StringToHex(msg) : _.parseArrayBufferToHex(msg)
+  let hashHex =
+    typeof msg === "string"
+      ? _.parseUtf8StringToHex(msg)
+      : _.parseArrayBufferToHex(msg)
 
   if (hash) {
     // sm3杂凑
@@ -185,7 +203,11 @@ export function doVerifySignature(
  * sm3杂凑算法
  * 计算M值: Hash(za || msg)
  */
-export function doSm3Hash(hashHex: string, publicKey: string, userId = '1234567812345678'): string {
+export function doSm3Hash(
+  hashHex: string,
+  publicKey: string,
+  userId = "1234567812345678"
+): string {
   const smDigest = new SM3Digest()
 
   const z = new SM3Digest().getZ(G, publicKey.substr(2, 128), userId)
@@ -209,7 +231,7 @@ export function getPublicKeyFromPrivateKey(privateKey: string): string {
   const PA = G.multiply(new BigInteger(privateKey, 16))
   const x = _.leftPad(PA.getX().toBigInteger().toString(16), 64)
   const y = _.leftPad(PA.getY().toBigInteger().toString(16), 64)
-  return '04' + x + y
+  return "04" + x + y
 }
 
 /**

@@ -1,223 +1,107 @@
-import type { MetadataSkill } from "@/api/types"
-import type {
-  BlockType,
-  QueryInterface,
-  WorkbenchBlock,
-  WorkbenchConfig,
-} from "@/types/workbench"
-import {
-  generateBlockId,
-  getBlockTitleForSkill,
-  getBlockTypeForSkill,
-} from "./skill-block-mappings"
+import type { WorkbenchConfig, HtmlTab, HtmlArtifactRef } from "@/types/workbench"
+import { DASHBOARD_TAB_ID } from "@/types/workbench"
 
-const STORAGE_KEY_PREFIX = "workbench-config-"
+export const WORKBENCH_CONFIG_CHANGED_EVENT = "workbench-config-changed"
+export const WORKBENCH_OPEN_RESOURCES_EVENT = "workbench-open-resources"
 
-/**
- * Get storage key for an employee
- */
-function getStorageKey(employeeId: string): string {
-  return `${STORAGE_KEY_PREFIX}${employeeId}`
+export function emitWorkbenchConfigChanged(): void {
+  window.dispatchEvent(new CustomEvent(WORKBENCH_CONFIG_CHANGED_EVENT))
 }
 
-/**
- * Load workbench config from localStorage
- */
-export function loadWorkbenchConfig(employeeId: string): WorkbenchConfig | null {
-  try {
-    const raw = localStorage.getItem(getStorageKey(employeeId))
-    if (!raw) return null
-    return JSON.parse(raw) as WorkbenchConfig
-  } catch {
-    return null
+export function emptyConfig(): WorkbenchConfig {
+  return {
+    dashboard: { widgets: [] },
+    htmlTabs: [],
+    tabOrder: [DASHBOARD_TAB_ID],
+    activeTabId: DASHBOARD_TAB_ID,
+    updatedAt: 0,
   }
 }
 
-/**
- * Save workbench config to localStorage
- */
-export function saveWorkbenchConfig(config: WorkbenchConfig): void {
-  try {
-    localStorage.setItem(getStorageKey(config.employeeId), JSON.stringify(config))
-  } catch (e) {
-    console.error("Failed to save workbench config:", e)
-  }
+function genTabId(): string {
+  return `tab-${Math.random().toString(36).slice(2, 10)}`
 }
 
-/**
- * Create initial blocks from employee skills
- */
-export function createBlocksFromSkills(skills: MetadataSkill[]): WorkbenchBlock[] {
-  const blocks: WorkbenchBlock[] = []
-  const seenTypes = new Set<BlockType>()
-
-  for (const skill of skills) {
-    if (skill.status !== 1) continue // Only enabled skills
-
-    const blockType = getBlockTypeForSkill(skill)
-
-    // Skip if we've already seen this block type (avoid duplicates)
-    if (seenTypes.has(blockType)) continue
-    seenTypes.add(blockType)
-
-    blocks.push({
-      id: generateBlockId(blockType, skill.id),
-      type: blockType,
-      title: getBlockTitleForSkill(skill),
-      enabled: true,
-      skillId: skill.id,
-      order: blocks.length,
-    })
-  }
-
-  return blocks
-}
-
-/**
- * Initialize workbench config for an employee
- */
-export function initializeWorkbenchConfig(
-  employeeId: string,
-  skills: MetadataSkill[]
-): WorkbenchConfig {
-  const existingConfig = loadWorkbenchConfig(employeeId)
-
-  // If config exists, just update lastModified
-  if (existingConfig) {
-    existingConfig.lastModified = Date.now()
-    saveWorkbenchConfig(existingConfig)
-    return existingConfig
-  }
-
-  // Create new config from skills
-  const config: WorkbenchConfig = {
-    employeeId,
-    blocks: createBlocksFromSkills(skills),
-    lastModified: Date.now(),
-  }
-
-  saveWorkbenchConfig(config)
-  return config
-}
-
-/**
- * Update block order after drag
- */
-export function updateBlockOrder(
+export function addHtmlTab(
   config: WorkbenchConfig,
-  blockIds: string[]
+  htmlRef: HtmlArtifactRef,
+  title: string
 ): WorkbenchConfig {
-  const blockMap = new Map(config.blocks.map((b) => [b.id, b]))
-  const reorderedBlocks = blockIds
-    .map((id, index) => {
-      const block = blockMap.get(id)
-      if (!block) return null
-      return { ...block, order: index }
-    })
-    .filter((b): b is WorkbenchBlock => b !== null)
-
-  const updatedConfig: WorkbenchConfig = {
-    ...config,
-    blocks: reorderedBlocks,
-    lastModified: Date.now(),
-  }
-
-  saveWorkbenchConfig(updatedConfig)
-  return updatedConfig
-}
-
-/**
- * Toggle block enabled state
- */
-export function toggleBlock(
-  config: WorkbenchConfig,
-  blockId: string
-): WorkbenchConfig {
-  const updatedBlocks = config.blocks.map((b) =>
-    b.id === blockId ? { ...b, enabled: !b.enabled } : b
+  const existing = config.htmlTabs.find(
+    (t) =>
+      t.htmlRef.conversationId === htmlRef.conversationId &&
+      t.htmlRef.resourcePath === htmlRef.resourcePath
   )
-
-  const updatedConfig: WorkbenchConfig = {
+  if (existing) return { ...config, activeTabId: existing.id }
+  const tab: HtmlTab = { id: genTabId(), title, htmlRef }
+  return {
     ...config,
-    blocks: updatedBlocks,
-    lastModified: Date.now(),
+    htmlTabs: [...config.htmlTabs, tab],
+    tabOrder: [...config.tabOrder, tab.id],
+    activeTabId: tab.id,
   }
-
-  saveWorkbenchConfig(updatedConfig)
-  return updatedConfig
 }
 
-/**
- * Add a custom interface block to workbench
- */
-export function addCustomBlock(
-  config: WorkbenchConfig,
-  queryInterface: QueryInterface
-): WorkbenchConfig {
-  const newBlock: WorkbenchBlock = {
-    id: generateBlockId("custom", null),
-    type: "custom",
-    title: queryInterface.name,
-    enabled: true,
-    skillId: null,
-    order: config.blocks.length,
-    queryInterface,
+export function removeTab(config: WorkbenchConfig, tabId: string): WorkbenchConfig {
+  if (tabId === DASHBOARD_TAB_ID) return config
+  const idx = config.tabOrder.indexOf(tabId)
+  const tabOrder = config.tabOrder.filter((id) => id !== tabId)
+  const htmlTabs = config.htmlTabs.filter((t) => t.id !== tabId)
+  let activeTabId = config.activeTabId
+  if (activeTabId === tabId) {
+    activeTabId = tabOrder[Math.min(idx, tabOrder.length - 1)] ?? DASHBOARD_TAB_ID
   }
-
-  const updatedConfig: WorkbenchConfig = {
-    ...config,
-    blocks: [...config.blocks, newBlock],
-    lastModified: Date.now(),
-  }
-
-  saveWorkbenchConfig(updatedConfig)
-  return updatedConfig
+  return { ...config, htmlTabs, tabOrder, activeTabId }
 }
 
-/**
- * Remove a block from workbench
- */
-export function removeBlock(
-  config: WorkbenchConfig,
-  blockId: string
-): WorkbenchConfig {
-  const updatedBlocks = config.blocks.filter((b) => b.id !== blockId)
-
-  // Re-order remaining blocks
-  const reorderedBlocks = updatedBlocks.map((b, index) => ({
-    ...b,
-    order: index,
-  }))
-
-  const updatedConfig: WorkbenchConfig = {
-    ...config,
-    blocks: reorderedBlocks,
-    lastModified: Date.now(),
-  }
-
-  saveWorkbenchConfig(updatedConfig)
-  return updatedConfig
+export function setActiveTab(config: WorkbenchConfig, tabId: string): WorkbenchConfig {
+  return { ...config, activeTabId: tabId }
 }
 
-/**
- * Update block size (width/height)
- */
-export function updateBlockSize(
+export function reorderTabs(config: WorkbenchConfig, orderedIds: string[]): WorkbenchConfig {
+  const ids = orderedIds.filter((id) => id !== DASHBOARD_TAB_ID)
+  // 防止漏传 id 导致标签丢失:把 htmlTabs 里有但 orderedIds 没给的补到末尾(自愈)
+  const seen = new Set(ids)
+  for (const t of config.htmlTabs) {
+    if (!seen.has(t.id)) ids.push(t.id)
+  }
+  return { ...config, tabOrder: [DASHBOARD_TAB_ID, ...ids] }
+}
+
+export function reorderWidgets(config: WorkbenchConfig, orderedIds: string[]): WorkbenchConfig {
+  const byId = new Map(config.dashboard.widgets.map((w) => [w.id, w]))
+  const widgets = orderedIds
+    .map((id, i) => {
+      const w = byId.get(id)
+      return w ? { ...w, order: i } : null
+    })
+    .filter((w): w is NonNullable<typeof w> => w !== null)
+  return { ...config, dashboard: { widgets } }
+}
+
+export function removeWidget(config: WorkbenchConfig, widgetId: string): WorkbenchConfig {
+  return {
+    ...config,
+    dashboard: {
+      widgets: config.dashboard.widgets
+        .filter((w) => w.id !== widgetId)
+        .map((w, i) => ({ ...w, order: i })),
+    },
+  }
+}
+
+export function resizeWidget(
   config: WorkbenchConfig,
-  blockId: string,
+  widgetId: string,
   width: number,
   height: number
 ): WorkbenchConfig {
-  const updatedBlocks = config.blocks.map((b) =>
-    b.id === blockId ? { ...b, width, height } : b
-  )
-
-  const updatedConfig: WorkbenchConfig = {
+  return {
     ...config,
-    blocks: updatedBlocks,
-    lastModified: Date.now(),
+    dashboard: {
+      widgets: config.dashboard.widgets.map((w) =>
+        w.id === widgetId ? { ...w, width, height } : w
+      ),
+    },
   }
-
-  saveWorkbenchConfig(updatedConfig)
-  return updatedConfig
 }

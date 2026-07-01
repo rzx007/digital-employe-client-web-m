@@ -6,7 +6,8 @@ import json
 import re
 from typing import Any
 
-# 虚拟路径 /skills/<skill-folder>/...（与 agent 中 skills 挂载一致）
+# 真实路径中的 /skills/<skill-folder>/... 段（agent 用真实绝对路径，正斜杠形态下
+# 仍含该段，如 D:/ws/skills/foo/SKILL.md 匹配 foo）
 _SKILLS_POSIX_RE = re.compile(r"/skills/([^/\"'\s\\]+)")
 # Windows 风格路径中的 skills 子目录
 _SKILLS_WIN_RE = re.compile(r"\\skills\\([^\\\"'\s]+)", re.IGNORECASE)

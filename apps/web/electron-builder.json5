@@ -1,9 +1,9 @@
 // @see https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.digital-employee-m.app",
+  "appId": "com.boban-staff-next.app",
   "asar": true,
-  "productName": "DigitalEmployee",
+  "productName": "BobanStaff",
   "directories": {
     // "output": "release/${version}"
     "output": "release"
@@ -21,16 +21,42 @@
   ],
   "extraResources": [
     {
+      // 品牌资源包（运行时可热替换）：default/ 兜底 + 各品牌示例。
+      // 部署时 deploy.sh 可把选定品牌拷到 resources/branding/active/。
+      "from": "branding",
+      "to": "branding"
+    },
+    {
       "from": "py-server",
       "to": "py-server",
-      "filter": ["**/*", "!data/**", "!logs/**", "!tmp/**"]
+      "filter": [
+        "**/*",
+        "!data/**",
+        "!logs/**",
+        "!tmp/**"
+      ]
+    },
+    {
+      // browserctl CLI（resources/browserctl），用 Electron 自带 node 运行
+      "from": "../../packages/browserctl",
+      "to": "browserctl",
+      "filter": [
+        "src/**",
+        "bin/**",
+        "package.json"
+      ]
     }
   ],
-  // 脚本在 monorepo 根目录 scripts/（apps/web → 仓库根须 ../../）
-  "afterPack": "../../scripts/afterPack.js",
+  // 须在 workspace(apps/web)内：electron-builder ≥26.12 拒绝 workspace 外的 hook 路径。
+  // 用 .cjs：apps/web 是 type:module，.js 会被当 ESM，而本脚本是 CommonJS。
+  "afterPack": "afterPack.cjs",
   "mac": {
+    // mac.defaultArch 在 Rosetta Node 下不足以覆盖。
+    // zip：electron-updater 应用内更新（latest-mac.yml 指向 .zip）
+    // dmg：手动安装分发；勿仅用 dmg 作自动更新源
     "target": [
-      "dmg"
+      "dmg",
+      "zip"
     ],
     "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
   },
@@ -54,8 +80,25 @@
   },
   "linux": {
     "target": [
-      "AppImage"
+      {
+        "target": "deb",
+        "arch": [
+          "arm64"
+        ]
+      }
     ],
-    "artifactName": "${productName}-Linux-${version}.${ext}"
+    "category": "Office",
+    "artifactName": "${productName}-Linux-arm64-${version}.${ext}"
+  },
+  // 包改名 digital-employee → boban-staff（dpkg 包名取自 package.json 的 name）。两包
+  // 文件都落在 /opt/BobanStaff/*，老机器升级时若不声明替换关系，dpkg -i 会与已装的
+  // digital-employee 撞「文件覆盖」而失败。声明 Conflicts/Replaces/Provides 让 dpkg 装
+  // 新包时自动卸旧包，无需每台机器现场改 deploy.sh。见 scripts/activation/deploy.sh.boban-rename.patch.md
+  "deb": {
+    "fpm": [
+      "--conflicts", "digital-employee",
+      "--replaces", "digital-employee",
+      "--provides", "digital-employee"
+    ]
   }
 }

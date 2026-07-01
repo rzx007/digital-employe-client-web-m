@@ -1,0 +1,118 @@
+"""Pytest 公共 fixture：内存 SQLite + 工作空间。"""
+
+from __future__ import annotations
+
+import tempfile
+from collections.abc import Generator
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from src import models  # noqa: F401
+from src.db.base import Base
+from src.models.employee import Employee
+from src.models.workspace import Workspace
+
+
+@pytest.fixture()
+def db_engine():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture()
+def db_session(db_engine) -> Generator[Session, None, None]:
+    session = sessionmaker(bind=db_engine)()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture()
+def workspace(db_session: Session) -> Workspace:
+    root = tempfile.mkdtemp(prefix="de-test-ws-")
+    # owner 与 add_employee 默认 user_id（f"u-ws{id}"）保持一致：
+    # _validate_target 现按 workspace owner 校验员工归属，二者须同源。
+    ws = Workspace(id=1, name="Test Workspace", root_path=root, user_id="u-ws1")
+    db_session.add(ws)
+    db_session.commit()
+    db_session.refresh(ws)
+    return ws
+
+
+@pytest.fixture()
+def patched_recruitment_db(db_engine, monkeypatch):
+    """让 recruitment 模块的 get_session_local 使用测试库。"""
+    session_factory = sessionmaker(bind=db_engine)
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.recruitment.get_session_local",
+        lambda: session_factory,
+    )
+    return session_factory
+
+
+@pytest.fixture()
+def patched_task_mutations_db(db_engine, monkeypatch):
+    """让 task 相关模块通过 sqlite_db_session 使用测试库。"""
+    session_factory = sessionmaker(bind=db_engine)
+    monkeypatch.setattr(
+        "src.db.session.get_session_local",
+        lambda: session_factory,
+    )
+    # dependency_scheduler 在模块顶部 import 了 get_session_local，需同步 patch
+    # 模块级属性，否则 monkeypatch 打不到已绑定的引用。
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.dependency_scheduler.get_session_local",
+        lambda: session_factory,
+    )
+    return session_factory
+
+
+@pytest.fixture()
+def patched_employee_tools_db(db_engine, monkeypatch):
+    """让 tools.employees 模块的 get_session_local 使用测试库。
+
+    历史名称保留（test_employee_tools.py 仍以该 fixture 命名引用），
+    但 mock 目标已切到 `src.service.agent.orchestrator.tools.employees`。
+    """
+    session_factory = sessionmaker(bind=db_engine)
+    monkeypatch.setattr(
+        "src.service.agent.orchestrator.tools.employees.get_session_local",
+        lambda: session_factory,
+    )
+    return session_factory
+
+
+def add_employee(
+    db: Session,
+    workspace_id: int,
+    *,
+    name: str,
+    is_curator: bool = False,
+    description: str | None = "测试描述",
+    user_id: str | None = None,
+) -> Employee:
+    # 员工现为用户级（user_id 跨工作空间共享）；测试默认按 workspace 派生稳定 user_id。
+    employee = Employee(
+        workspace_id=workspace_id,
+        user_id=user_id if user_id is not None else f"u-ws{workspace_id}",
+        employee_code=f"code-{name}",
+        name=name,
+        description=description,
+        is_curator=is_curator,
+    )
+    db.add(employee)
+    db.commit()
+    db.refresh(employee)
+    return employee

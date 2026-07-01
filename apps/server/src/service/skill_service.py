@@ -7,6 +7,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from src.core.config import get_settings, join_base_and_path
+from src.core.remote_gateway import RemoteGateway
 from src.utils.http_client import (
     create_agent_interface_http_client,
     create_agent_interface_upload_http_client,
@@ -45,14 +46,26 @@ class SkillService:
         return payload
 
     @staticmethod
-    def _request_remote(path: str, token: str) -> dict[str, Any]:
+    def _request_remote(
+        path: str,
+        token: str,
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
         try:
             settings = get_settings()
             url = SkillService._build_url(path)
             headers = {"token": f"{token}"}
-            timeout = settings.skill_remote_timeout
+            request_timeout = (
+                timeout if timeout is not None else settings.skill_remote_timeout
+            )
 
-            response = httpx.get(url, headers=headers, timeout=timeout)
+            response = RemoteGateway.sync_get(
+                "remote_skills",
+                url,
+                headers=headers,
+                timeout=request_timeout,
+            )
             response.raise_for_status()
             payload = SkillService._ensure_success_payload(response.json())
         except httpx.TimeoutException as exc:
@@ -73,14 +86,55 @@ class SkillService:
         return payload
 
     @staticmethod
-    def list_remote_skills(token: str) -> list[dict[str, Any]]:
+    def list_remote_skills(
+        token: str,
+        *,
+        timeout: float | None = None,
+    ) -> list[dict[str, Any]]:
         settings = get_settings()
-        payload = SkillService._request_remote(settings.skill_remote_list_path, token)
+        payload = SkillService._request_remote(
+            settings.skill_remote_list_path,
+            token,
+            timeout=timeout,
+        )
         data = payload.get("data")
         if not isinstance(data, list):
             logger.error("远程技能列表数据格式错误: %s", data)
             return []
         return [item for item in data if isinstance(item, dict)]
+
+    @staticmethod
+    def _extract_skill_tags(raw: dict[str, Any]) -> list[str]:
+        def normalize_list(value: Any) -> list[str]:
+            if not isinstance(value, list):
+                return []
+            out: list[str] = []
+            for item in value:
+                if item is None:
+                    continue
+                if isinstance(item, str) and item.strip():
+                    out.append(item.strip())
+                elif isinstance(item, dict):
+                    name = item.get("name") or item.get("tagName") or item.get("label")
+                    if isinstance(name, str) and name.strip():
+                        out.append(name.strip())
+            return out
+
+        for key in ("tags", "tagList", "skillTags", "labelList"):
+            tags = normalize_list(raw.get(key))
+            if tags:
+                return tags
+        names = raw.get("tagNames")
+        if isinstance(names, str) and names.strip():
+            parts = [p.strip() for p in names.replace("，", ",").split(",") if p.strip()]
+            if parts:
+                return parts
+        cat = raw.get("category") or raw.get("categories")
+        if isinstance(cat, str) and cat.strip():
+            return [cat.strip()]
+        if isinstance(cat, list):
+            return normalize_list(cat)
+        return []
 
     @staticmethod
     def map_remote_to_list_item(raw: dict[str, Any]) -> dict[str, Any]:
@@ -107,6 +161,7 @@ class SkillService:
             "description": first_present("description"),
             "directoryId": int(dir_id) if dir_id is not None else None,
             "directoryName": first_present("directoryName", "directory_name"),
+            "tags": SkillService._extract_skill_tags(raw),
         }
 
     @staticmethod
@@ -133,7 +188,7 @@ class SkillService:
         params = {"flat": "true" if flat else "false"}
         try:
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url, headers=headers, params=params)
+                response = await RemoteGateway.async_request("remote_skills", client, "GET", url, headers=headers, params=params)
                 response.raise_for_status()
                 payload = SkillService._ensure_success_payload(response.json())
                 return payload.get("data")
@@ -161,7 +216,7 @@ class SkillService:
         payload = {"skillName": skill_name}
         try:
             async with create_agent_interface_http_client() as client:
-                response = await client.post(url, headers=headers, json=payload)
+                response = await RemoteGateway.async_request("remote_skills", client, "POST", url, headers=headers, json=payload)
                 response.raise_for_status()
                 data = SkillService._ensure_success_payload(response.json()).get("data")
                 if not isinstance(data, dict):
@@ -210,7 +265,10 @@ class SkillService:
         }
         try:
             async with create_agent_interface_upload_http_client() as client:
-                response = await client.post(
+                response = await RemoteGateway.async_request(
+                    "remote_skills",
+                    client,
+                    "POST",
                     url,
                     headers=headers,
                     data=form_data,

@@ -44,7 +44,7 @@ class MentionOption extends MenuOption {
     this.name = candidate.name
     this.avatar = candidate.avatar
     this.role = candidate.role
-    this.onSelect = () => { }
+    this.onSelect = () => {}
   }
 }
 
@@ -107,6 +107,9 @@ function MentionFloatingMenu({
             {options.map((option, i) => (
               <CommandItem
                 key={option.key}
+                // 登记 DOM 到 option.ref：Lexical 方向键据此 scrollIntoView，
+                // 缺失则高亮变化但菜单不滚动（与 slash 菜单同根因）。
+                ref={option.setRefElement}
                 onSelect={() => {
                   setHighlightedIndex(i)
                   selectOptionAndCleanUp(option)

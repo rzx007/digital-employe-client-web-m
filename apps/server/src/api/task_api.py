@@ -4,9 +4,10 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
+from src.core.request_utils import get_user_id
 from src.db.session import get_db
 from src.models.workspace import cst_now
 from src.models.response import PageResponse, ResponseBase
@@ -19,6 +20,8 @@ from src.schemas.task import (
     TaskExecutionSkillRatingRead,
     TaskSyncResult,
     TodayTaskRead,
+    ExecutionMetricsRead,
+    ToolFootprintRead,
 )
 from src.service.employee_service import EmployeeService
 from src.service.workspace_service import WorkspaceService
@@ -66,11 +69,16 @@ def _task_execution_log_to_read(item) -> TaskExecutionLogRead:
         started_at=item.started_at,
         ended_at=item.ended_at,
         duration_ms=item.duration_ms,
+        rework_count=getattr(item, "rework_count", 0),
+        last_heartbeat_at=getattr(item, "last_heartbeat_at", None),
         confirm_url=item.confirm_url,
         confirm_execution_result=getattr(item, "confirm_execution_result", None),
         result_confirmed=getattr(item, "result_confirmed", False),
         is_read=getattr(item, "is_read", False),
         conversation_id=getattr(item, "conversation_id", None),
+        orchestrator_conversation_id=getattr(
+            item, "orchestrator_conversation_id", None
+        ),
         skill_rating=skill_rating,
     )
 
@@ -104,11 +112,7 @@ def _to_task_read(task) -> EmployeeTaskRead:
 @router.get("/workspaces/{workspace_id}/tasks/sync", response_model=ResponseBase[TaskSyncResult])
 def sync_workspace_tasks(workspace_id: int, db: Session = Depends(get_db)) -> ResponseBase[TaskSyncResult]:
     """同步指定工作空间的员工任务，并刷新调度器作业。"""
-    # 根据workspace_id查询workspace
-    workspace = WorkspaceService.get_workspace(db, workspace_id)
-    # 获取员工
-    EmployeeService.sync_workspace_employees(db, workspace)
-    # 同步任务
+    WorkspaceService.get_workspace(db, workspace_id)
     tasks = TaskService.sync_workspace_tasks(db, workspace_id)
     TaskSchedulerService.reload_jobs()
     payload = TaskSyncResult(
@@ -152,6 +156,7 @@ def get_employee_task_schedule(
 
 @router.get("/tasks/calendar/monthly", response_model=ResponseBase[MonthlyCalendarRead])
 def get_monthly_task_calendar(
+    request: Request,
     employee_id: int | None = Query(default=None),
     year: int | None = Query(default=None, ge=1970, le=9999),
     month: int | None = Query(default=None, ge=1, le=12),
@@ -167,6 +172,7 @@ def get_monthly_task_calendar(
     """
     payload = TaskService.build_monthly_calendar(
         db=db,
+        user_id=get_user_id(request),
         year=year,
         month=month,
         employee_id=employee_id,
@@ -184,6 +190,27 @@ def list_today_tasks(
     return ResponseBase(data=[TodayTaskRead(**item) for item in items])
 
 
+@router.get(
+    "/workspaces/{workspace_id}/employees/{employee_id}/tasks/execution-metrics",
+    response_model=ResponseBase[ExecutionMetricsRead],
+)
+def get_employee_execution_metrics(
+    workspace_id: int,
+    employee_id: int,
+    days: int = Query(default=7, ge=1, le=90),
+    db: Session = Depends(get_db),
+) -> ResponseBase[ExecutionMetricsRead]:
+    """近 N 日执行失败率等指标（聚合 task_execution_logs）。"""
+    EmployeeService.get_employee(db, employee_id)
+    payload = TaskService.get_execution_metrics(
+        db=db,
+        workspace_id=workspace_id,
+        employee_id=employee_id,
+        days=days,
+    )
+    return ResponseBase(data=ExecutionMetricsRead(**payload))
+
+
 @router.get("/workspaces/{workspace_id}/tasks/executions", response_model=PageResponse[list[TaskExecutionLogRead]])
 def list_task_executions(
     workspace_id: int,
@@ -192,6 +219,8 @@ def list_task_executions(
     run_status: str | None = Query(default=None),
     start_time: datetime | None = Query(default=None),
     end_time: datetime | None = Query(default=None),
+    orchestrator_conversation_id: int | None = Query(default=None),
+    orchestration_plan_id: int | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -199,7 +228,8 @@ def list_task_executions(
     """
     分页查询任务执行日志。
 
-    支持按员工、任务、状态和时间范围过滤，返回执行耗时、输入输出和执行结果等信息。
+    支持按员工、任务、状态和时间范围过滤。
+    orchestrator_conversation_id：按总管会话过滤（列优先，未回填行经编排计划 JOIN）。
     """
     items, total = TaskService.list_execution_logs(
         db=db,
@@ -209,6 +239,8 @@ def list_task_executions(
         run_status=run_status,
         start_time=start_time,
         end_time=end_time,
+        orchestrator_conversation_id=orchestrator_conversation_id,
+        orchestration_plan_id=orchestration_plan_id,
         page=page,
         page_size=page_size,
     )
@@ -216,17 +248,74 @@ def list_task_executions(
     return PageResponse(data=payload, total=total, page=page, page_size=page_size)
 
 
+@router.get(
+    "/workspaces/{workspace_id}/tasks/shell-executions",
+    response_model=ResponseBase[list[dict]],
+    summary="后台 shell 命令快照（后台命令面板）",
+)
+def list_shell_executions(
+    workspace_id: int,
+    conversation_id: int | None = Query(default=None),
+) -> ResponseBase[list[dict]]:
+    """后台命令面板数据源：读进程级内存注册表，按 workspace（+可选 conversation）过滤，
+    返回 Running/Finished 快照（不落 DB）。"""
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    rows = get_background_shell_registry().list_snapshot(
+        workspace_id=workspace_id, conversation_id=conversation_id
+    )
+    return ResponseBase(data=rows)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/tasks/shell-executions/{session_id}/output",
+    response_model=ResponseBase[dict],
+    summary="后台 shell 命令输出（面板点开看日志）",
+)
+def get_shell_execution_output(
+    workspace_id: int,
+    session_id: str,
+) -> ResponseBase[dict]:
+    """面板「点开看日志」：返回该后台命令的输出末尾（只读，不影响模型的 read_offset）。"""
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    r = get_background_shell_registry().read_output_tail(session_id)
+    return ResponseBase(data=r)
+
+
+@router.delete(
+    "/workspaces/{workspace_id}/tasks/shell-executions/{session_id}",
+    response_model=ResponseBase[dict],
+    summary="终止后台 shell 命令（面板「终止」按钮）",
+)
+def kill_shell_execution(
+    workspace_id: int,
+    session_id: str,
+) -> ResponseBase[dict]:
+    """手动终止某后台命令：调注册表 kill（整树杀），状态转 killed，
+    日志保留在窗口期供面板查看。"""
+    from src.service.shell_background_registry import get_background_shell_registry
+
+    r = get_background_shell_registry().kill(session_id)
+    return ResponseBase(data=r)
+
+
 @router.delete(
     "/workspaces/{workspace_id}/tasks/executions",
     response_model=ResponseBase[dict],
-    summary="清空所有任务执行日志",
+    summary="清空任务执行日志",
 )
 def delete_all_task_executions(
     workspace_id: int,
+    orchestrator_conversation_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> ResponseBase[dict]:
-    """清空指定工作空间的所有任务执行日志。"""
-    count = TaskService.delete_all_execution_logs(db, workspace_id)
+    """清空执行日志。传 orchestrator_conversation_id 时仅删除该总管会话关联记录。"""
+    count = TaskService.delete_all_execution_logs(
+        db,
+        workspace_id,
+        orchestrator_conversation_id=orchestrator_conversation_id,
+    )
     return ResponseBase(data={"deleted": count})
 
 
@@ -248,6 +337,23 @@ def confirm_task_execution_result(
 
 
 @router.post(
+    "/workspaces/{workspace_id}/tasks/executions/{task_execution_log_id}/cancel",
+    response_model=ResponseBase[TaskExecutionLogRead],
+    summary="中止运行中的任务执行",
+)
+def cancel_task_execution(
+    workspace_id: int,
+    task_execution_log_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase[TaskExecutionLogRead]:
+    """中止指定执行(终止会话流并标记 cancelled);其依赖的后续任务将一并跳过。"""
+    log = TaskService.cancel_task_execution_log(
+        db, workspace_id=workspace_id, execution_log_id=task_execution_log_id
+    )
+    return ResponseBase(data=_task_execution_log_to_read(log))
+
+
+@router.post(
     "/workspaces/{workspace_id}/tasks/executions/{task_execution_log_id}/read",
     response_model=ResponseBase[TaskExecutionLogRead],
     summary="确认任务日志已读",
@@ -262,4 +368,21 @@ def mark_task_execution_read(
         db, workspace_id=workspace_id, execution_log_id=task_execution_log_id
     )
     return ResponseBase(data=_task_execution_log_to_read(log))
+
+
+@router.get(
+    "/workspaces/{workspace_id}/tasks/executions/{task_execution_log_id}/tool-footprint",
+    response_model=ResponseBase[ToolFootprintRead],
+    summary="执行的工具足迹(事后,会话级)",
+)
+def get_tool_footprint(
+    workspace_id: int,
+    task_execution_log_id: int,
+    db: Session = Depends(get_db),
+) -> ResponseBase[ToolFootprintRead]:
+    """该执行所属员工会话调用过的工具(从已存 message_parts 提取,只读)。"""
+    parts = TaskService.get_execution_tool_footprint(
+        db, workspace_id=workspace_id, execution_log_id=task_execution_log_id
+    )
+    return ResponseBase(data=ToolFootprintRead(tool_count=len(parts), parts=parts))
 

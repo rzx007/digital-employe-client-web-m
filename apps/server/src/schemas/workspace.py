@@ -19,6 +19,7 @@ class WorkspaceRead(BaseModel):
     id: int
     name: str
     root_path: str
+    user_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

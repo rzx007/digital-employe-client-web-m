@@ -1,0 +1,31 @@
+.docx-artifact-preview .docx-wrapper {
+  margin: 0 auto;
+  background: var(--card);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+}
+
+.docx-artifact-preview .docx-wrapper > section.docx {
+  margin-bottom: 1rem;
+}
+
+.xlsx-artifact-preview-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.xlsx-artifact-preview-table td,
+.xlsx-artifact-preview-table th {
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  padding: 0.375rem 0.625rem;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.xlsx-artifact-preview-table th {
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
+  font-weight: 600;
+}
+
+.xlsx-artifact-preview-table tr:nth-child(even) td {
+  background: color-mix(in oklab, var(--muted) 25%, transparent);
+}

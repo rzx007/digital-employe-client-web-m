@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "网页数据采集",
+  "description": "录制浏览器中的用户操作，自动识别页面元素，支持流程回放，并导出含 WebM 视频的标准化 JSON。",
+  "version": "1.0.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "网页数据采集"
+  },
+  "background": {
+    "service_worker": "background/index.js",
+    "type": "module"
+  },
+  "permissions": ["activeTab", "tabs", "webNavigation", "offscreen", "scripting", "storage", "tabCapture"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/recorder.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/replay.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "minimum_chrome_version": "116"
+}

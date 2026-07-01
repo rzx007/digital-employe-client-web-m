@@ -1,155 +1,286 @@
-import { useState, useEffect, useRef, type ComponentProps } from "react"
+import { useCallback, useEffect, useRef, type ComponentProps } from "react"
 import { useSize } from "ahooks"
+import { IconWorld } from "@tabler/icons-react"
+import { toast } from "sonner"
 
-import { Sheet, SheetContent } from "@workspace/ui/components/sheet"
+import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import { useQueryClient } from "@tanstack/react-query"
 import { ArtifactPanel } from "@/components/artifact"
 import { MonitorPanel } from "@/components/schedule-monitor"
-import { OfflineBanner } from "@/components/offline-banner"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { useContactsQuery } from "@/hooks/use-chat-queries"
+import {
+  useContactsQuery,
+  useConversationsQuery,
+} from "@/hooks/use-chat-queries"
+import { getContactId } from "@/lib/chat/contact-utils"
+import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
+import { useCreateCuratorConversation } from "@/hooks/use-create-curator-conversation"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
-import { useTaskExecutionNotifications } from "@/hooks/use-task-execution-notifications"
+import { useScheduledRunNotifications } from "@/hooks/use-scheduled-run-notifications"
+import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { modelKeys } from "@/lib/query-keys/model"
+import { getElectronApi } from "@/lib/electron/host"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useChatStore } from "@/stores/chat-store"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
+import { TasksPanel } from "../panel/tasks-panel"
 import { useConversationStatusStore } from "@/stores/conversation-status-store"
-import { useOnboardingStore } from "@/stores/onboarding-store"
-import { WelcomeDialog, UserTour } from "@/components/onboarding"
 import { AppToolbar } from "./app-toolbar"
-import { ShiftCalendarPage } from "@/components/shift-calendar"
 import { SkillsPage } from "@/components/skills"
 import { ChatView } from "../views/chat-view"
 import { ContactDetailPanel } from "../contacts/contact-detail-panel"
 import { ContactsPanel } from "../contacts/contacts-panel"
-import { ConversationList } from "../conversations/conversation-list"
 import { MobileTabBar } from "./mobile-tab-bar"
-import { RecentConversations } from "../conversations/recent-conversations"
+import { ConversationSidebar } from "../conversations/conversation-sidebar"
 import { WorkbenchView } from "../views/workbench-view"
+import { BrowserConfirmationHost } from "../right-panels/browser-confirmation-host"
+import { BrowserPanel } from "../right-panels/browser-panel"
+import { BrowserWidthSlider } from "../right-panels/browser-width-slider"
+import { useBrowserStore } from "@/stores/browser-store"
+
+type RightPanel = "artifact" | "monitor" | "browser" | "tasks"
+
+const RIGHT_PANEL_SHELL = "shrink-0 overflow-hidden border-l bg-muted/20 p-3"
+
+/** Monitor / ConversationList 侧栏宽度（Artifact 仍用 flex-7） */
+const NARROW_RIGHT_PANEL_WIDTH = "w-[min(480px,38vw)]"
 
 export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const isMobile = useIsMobile()
   const activeTab = useChatStore((s) => s.activeTab)
+  const setActiveTab = useChatStore((s) => s.setActiveTab)
   const setContacts = useChatStore((s) => s.setContacts)
-  const showWelcome = useOnboardingStore((s) => s.showWelcome)
-  const onboardingCompleted = useOnboardingStore((s) => s.onboardingCompleted)
-  const initialized = useOnboardingStore((s) => s.initialized)
-  const initOnboarding = useOnboardingStore((s) => s.initOnboarding)
 
   const { data: apiContacts } = useContactsQuery()
 
   const queryClient = useQueryClient()
 
-  useWorkspaceEvents((event) => {
-    queryClient.invalidateQueries({
+  const refetchTaskExecutionQueries = useCallback(() => {
+    void queryClient.refetchQueries({
       queryKey: [...chatKeys.all, "all-task-executions"],
     })
-    queryClient.invalidateQueries({
+    void queryClient.refetchQueries({
+      queryKey: [...chatKeys.all, "curator-executions"],
+    })
+    void queryClient.refetchQueries({
       queryKey: [...chatKeys.all, "today-all-executions"],
     })
+  }, [queryClient])
+
+  const refetchShellExecutions = useCallback(() => {
+    void queryClient.refetchQueries({
+      queryKey: [...chatKeys.all, "shell-executions"],
+    })
+  }, [queryClient])
+
+  useWorkspaceEvents((event) => {
+    refetchTaskExecutionQueries()
     switch (event.type) {
       case "conversation_status_changed":
-        useConversationStatusStore.getState().setStatus(
-          event.conversation_id,
-          event.status,
-          event.target_type,
-          event.target_id,
-        )
+        useConversationStatusStore
+          .getState()
+          .setStatus(
+            event.conversation_id,
+            event.status,
+            event.target_type,
+            event.target_id
+          )
         break
       case "task_completed":
       case "task_failed":
       case "task_started":
+        refetchTaskExecutionQueries()
         queryClient.invalidateQueries({
           queryKey: [...chatKeys.all, "notifications"],
         })
+        if (
+          (event.type === "task_completed" || event.type === "task_failed") &&
+          event.orchestrator_conversation_id
+        ) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.messages(
+              String(event.orchestrator_conversation_id)
+            ),
+          })
+        }
+        // 当任务开始时，重新获取对应员工的会话列表
+        if (event.type === "task_started") {
+          queryClient.invalidateQueries({
+            queryKey: conversationListQueryKey(
+              `employee:${event.employee_id}`
+            ),
+          })
+        }
+        break
+      case "orchestrator_turn_started":
+        // 服务端发起的总管增量汇报流：refetch 总管会话消息，让 use-conversation-session
+        // 看到 streaming 占位后 resume/attach 到该流、实时显示。
+        if (event.orchestrator_conversation_id) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.messages(
+              String(event.orchestrator_conversation_id)
+            ),
+          })
+        }
         break
       case "orchestration_plan_generated":
         queryClient.invalidateQueries({
           queryKey: [...chatKeys.all, "orchestration-plans"],
         })
         break
+      case "shell_task_started":
+      case "shell_task_finished":
+        // 后台命令起/止：刷新后台命令快照，指示条与面板近实时更新。
+        refetchShellExecutions()
+        break
     }
   })
 
-  useTaskExecutionNotifications()
+  useScheduledRunNotifications()
 
   useEffect(() => {
-    initOnboarding()
-  }, [initOnboarding])
-
-  useEffect(() => {
-    if (initialized && !onboardingCompleted) {
-      const timer = setTimeout(() => showWelcome(), 1500)
-      return () => clearTimeout(timer)
+    if (activeTab === "calendar") {
+      setActiveTab("workbench")
     }
-  }, [initialized, onboardingCompleted, showWelcome])
+  }, [activeTab, setActiveTab])
 
   useEffect(() => {
     if (apiContacts) {
       setContacts(apiContacts)
-      const { selectedContactId } = useChatStore.getState()
-      const hasSelected = apiContacts.some((c) => {
-        if (c.type === "curator") return c.curator?.id === selectedContactId
-        if (c.type === "employee") return c.employee?.id === selectedContactId
-        return c.group?.id === selectedContactId
-      })
-      if (!hasSelected) {
+      const state = useChatStore.getState()
+      state.migrateLegacyEmployeeSelection()
+
+      const { selectedContactId, detailContactId } = useChatStore.getState()
+      const hasChatSelected = apiContacts.some(
+        (c) => getContactId(c) === selectedContactId
+      )
+      if (!hasChatSelected) {
         const firstCurator = apiContacts.find((c) => c.type === "curator")
         if (firstCurator?.curator) {
-          useChatStore.getState().setSelectedContactId(firstCurator.curator.id)
+          useChatStore
+            .getState()
+            .setSelectedContactId(
+              getContactId(firstCurator) ?? firstCurator.curator.id
+            )
         }
+      }
+
+      if (
+        detailContactId &&
+        !apiContacts.some((c) => getContactId(c) === detailContactId)
+      ) {
+        useChatStore.getState().setDetailContactId(null)
       }
     }
   }, [apiContacts, setContacts])
 
+  // 当联系人列表发生变化时，重新获取联系人列表
   useEffect(() => {
-    if (!window.electronApi?.onInvalidateContacts) return
-    const cleanup = window.electronApi.onInvalidateContacts(() => {
+    if (activeTab !== "contacts") return
+    void queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
+  }, [activeTab, queryClient])
+
+  useEffect(() => {
+    const api = getElectronApi()
+    if (!api?.onInvalidateContacts) return
+    const cleanup = api.onInvalidateContacts(() => {
       queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
     })
     return cleanup
   }, [queryClient])
 
   useEffect(() => {
-    if (!window.electronApi?.onInvalidateModelConfig) return
-    const cleanup = window.electronApi.onInvalidateModelConfig(() => {
+    const api = getElectronApi()
+    if (!api?.onInvalidateModelConfig) return
+    const cleanup = api.onInvalidateModelConfig(() => {
       queryClient.invalidateQueries({ queryKey: modelKeys.runtimeConfig() })
     })
     return cleanup
   }, [queryClient])
 
-  const [showConversations, setShowConversations] = useState(false)
-
   const { closeArtifact, isPanelOpen } = useArtifactStore()
-
-  const {
-    isOpen: isMonitorOpen,
-    isFullscreen: isMonitorFullscreen,
-    closeMonitor,
-    toggleFullscreen: toggleMonitorFullscreen,
-    setFullscreen: setMonitorFullscreen,
-  } = useMonitorStore()
-
-  const selectedConversationId = useChatStore((s) => s.selectedConversationId)
+  const { isOpen: isMonitorOpen, closeMonitor } = useMonitorStore()
+  const isTasksPanelOpen = useTasksPanelStore((s) => s.isOpen)
+  const closeTasksPanel = useTasksPanelStore((s) => s.close)
+  const isBrowserOpen = useBrowserStore((s) => s.isOpen)
+  const isBrowserMinimized = useBrowserStore((s) => s.isMinimized)
+  const isBrowserFullscreen = useBrowserStore((s) => s.isFullscreen)
+  const restoreBrowser = useBrowserStore((s) => s.restoreBrowser)
+  const destroyBrowser = useBrowserStore((s) => s.destroyBrowser)
+  const browserWidthRatio = useBrowserStore((s) => s.widthRatio)
 
   useEffect(() => {
-    if (isMobile && isMonitorOpen) {
-      setMonitorFullscreen(true)
+    if (activeTab === "chat") return
+    destroyBrowser()
+  }, [activeTab, destroyBrowser])
+
+  const selectedContactId = useChatStore((s) => s.selectedContactId)
+  const selectedConversationId = useChatStore((s) => s.selectedConversationId)
+  const isDraftConversation = useChatStore((s) => s.isDraftConversation)
+  const selectedContact = useChatStore((s) => s.getSelectedContact())
+  const { data: conversations = [] } = useConversationsQuery(
+    selectedContactId,
+    selectedContact
+  )
+  const { createCuratorConversation, isPending: isCreatingCurator } =
+    useCreateCuratorConversation()
+  const resetRightPanels = useCallback(() => {
+    resetChatRightPanels()
+  }, [])
+
+  const conversationKey = isDraftConversation
+    ? `draft:${selectedContactId ?? "none"}`
+    : selectedConversationId != null
+      ? `conversation:${selectedConversationId}`
+      : selectedContactId != null
+        ? `contact:${selectedContactId}`
+        : "none"
+
+  const prevConversationKeyRef = useRef(conversationKey)
+
+  useEffect(() => {
+    if (prevConversationKeyRef.current === conversationKey) return
+    prevConversationKeyRef.current = conversationKey
+    destroyBrowser()
+  }, [conversationKey, destroyBrowser])
+
+  const prevConversationCountRef = useRef<number | null>(null)
+  const prevContactIdForConvRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (activeTab !== "chat") return
+
+    if (selectedContactId !== prevContactIdForConvRef.current) {
+      prevContactIdForConvRef.current = selectedContactId
+      prevConversationCountRef.current = null
     }
-  }, [isMobile, isMonitorOpen, setMonitorFullscreen])
+
+    const count = conversations.length
+    const prevCount = prevConversationCountRef.current
+    prevConversationCountRef.current = count
+
+    if (
+      selectedContactId &&
+      prevCount != null &&
+      prevCount > 0 &&
+      count === 0
+    ) {
+      resetRightPanels()
+    }
+  }, [activeTab, selectedContactId, conversations, resetRightPanels])
+  const artifactPanelConversationId = selectedConversationId
 
   const handleNewConversation = () => {
-    const { setDraftConversation, setSelectedConversationId } =
-      useChatStore.getState()
-    setDraftConversation(true)
-    setSelectedConversationId(null)
-  }
-
-  const handleOpenConversations = () => {
-    setShowConversations(true)
+    if (selectedContact?.type === "curator") {
+      if (isCreatingCurator) return
+      void createCuratorConversation(selectedContact)
+      return
+    }
+    // 阶段4：员工单聊退场，不再新建员工会话；派活统一走总管。
+    toast.info("员工不再单独对话，请通过总管派活")
   }
 
   const handleOpenContacts = () => {
@@ -160,14 +291,30 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
   const layoutSize = useSize(layoutRef)
   const layoutWidth = layoutSize?.width ?? 0
 
-  const shouldCollapseRecent = isPanelOpen && !isMobile && layoutWidth < 1902
+  const rightPanel: RightPanel | null = isBrowserOpen
+    ? "browser"
+    : isPanelOpen
+      ? "artifact"
+      : isTasksPanelOpen
+        ? "tasks"
+        : isMonitorOpen
+          ? "monitor"
+          : null
+
+  const hasRightPanel = rightPanel !== null
+  const isBrowserRightPanel = rightPanel === "browser"
+  // 浏览器最小化后即显示恢复入口——即便其它 panel 正占着右栏（点恢复会收起该 panel
+   // 并重显浏览器），让用户随时把后台保活的浏览器调回来。
+  const showBrowserRestoreFab =
+    activeTab === "chat" && isBrowserMinimized && !isBrowserOpen
+
+  const shouldCollapseRecent =
+    activeTab === "chat" && hasRightPanel && layoutWidth < 1902
 
   const setCompactMode = useChatStore((s) => s.setCompactMode)
   useEffect(() => {
     setCompactMode(shouldCollapseRecent)
   }, [shouldCollapseRecent, setCompactMode])
-
-  const showMonitorSheet = isMonitorOpen && activeTab === "chat"
 
   return (
     <div
@@ -179,14 +326,13 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
       )}
       {...props}
     >
-      <WelcomeDialog />
-      <UserTour />
-      <div className="flex min-h-0 min-w-0 flex-1">
-        {!isMobile && <AppToolbar />}
+      <BrowserConfirmationHost />
+      <div className="chat-layout-root flex min-h-0 min-w-0 flex-1">
+        {!isMobile && !isBrowserFullscreen && <AppToolbar />}
 
         {!isMobile &&
+          !isBrowserFullscreen &&
           activeTab !== "workbench" &&
-          activeTab !== "calendar" &&
           activeTab !== "skills" && (
             <div
               className={cn(
@@ -195,7 +341,7 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
               )}
             >
               {activeTab === "chat" && (
-                <RecentConversations
+                <ConversationSidebar
                   className="h-full w-full"
                   collapsed={shouldCollapseRecent}
                 />
@@ -206,24 +352,29 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
             </div>
           )}
 
-        {activeTab === "chat" && (
+        {activeTab === "chat" && !isBrowserFullscreen && (
           <ChatView
             onOpenContacts={handleOpenContacts}
-            onOpenConversations={handleOpenConversations}
             onNewConversation={handleNewConversation}
+            isNewConversationPending={isCreatingCurator}
             className={cn(
-              "min-w-0",
-              isPanelOpen && !isMobile ? "flex-[3]" : "flex-1"
+              "min-h-0 min-w-0",
+              isBrowserRightPanel
+                ? "shrink-0"
+                : hasRightPanel
+                  ? "flex-3"
+                  : "flex-1"
             )}
+            style={
+              isBrowserRightPanel
+                ? { width: `${(1 - browserWidthRatio) * 100}%` }
+                : undefined
+            }
           />
         )}
 
         {activeTab === "contacts" && (
-          <ContactDetailPanel className="1111 min-w-0 flex-1" />
-        )}
-
-        {activeTab === "calendar" && (
-          <ShiftCalendarPage className="min-w-0 flex-1" />
+          <ContactDetailPanel className="min-w-0 flex-1" />
         )}
 
         {activeTab === "workbench" && (
@@ -232,75 +383,72 @@ export function ChatLayout({ className, ...props }: ComponentProps<"div">) {
 
         {activeTab === "skills" && <SkillsPage className="min-w-0 flex-1" />}
 
-        {isPanelOpen && !isMobile && activeTab === "chat" && (
-          <div className="min-w-0 flex-[7] overflow-hidden border-l bg-muted/20 p-3">
+        {hasRightPanel && activeTab === "chat" && rightPanel === "artifact" && (
+          <div className={cn(RIGHT_PANEL_SHELL, "min-w-0 flex-7")}>
             <ArtifactPanel
-              conversationId={selectedConversationId}
+              conversationId={artifactPanelConversationId}
               isOpen={isPanelOpen}
               onClose={closeArtifact}
               className="h-full rounded-xl"
             />
           </div>
         )}
+
+        {hasRightPanel && activeTab === "chat" && rightPanel === "tasks" && (
+          <div className={cn(RIGHT_PANEL_SHELL, NARROW_RIGHT_PANEL_WIDTH)}>
+            <TasksPanel
+              conversationId={artifactPanelConversationId}
+              curatorContactId={selectedContact?.curator?.id}
+              onClose={closeTasksPanel}
+              className="h-full rounded-xl"
+            />
+          </div>
+        )}
+
+        {hasRightPanel && activeTab === "chat" && rightPanel === "monitor" && (
+          <div className={cn(RIGHT_PANEL_SHELL, NARROW_RIGHT_PANEL_WIDTH)}>
+            <MonitorPanel
+              isOpen={isMonitorOpen}
+              onClose={closeMonitor}
+              className="h-full rounded-xl"
+            />
+          </div>
+        )}
+
+        {hasRightPanel && activeTab === "chat" && rightPanel === "browser" && (
+          <>
+            {!isBrowserFullscreen && <BrowserWidthSlider />}
+            <div
+              className={cn(
+                RIGHT_PANEL_SHELL,
+                "flex min-h-0 min-w-0 flex-col border-l bg-muted/20 p-3",
+                isBrowserFullscreen && "flex-1 border-l-0"
+              )}
+              style={
+                isBrowserFullscreen
+                  ? undefined
+                  : { width: `${browserWidthRatio * 100}%` }
+              }
+            >
+              <BrowserPanel />
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Conversation history Sheet */}
-      <Sheet open={showConversations} onOpenChange={setShowConversations}>
-        <SheetContent side="right" className="w-[300px] p-0">
-          <ConversationList
-            className="h-full w-full border-r-0"
-            onSelectConversation={() => setShowConversations(false)}
-          />
-        </SheetContent>
-      </Sheet>
-
-      {/* MonitorPanel as Sheet in chat mode */}
-      <Sheet
-        open={showMonitorSheet}
-        onOpenChange={(open) => {
-          if (!open) closeMonitor()
-        }}
-      >
-        <SheetContent side="right" className="w-[520px] p-0 sm:w-[600px]">
-          <MonitorPanel
-            isOpen={true}
-            isFullscreen={false}
-            onToggleFullscreen={() => { }}
-            className="h-full w-full rounded-none border-0 shadow-none"
-          />
-        </SheetContent>
-      </Sheet>
-
-      {/* Artifact panel on mobile */}
-      <Sheet
-        open={isPanelOpen && isMobile && activeTab === "chat"}
-        onOpenChange={(open) => {
-          if (!open) closeArtifact()
-        }}
-      >
-        <SheetContent side="right" className="w-[92vw] p-0 sm:w-[640px]">
-          <ArtifactPanel
-            conversationId={selectedConversationId}
-            isOpen={isPanelOpen}
-            onClose={closeArtifact}
-            className="h-full rounded-none border-0 shadow-none"
-          />
-        </SheetContent>
-      </Sheet>
-
-      {/* Monitor fullscreen (non-chat tab) */}
-      {isMonitorOpen && isMonitorFullscreen && activeTab !== "chat" && (
-        <MonitorPanel
-          isOpen={isMonitorOpen}
-          isFullscreen={isMonitorFullscreen}
-          onToggleFullscreen={toggleMonitorFullscreen}
-        />
+      {showBrowserRestoreFab && (
+        <Button
+          variant="secondary"
+          size="icon"
+          className="absolute top-1/2 right-3 z-30 -translate-y-1/2 rounded-full border shadow-lg"
+          onClick={restoreBrowser}
+          title="恢复浏览器"
+        >
+          <IconWorld className="size-5" />
+        </Button>
       )}
 
-      {/* Mobile bottom tab bar */}
       {isMobile && <MobileTabBar />}
-
-      <OfflineBanner />
     </div>
   )
 }

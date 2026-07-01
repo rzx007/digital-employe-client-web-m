@@ -21,7 +21,9 @@ function isIgnoredEntry(path: string): boolean {
   return segments.some((seg) => seg === ".DS_Store")
 }
 
-function extractDescriptionFromFrontmatterText(frontmatterText: string): string {
+function extractDescriptionFromFrontmatterText(
+  frontmatterText: string
+): string {
   try {
     const data = parseYaml(frontmatterText) as unknown
     if (data && typeof data === "object" && !Array.isArray(data)) {
@@ -37,7 +39,7 @@ function extractDescriptionFromFrontmatterText(frontmatterText: string): string 
   }
 
   const descMatch = frontmatterText.match(
-    /^[ \t]*description[ \t]*[:：][ \t]*(.+?)[ \t]*$/im,
+    /^[ \t]*description[ \t]*[:：][ \t]*(.+?)[ \t]*$/im
   )
   if (!descMatch) return ""
   const value = descMatch[1].trim().replace(/^["']|["']$/g, "")

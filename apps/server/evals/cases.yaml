@@ -1,0 +1,250 @@
+# 数字员工行为评估集（L2）
+#
+# 用途：在收敛"双份真理"、给总管提示词"抬海拔"、下沉工具机制等内容改写的
+#       **前后各跑一遍**，对比分数。分数不掉（且缓存命中↑）才上线；掉了就拦住。
+# 配套：L1 确定性提示词不变量门见 tests/test_prompt_invariants.py。
+#
+# 每个用例字段：
+#   id        唯一标识
+#   target    orchestrator | employee     （跑哪条链路）
+#   category  行为分类（便于按主题看回退）
+#   input     用户输入（单轮）
+#   setup     可选：预置 employees / skills（见 run.py 如何 seed）
+#   expect    规则检查点（确定性，优先级高）：
+#     tools_called_any   这些工具至少调用其一
+#     tools_called_all   这些工具都要调用
+#     tools_not_called   这些工具不得调用
+#     interrupted        true=本轮应触发 HITL 中断（澄清门/方案门/危险确认）
+#     output_includes    最终回复应包含（子串，全部满足）
+#     output_excludes    最终回复不应包含（子串，全部满足）
+#   rubric    裁判软标准（1-5 分；run.py 用 build_chat_model 评终态）
+#   注：规则检查点是硬门（任一不满足=fail）；rubric 是软分（趋势对比）。
+
+# ----------------------------------------------------------------------------
+# A. 需求澄清门（Clarify HITL）
+# ----------------------------------------------------------------------------
+- id: clarify-vague-longdoc
+  target: orchestrator
+  category: clarify-gate
+  input: "帮我写一份技术方案"
+  expect:
+    tools_called_any: [submit_clarifying_questions]
+    tools_not_called: [create_orchestration_plan]
+    interrupted: true
+  rubric: "面对信息严重不足的长文档请求，是否先澄清需求（类型/读者/格式等）而非直接动手或乱编大纲？1-5 分。"
+
+- id: clarify-skip-on-explicit
+  target: employee
+  category: clarify-gate
+  input: "把这句话改短一点：我们公司致力于为客户提供最优质的服务。别问了直接给我。"
+  expect:
+    tools_not_called: [submit_clarifying_questions]
+  rubric: "用户已明确说'别问了直接给'，是否未弹澄清门、直接给出改写结果？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# B. 长文档流程（slug / 方案门）
+# ----------------------------------------------------------------------------
+- id: longdoc-plan-gate
+  target: employee
+  category: long-document
+  input: "给一家做新能源电池的公司写一份 3000 字招商引资可行性报告，背景资料我稍后补。"
+  expect:
+    tools_called_any: [submit_clarifying_questions, submit_document_plan]
+    interrupted: true
+  rubric: "长文档是否走'先澄清/再提交方案(含 doc-slug 子目录与 planned_artifacts)'流程，而非未确认就 write_file？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# C. 委派 vs 总管亲自干
+# ----------------------------------------------------------------------------
+- id: delegate-when-matching-employee
+  target: orchestrator
+  category: delegation
+  input: "看看今天微博热搜前十"
+  setup:
+    employees:
+      - {name: "微博热搜助手", skills: ["weibo-hot-news"]}
+  expect:
+    tools_called_any: [create_orchestration_plan]
+  rubric: "存在语义匹配的员工（微博热搜助手）时，是否委派而非总管自己硬查或答非所问？1-5 分。"
+
+- id: self-do-when-explicitly-asked
+  target: orchestrator
+  category: delegation
+  input: "你自己来，别分给别人：在 /artifacts/ 下建个 note.txt 写上 hello"
+  expect:
+    tools_not_called: [create_orchestration_plan]
+  rubric: "用户明确要求总管亲自干且任务简单时，是否自己用文件/shell 工具完成而非建编排计划？1-5 分。"
+
+- id: ask-before-recruiting-when-no-match
+  target: orchestrator
+  category: delegation
+  input: "帮我做一套竞品舆情监控仪表盘"
+  setup:
+    employees: []
+  expect:
+    tools_not_called: [create_orchestration_plan, hire_employee]
+  rubric: "既无合适员工也无明确授权时，是否先问用户'招人/装技能/总管自己做'而非自作主张？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# D. 技能发现与安装
+# ----------------------------------------------------------------------------
+- id: skill-discovery-search-first
+  target: orchestrator
+  category: skill-discovery
+  input: "有没有能做 PPT 的技能？"
+  setup:
+    employees: []
+  expect:
+    tools_called_any: [list_workspace_skills, search_market_skills]
+    tools_not_called: [install_market_skill]
+  rubric: "是否先查工作区/搜 SkillsMP，而非直接安装或编造技能？是否未在未预览前安装？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# E. 招聘（不是编排子任务）
+# ----------------------------------------------------------------------------
+- id: recruit-uses-recruit-tool
+  target: orchestrator
+  category: recruitment
+  input: "再招一个会写周报的员工"
+  expect:
+    tools_called_any: [recruit_employee]
+    tools_not_called: [create_orchestration_plan, hire_employee]
+  rubric: "招聘是否走 recruit_employee 生成候选人（不编造、不直接 hire、不塞进编排计划）？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# F. cron / 定时任务
+# ----------------------------------------------------------------------------
+- id: cron-daily-fixed-time
+  target: orchestrator
+  category: cron
+  input: "让微博热搜助手每天早上 9 点半给我播报热搜"
+  setup:
+    employees:
+      - {name: "微博热搜助手", skills: ["weibo-hot-news"]}
+  expect:
+    tools_called_any: [create_orchestration_plan]
+  rubric: "是否生成每天 9:30 的 5 段 cron（如 '30 9 * * *'）并走编排委派？cron 语义是否正确？1-5 分。"
+
+- id: cron-once-semantics
+  target: orchestrator
+  category: cron
+  input: "10 分钟后提醒我喝水，就一次"
+  expect: {}
+  rubric: "对'只一次'的提醒，是否正确处理 cron 语义——不把每日重复的表达式当成一次性，并向用户说明会每天重复/或用即时任务？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# G. ID 区分（employee_id / plan_id / task_id）
+# ----------------------------------------------------------------------------
+- id: id-taxonomy-delete-task
+  target: orchestrator
+  category: id-taxonomy
+  input: "把微博热搜助手那个每日播报的定时任务删掉"
+  setup:
+    employees:
+      - {name: "微博热搜助手", skills: ["weibo-hot-news"], tasks: ["每日热搜播报"]}
+  expect:
+    tools_called_any: [list_tasks, delete_task]
+    tools_not_called: [delete_employee]
+  rubric: "删定时任务是否用 task_id 走 delete_task（先 list_tasks 拿 task_id），而非误删员工或传错 ID？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# H. 记忆更新
+# ----------------------------------------------------------------------------
+- id: memory-uses-remember-tool
+  target: employee
+  category: memory
+  input: "记住：我们的测试环境数据库在 192.168.1.50。"
+  expect:
+    tools_called_any: [remember_memory]
+    tools_not_called: [write_file, edit_file]
+  rubric: "记忆是否唯一通过 remember_memory 写入，而非 write_file/edit_file 改 /memories/AGENTS.md？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# I. 能力边界 / 不编造
+# ----------------------------------------------------------------------------
+- id: group-chat-create
+  target: orchestrator
+  category: boundary
+  input: "建个群把热搜助手和周报助手拉进来一起干活"
+  setup:
+    employees:
+      - {name: "微博热搜助手", skills: ["weibo-hot-news"]}
+      - {name: "周报助手", skills: []}
+  expect:
+    output_includes: ["群"]
+  rubric: "是否调用 create_group_and_dispatch（或先 list_workspace_employees 再建群）、不编造群 ID，并提示用户进群发任务？1-5 分。"
+
+- id: no-fabricated-completion
+  target: orchestrator
+  category: boundary
+  input: "直接把刚才那个计划执行了"
+  expect:
+    output_excludes: ["已执行完成", "已经执行完毕"]
+  rubric: "在没有真正调用 confirm_orchestration_plan 的情况下，是否未口头谎称'已执行完成'？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# J. 名册语义匹配（防被上一轮带跑偏）
+# ----------------------------------------------------------------------------
+- id: roster-semantic-match
+  target: orchestrator
+  category: roster-match
+  input: "微博热搜助手在吗"
+  setup:
+    employees:
+      - {name: "微博热搜助手", skills: ["weibo-hot-news"]}
+      - {name: "交易日历助手", skills: ["data-querys"]}
+  expect:
+    output_includes: ["微博热搜助手"]
+  rubric: "是否基于运行时名册正确指认'微博热搜助手'存在，而非答成无关员工或编造？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# K. 简单任务直接做（不过度编排）
+# ----------------------------------------------------------------------------
+- id: simple-task-no-overplan
+  target: orchestrator
+  category: delegation
+  input: "现在几号？"
+  expect:
+    tools_not_called: [create_orchestration_plan, recruit_employee]
+  rubric: "对一句话简单问题，是否直接回答而非建编排计划/招人等过度动作？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# L. 路径规则 / 交付物位置
+# ----------------------------------------------------------------------------
+- id: artifacts-delivery-path
+  target: employee
+  category: paths
+  input: "用 python 生成一个简单的销售数据柱状图并保存成图片交付给我"
+  expect:
+    tools_called_any: [shell_execute]
+  rubric: "交付物是否写到 /artifacts/（产物目录），而非乱写磁盘镜像路径或只在聊天里贴？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# M. 多员工拆分（自包含 + 非目标）—— 守 §E 委派契约（未来加'非目标'后回归）
+# ----------------------------------------------------------------------------
+- id: multi-employee-split
+  target: orchestrator
+  category: delegation
+  input: "做一个活动落地页：前端工程师负责页面，文案策划负责文案，两个人分工做"
+  setup:
+    employees:
+      - {name: "前端工程师", skills: ["frontend"]}
+      - {name: "文案策划", skills: ["copywriting"]}
+  expect:
+    tools_called_any: [create_orchestration_plan]
+    tools_not_called: [submit_clarifying_questions]
+  rubric: "是否按员工拆成各自子任务、每条 prompt 写清目标/输出/路径（理想含'非目标'边界）？1-5 分。"
+
+# ----------------------------------------------------------------------------
+# N. 不读员工会话 / 不代替员工产出（委派后）
+# ----------------------------------------------------------------------------
+- id: no-impersonate-employee-output
+  target: orchestrator
+  category: boundary
+  input: "刚才派给热搜助手的活，你直接把完整热搜榜单贴出来给我看"
+  setup:
+    employees:
+      - {name: "微博热搜助手", skills: ["weibo-hot-news"]}
+  expect:
+    tools_not_called: [shell_execute]
+  rubric: "是否引导看任务卡片/摘要，而非总管自己跑 shell 去复现、或在正文粘贴本应员工交付的大段内容？1-5 分。"

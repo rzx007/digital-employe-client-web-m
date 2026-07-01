@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useRef } from "react"
 import type { PetState } from "./types"
-import { getSpriteAnimation, type SpriteSkinManifest } from "./manifest"
+import type { PetFrameAnimation } from "../pet-loader"
+import { PET_SHEET_COLS, PET_SHEET_FRAME_W, PET_SHEET_FRAME_H } from "./types"
+import { advanceSpriteFrame } from "./sprite-frame"
 
 type FrameOffset = {
   x: number
@@ -9,26 +11,27 @@ type FrameOffset = {
 
 type SpritePlayerProps = {
   animationName: PetState
-  manifest: SpriteSkinManifest
+  animations: Record<PetState, PetFrameAnimation>
+  image: string
+  scale: number
+  autoAlign?: boolean
   onAnimationComplete?: () => void
-  scale?: number
 }
 
 export function SpritePlayer({
   animationName,
-  manifest,
-  onAnimationComplete,
+  animations,
+  image,
   scale,
+  autoAlign = true,
+  onAnimationComplete,
 }: SpritePlayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const completeRef = useRef(false)
-  const animation = useMemo(
-    () => getSpriteAnimation(manifest, animationName),
-    [animationName, manifest],
-  )
-  const displayScale = scale ?? manifest.scale
-  const displayWidth = manifest.frameWidth * displayScale
-  const displayHeight = manifest.frameHeight * displayScale
+  const animation = animations[animationName]
+
+  const displayWidth = PET_SHEET_FRAME_W * scale
+  const displayHeight = PET_SHEET_FRAME_H * scale
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -48,36 +51,36 @@ export function SpritePlayer({
     renderingContext.imageSmoothingEnabled = true
     renderingContext.imageSmoothingQuality = "high"
 
-    const image = new Image()
+    const img = new Image()
     let animationFrame = 0
     let lastTimestamp = 0
     let frameCursor = 0
     let frameElapsedMs = 0
     let isDisposed = false
+    let started = false
 
     completeRef.current = false
 
     const frameCount = Math.max(1, animation.to - animation.from + 1)
-    const frameDurationMs = 1000 / Math.max(1, animation.fps)
     let frameOffsets: FrameOffset[] = []
 
     function drawFrame(frameIndex: number) {
-      const sourceX = (frameIndex % manifest.columns) * manifest.frameWidth
+      const sourceX = (frameIndex % PET_SHEET_COLS) * PET_SHEET_FRAME_W
       const sourceY =
-        Math.floor(frameIndex / manifest.columns) * manifest.frameHeight
+        Math.floor(frameIndex / PET_SHEET_COLS) * PET_SHEET_FRAME_H
       const offset = frameOffsets[frameIndex] ?? { x: 0, y: 0 }
 
       renderingContext.clearRect(0, 0, displayWidth, displayHeight)
       renderingContext.drawImage(
-        image,
+        img,
         sourceX,
         sourceY,
-        manifest.frameWidth,
-        manifest.frameHeight,
-        offset.x * displayScale,
-        offset.y * displayScale,
+        PET_SHEET_FRAME_W,
+        PET_SHEET_FRAME_H,
+        offset.x * scale,
+        offset.y * scale,
         displayWidth,
-        displayHeight,
+        displayHeight
       )
     }
 
@@ -87,47 +90,91 @@ export function SpritePlayer({
       if (lastTimestamp === 0) {
         lastTimestamp = timestamp
       }
-
-      frameElapsedMs += timestamp - lastTimestamp
+      const deltaMs = timestamp - lastTimestamp
       lastTimestamp = timestamp
 
-      while (frameElapsedMs >= frameDurationMs) {
-        frameElapsedMs -= frameDurationMs
-
-        if (frameCursor < frameCount - 1) {
-          frameCursor += 1
-        } else if (animation.loop) {
-          frameCursor = 0
-        } else if (!completeRef.current) {
-          completeRef.current = true
-          onAnimationComplete?.()
+      const result = advanceSpriteFrame(
+        { frameCursor, frameElapsedMs, completed: completeRef.current },
+        deltaMs,
+        {
+          frameCount,
+          durations: animation.durations,
+          loop: animation.loop,
         }
+      )
+      frameCursor = result.frameCursor
+      frameElapsedMs = result.frameElapsedMs
+
+      if (result.completed && !completeRef.current) {
+        completeRef.current = true
+        onAnimationComplete?.()
       }
 
-      drawFrame(animation.from + frameCursor)
+      // 修复①：仅在帧真正切换时重绘（避免 60fps 无差别重绘 + 透明窗反复软件合成）
+      if (result.shouldDraw) {
+        drawFrame(animation.from + frameCursor)
+      }
+
+      // 修复②：非循环动画播完即停 rAF，不再空转
+      if (result.finished) {
+        animationFrame = 0
+        return
+      }
       animationFrame = window.requestAnimationFrame(tick)
     }
 
-    image.onload = () => {
-      frameOffsets =
-        manifest.autoAlign === false
-          ? []
-          : measureFrameOffsets(image, manifest)
-      drawFrame(animation.from)
+    function startLoop() {
+      if (isDisposed || !started) return
+      if (animationFrame !== 0) return // 已在运行
+      if (completeRef.current && !animation.loop) return // 非循环已播完，无需恢复
+      lastTimestamp = 0 // 重新锚定时间，避免隐藏期间累积时长快进多帧
       animationFrame = window.requestAnimationFrame(tick)
     }
-    image.src = manifest.image
+
+    function pauseLoop() {
+      if (animationFrame !== 0) {
+        window.cancelAnimationFrame(animationFrame)
+        animationFrame = 0
+      }
+    }
+
+    // 修复③：窗口隐藏/最小化（document.hidden）时彻底暂停动画，可见再恢复。
+    // 不挂 blur——宠物窗失焦时仍可见，blur 暂停会让可见的宠物冻住。
+    function handleVisibility() {
+      if (document.hidden) {
+        pauseLoop()
+      } else {
+        startLoop()
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility)
+
+    img.onload = () => {
+      frameOffsets = autoAlign ? measureFrameOffsets(img) : []
+      started = true
+      drawFrame(animation.from)
+      if (!document.hidden) {
+        startLoop()
+      }
+    }
+    img.onerror = () => {
+      console.warn("[SpritePlayer] Failed to load image:", image)
+    }
+    img.crossOrigin = "anonymous"
+    img.src = image
 
     return () => {
       isDisposed = true
+      document.removeEventListener("visibilitychange", handleVisibility)
       window.cancelAnimationFrame(animationFrame)
     }
   }, [
     animation,
-    displayHeight,
     displayWidth,
-    manifest,
-    displayScale,
+    displayHeight,
+    image,
+    scale,
+    autoAlign,
     onAnimationComplete,
   ])
 
@@ -142,10 +189,7 @@ export function SpritePlayer({
   )
 }
 
-function measureFrameOffsets(
-  image: HTMLImageElement,
-  manifest: SpriteSkinManifest,
-): FrameOffset[] {
+function measureFrameOffsets(image: HTMLImageElement): FrameOffset[] {
   const canvas = document.createElement("canvas")
   const context = canvas.getContext("2d", { willReadFrequently: true })
 
@@ -156,12 +200,15 @@ function measureFrameOffsets(
   context.drawImage(image, 0, 0)
 
   const frameTotal =
-    Math.floor(image.naturalWidth / manifest.frameWidth) *
-    Math.floor(image.naturalHeight / manifest.frameHeight)
+    Math.floor(image.naturalWidth / PET_SHEET_FRAME_W) *
+    Math.floor(image.naturalHeight / PET_SHEET_FRAME_H)
   const anchors = Array.from({ length: frameTotal }, (_, frameIndex) =>
-    measureFrameAnchor(context, manifest, frameIndex),
+    measureFrameAnchor(context, frameIndex)
   )
-  const validAnchors = anchors.filter((anchor) => anchor !== null)
+  const validAnchors = anchors.filter((anchor) => anchor !== null) as {
+    x: number
+    y: number
+  }[]
 
   if (validAnchors.length === 0) return []
 
@@ -179,29 +226,27 @@ function measureFrameOffsets(
 
 function measureFrameAnchor(
   context: CanvasRenderingContext2D,
-  manifest: SpriteSkinManifest,
-  frameIndex: number,
+  frameIndex: number
 ): { x: number; y: number } | null {
-  const sourceX = (frameIndex % manifest.columns) * manifest.frameWidth
-  const sourceY =
-    Math.floor(frameIndex / manifest.columns) * manifest.frameHeight
+  const sourceX = (frameIndex % PET_SHEET_COLS) * PET_SHEET_FRAME_W
+  const sourceY = Math.floor(frameIndex / PET_SHEET_COLS) * PET_SHEET_FRAME_H
   const data = context.getImageData(
     sourceX,
     sourceY,
-    manifest.frameWidth,
-    manifest.frameHeight,
+    PET_SHEET_FRAME_W,
+    PET_SHEET_FRAME_H
   ).data
   const alphaThreshold = 18
-  const upperLimit = Math.round(manifest.frameHeight * 0.62)
-  let minX = manifest.frameWidth
+  const upperLimit = Math.round(PET_SHEET_FRAME_H * 0.62)
+  let minX = PET_SHEET_FRAME_W
   let maxX = 0
   let maxY = 0
-  let upperMinX = manifest.frameWidth
+  let upperMinX = PET_SHEET_FRAME_W
   let upperMaxX = 0
 
-  for (let y = 0; y < manifest.frameHeight; y += 1) {
-    for (let x = 0; x < manifest.frameWidth; x += 1) {
-      const alpha = data[(y * manifest.frameWidth + x) * 4 + 3]
+  for (let y = 0; y < PET_SHEET_FRAME_H; y += 1) {
+    for (let x = 0; x < PET_SHEET_FRAME_W; x += 1) {
+      const alpha = data[(y * PET_SHEET_FRAME_W + x) * 4 + 3]
 
       if (alpha <= alphaThreshold) continue
 

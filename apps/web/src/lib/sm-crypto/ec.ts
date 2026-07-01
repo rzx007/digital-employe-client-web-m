@@ -1,6 +1,6 @@
-import { BigInteger } from 'jsbn'
+import { BigInteger } from "jsbn"
 
-const THREE = new BigInteger('3')
+const THREE = new BigInteger("3")
 
 /**
  * 椭圆曲线域元素
@@ -41,28 +41,40 @@ export class ECFieldElementFp {
    * 相加
    */
   add(b: ECFieldElementFp): ECFieldElementFp {
-    return new ECFieldElementFp(this.q, this.x.add(b.toBigInteger()).mod(this.q))
+    return new ECFieldElementFp(
+      this.q,
+      this.x.add(b.toBigInteger()).mod(this.q)
+    )
   }
 
   /**
    * 相减
    */
   subtract(b: ECFieldElementFp): ECFieldElementFp {
-    return new ECFieldElementFp(this.q, this.x.subtract(b.toBigInteger()).mod(this.q))
+    return new ECFieldElementFp(
+      this.q,
+      this.x.subtract(b.toBigInteger()).mod(this.q)
+    )
   }
 
   /**
    * 相乘
    */
   multiply(b: ECFieldElementFp): ECFieldElementFp {
-    return new ECFieldElementFp(this.q, this.x.multiply(b.toBigInteger()).mod(this.q))
+    return new ECFieldElementFp(
+      this.q,
+      this.x.multiply(b.toBigInteger()).mod(this.q)
+    )
   }
 
   /**
    * 相除
    */
   divide(b: ECFieldElementFp): ECFieldElementFp {
-    return new ECFieldElementFp(this.q, this.x.multiply(b.toBigInteger().modInverse(this.q)).mod(this.q))
+    return new ECFieldElementFp(
+      this.q,
+      this.x.multiply(b.toBigInteger().modInverse(this.q)).mod(this.q)
+    )
   }
 
   /**
@@ -80,7 +92,12 @@ export class ECPointFp {
   z: BigInteger
   zinv: BigInteger | null
 
-  constructor(curve: ECCurveFp, x: ECFieldElementFp | null, y: ECFieldElementFp | null, z?: BigInteger) {
+  constructor(
+    curve: ECCurveFp,
+    x: ECFieldElementFp | null,
+    y: ECFieldElementFp | null,
+    z?: BigInteger
+  ) {
     this.curve = curve
     this.x = x
     this.y = y
@@ -93,13 +110,17 @@ export class ECPointFp {
   getX(): ECFieldElementFp {
     if (this.zinv === null) this.zinv = this.z.modInverse(this.curve.q)
 
-    return this.curve.fromBigInteger(this.x!.toBigInteger().multiply(this.zinv).mod(this.curve.q))
+    return this.curve.fromBigInteger(
+      this.x!.toBigInteger().multiply(this.zinv).mod(this.curve.q)
+    )
   }
 
   getY(): ECFieldElementFp {
     if (this.zinv === null) this.zinv = this.z.modInverse(this.curve.q)
 
-    return this.curve.fromBigInteger(this.y!.toBigInteger().multiply(this.zinv).mod(this.curve.q))
+    return this.curve.fromBigInteger(
+      this.y!.toBigInteger().multiply(this.zinv).mod(this.curve.q)
+    )
   }
 
   /**
@@ -132,7 +153,10 @@ export class ECPointFp {
    */
   isInfinity(): boolean {
     if (this.x === null && this.y === null) return true
-    return this.z.equals(BigInteger.ZERO) && !this.y!.toBigInteger().equals(BigInteger.ZERO)
+    return (
+      this.z.equals(BigInteger.ZERO) &&
+      !this.y!.toBigInteger().equals(BigInteger.ZERO)
+    )
   }
 
   /**
@@ -195,10 +219,18 @@ export class ECPointFp {
     const w11 = w8.multiply(w6.square()).subtract(w7.multiply(w9)).mod(q)
 
     const x3 = w3.multiply(w11).mod(q)
-    const y3 = w6.multiply(w9.multiply(w1).subtract(w11)).subtract(w4.multiply(w10)).mod(q)
+    const y3 = w6
+      .multiply(w9.multiply(w1).subtract(w11))
+      .subtract(w4.multiply(w10))
+      .mod(q)
     const z3 = w10.multiply(w8).mod(q)
 
-    return new ECPointFp(this.curve, this.curve.fromBigInteger(x3), this.curve.fromBigInteger(y3), z3)
+    return new ECPointFp(
+      this.curve,
+      this.curve.fromBigInteger(x3),
+      this.curve.fromBigInteger(y3),
+      z3
+    )
   }
 
   /**
@@ -234,10 +266,18 @@ export class ECPointFp {
     const w6 = w1.square().subtract(w4.shiftLeft(3)).mod(q)
 
     const x3 = w2.multiply(w6).mod(q)
-    const y3 = w1.multiply(w4.shiftLeft(2).subtract(w6)).subtract(w5.shiftLeft(1).multiply(w3)).mod(q)
+    const y3 = w1
+      .multiply(w4.shiftLeft(2).subtract(w6))
+      .subtract(w5.shiftLeft(1).multiply(w3))
+      .mod(q)
     const z3 = w2.multiply(w5).mod(q)
 
-    return new ECPointFp(this.curve, this.curve.fromBigInteger(x3), this.curve.fromBigInteger(y3), z3)
+    return new ECPointFp(
+      this.curve,
+      this.curve.fromBigInteger(x3),
+      this.curve.fromBigInteger(y3),
+      z3
+    )
   }
 
   /**
@@ -288,7 +328,9 @@ export class ECCurveFp {
    */
   equals(other: ECCurveFp): boolean {
     if (other === this) return true
-    return this.q.equals(other.q) && this.a.equals(other.a) && this.b.equals(other.b)
+    return (
+      this.q.equals(other.q) && this.a.equals(other.a) && this.b.equals(other.b)
+    )
   }
 
   /**
@@ -320,7 +362,7 @@ export class ECCurveFp {
         return new ECPointFp(
           this,
           this.fromBigInteger(new BigInteger(xHex, 16)),
-          this.fromBigInteger(new BigInteger(yHex, 16)),
+          this.fromBigInteger(new BigInteger(yHex, 16))
         )
       default:
         // 不支持

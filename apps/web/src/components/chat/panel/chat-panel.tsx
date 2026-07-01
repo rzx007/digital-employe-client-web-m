@@ -6,33 +6,38 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@workspace/ui/components/ai-elements/conversation"
-import { Shimmer } from "@workspace/ui/components/ai-elements/shimmer"
-import {
-  Message,
-  MessageContent,
-} from "@workspace/ui/components/ai-elements/message"
+
 import type { PromptInputMessage } from "@workspace/ui/components/ai-elements/prompt-input"
 import { cn } from "@workspace/ui/lib/utils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useStickToBottomContext } from "use-stick-to-bottom"
-import logo from "@/assets/logo.png"
-import { Spinner } from "@/components/spinner"
+import { useBrand } from "@/lib/brand/brand"
 import { useChatStore } from "@/stores/chat-store"
 
-import { ChatPromptInput } from "@/components/chat-prompt-input"
+import { ChatComposerArea } from "./chat-composer-area"
 import type { PromptChangeEvent } from "@/components/lexical-editor/prompt-input-textarea"
 import type { SlashCommandItem } from "@/components/lexical-editor/slash-command-plugin"
 import type { MentionCandidate } from "@/components/lexical-editor/mention-plugin"
 import { ChatPanelHeader } from "./chat-panel-header"
-import { PendingMessageQueue } from "./pending-message-queue"
+import { CuratorReturnBar } from "../curator/curator-return-bar"
 import type { PendingMessage } from "@/hooks/use-pending-messages"
+import {
+  isAssistantQueued,
+  isStoredAssistantQueued,
+  isTerminalAssistantStreamState,
+} from "@/lib/chat/assistant-stream-state"
+import { ChatStreamingIndicator } from "./chat-streaming-indicator"
 import { MessageLoadingSkeleton } from "./message-loading-skeleton"
 import {
   getContactDisplayName,
   type ChatViewContact,
 } from "../shared/chat-view-shared"
+import type { ActiveHitl, HitlPatchOptions } from "@/lib/chat/hitl"
+import { shouldIncludeFileChangesForMessage } from "@/lib/chat/file-change-utils"
 import { ChatMessageItem } from "../messages/chat-message-item"
+import { CuratorEmptyWelcome } from "../curator/curator-empty-welcome"
+import { useSyncConversationSubtasks } from "@/hooks/use-conversation-subtasks"
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
@@ -50,12 +55,18 @@ type VirtualizedMessageListProps = {
   messages: UIMessage[]
   contact: ChatViewContact
   hasCurrentTurnEnded: boolean
+  conversationId?: string | number | null
+  activeHitl?: ActiveHitl | null
+  onHitlApproved?: (options?: HitlPatchOptions) => void
 }
 
 function VirtualizedMessageList({
   messages,
   contact,
   hasCurrentTurnEnded,
+  conversationId,
+  activeHitl,
+  onHitlApproved,
 }: VirtualizedMessageListProps) {
   const { scrollRef } = useStickToBottomContext()
   const lastAssistantMessageId = getLastAssistantMessageId(messages)
@@ -96,9 +107,11 @@ function VirtualizedMessageList({
         const message = messages[virtualItem.index]
         const isLastAssistantMessage =
           message.role === "assistant" && message.id === lastAssistantMessageId
-        const includeFileChanges =
-          message.role === "assistant" &&
-          (!isLastAssistantMessage || hasCurrentTurnEnded)
+        const includeFileChanges = shouldIncludeFileChangesForMessage(
+          message,
+          messages,
+          hasCurrentTurnEnded
+        )
 
         return (
           <div
@@ -118,6 +131,11 @@ function VirtualizedMessageList({
               message={message}
               contact={contact}
               includeFileChanges={includeFileChanges}
+              isLastAssistantMessage={isLastAssistantMessage}
+              isTurnEnded={hasCurrentTurnEnded}
+              conversationId={conversationId}
+              activeHitl={activeHitl}
+              onHitlApproved={onHitlApproved}
             />
           </div>
         )
@@ -149,6 +167,14 @@ export function ChatPanel({
   onPendingMoveDown,
   conversationId,
   onAttachmentsChange,
+  composerMessages,
+  storedAssistantStreamState,
+  hideStreamingIndicator = false,
+  activeHitl = null,
+  onHitlApproved,
+  onDraftSuggestionSelect,
+  hideHeader = false,
+  readOnly = false,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -174,19 +200,46 @@ export function ChatPanel({
   onPendingMoveDown?: (id: string) => void
   conversationId?: string | number | null
   onAttachmentsChange?: (paths: string[]) => void
+  composerMessages?: UIMessage[]
+  /** DB 侧最后一条 assistant 的 streamState，用于抑制误显示的 streaming 指示器 */
+  storedAssistantStreamState?: string | null
+  /** 群深链执行会话：只读 DB 快照，不显示底部「正在生成…」 */
+  hideStreamingIndicator?: boolean
+  activeHitl?: ActiveHitl | null
+  onHitlApproved?: (options?: HitlPatchOptions) => void
+  /** 总管草稿：引导语填入输入框 */
+  onDraftSuggestionSelect?: (text: string) => void
+  /** 工作台 compact：外层已有 CuratorCompactToolbar */
+  hideHeader?: boolean
+  /** 只读模式：隐藏底部输入区（如员工任务执行会话钻取，仅查看转录） */
+  readOnly?: boolean
 }) {
+  const brand = useBrand()
   const contactDisplayName = contact
     ? getContactDisplayName(contact)
     : "AI 助手"
 
+  // 把当前会话的并行子任务（task 工具调用）聚合进 tasks-panel-store，
+  // 供右侧合并任务面板展示。用 composer（含实时流式 preliminary 输出）作为数据源。
+  useSyncConversationSubtasks(composerMessages ?? messages)
+
   const displayMessages = isDraftMode ? EMPTY_MESSAGES : messages
   const hasCurrentTurnEnded =
-    status === "ready" || status === "error" || !!error
+    (status === "ready" || status === "error" || !!error) &&
+    storedAssistantStreamState !== "streaming"
   const showStreamingIndicator =
+    !hideStreamingIndicator &&
     !isDraftMode &&
-    (status === "submitted" || status === "streaming") &&
+    // 本地 SSE 假结束但后端仍在跑(DB streamState=streaming)时也显示忙碌——
+    // 让用户知道总管仍在执行(子任务进行中),发送会进排队而非抢占。
+    (status === "submitted" ||
+      status === "streaming" ||
+      storedAssistantStreamState === "streaming") &&
     !error &&
-    displayMessages.length > 0
+    displayMessages.length > 0 &&
+    !isAssistantQueued(composerMessages ?? messages) &&
+    !isStoredAssistantQueued(storedAssistantStreamState) &&
+    !isTerminalAssistantStreamState(storedAssistantStreamState ?? undefined)
 
   const slashCommands = React.useMemo<SlashCommandItem[]>(() => {
     const skills =
@@ -194,7 +247,7 @@ export function ChatPanel({
     if (!skills?.length) return []
     return skills.map((skill) => ({
       id: String(skill.id),
-      title: skill.skillName || skill.skill_name,
+      title: skill.skill_name_zh ?? skill.skillName ?? skill.skill_name ?? "",
       icon: <IconSparkles className="h-4 w-4" />,
       description: skill.description || skill.skill_description || "",
       keywords: [
@@ -207,14 +260,6 @@ export function ChatPanel({
   }, [contact])
 
   const mentionCandidates = React.useMemo<MentionCandidate[]>(() => {
-    if (contact?.type === "group") {
-      return (contact.group?.participants ?? []).map((p) => ({
-        id: p.id,
-        name: p.name,
-        avatar: p.avatar,
-        role: p.role,
-      }))
-    }
     if (contact?.type === "curator") {
       const { contacts } = useChatStore.getState()
       return contacts
@@ -229,55 +274,88 @@ export function ChatPanel({
     return []
   }, [contact])
 
+  const handleComposerSend = React.useCallback(
+    (message: PromptInputMessage | string) => {
+      const payload: PromptInputMessage =
+        typeof message === "string" ? { text: message, files: [] } : message
+      void onSend(payload)
+    },
+    [onSend]
+  )
+
   return (
     <div
-      className={cn("flex flex-1 flex-col bg-background", className)}
+      className={cn("flex min-h-0 flex-1 flex-col bg-background", className)}
       {...props}
     >
       {contact && (
         <>
-          <ChatPanelHeader
-            title={title}
-            contact={contact}
-            onOpenContacts={onOpenContacts}
-            onOpenConversations={onOpenConversations}
-            onNewConversation={onNewConversation}
-          />
+          {!hideHeader && (
+            <ChatPanelHeader
+              title={title}
+              contact={contact}
+              onOpenContacts={onOpenContacts}
+              onOpenConversations={onOpenConversations}
+              onNewConversation={onNewConversation}
+            />
+          )}
+          <CuratorReturnBar />
           <>
-            <Conversation className="min-h-0 flex-1 overflow-y-auto pt-4">
+            <Conversation className="min-h-0 flex-1 pt-4">
               <ConversationContent className="px-4 pb-4">
                 {isDraftMode ? (
-                  <ConversationEmptyState className="py-16">
-                    <div className="flex flex-col items-center gap-6">
-                      <img src={logo} alt="Logo" className="w-12 opacity-80" />
-                      <div className="space-y-3 text-center">
-                        <h2 className="text-md font-semibold tracking-tight">
-                          数字员工智能助手
-                        </h2>
-                        <p className="text-sm text-muted-foreground">
-                          随时为您解答问题、处理任务、提升效率
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-center gap-3">
-                        {["智能问答", "数据分析", "文档生成", "流程自动化"].map(
-                          (label) => (
+                  contact.type === "curator" ? (
+                    <CuratorEmptyWelcome
+                      displayName={contactDisplayName}
+                      onSuggestionSelect={onDraftSuggestionSelect ?? (() => {})}
+                      suggestionsDisabled={
+                        status === "submitted" || status === "streaming"
+                      }
+                    />
+                  ) : (
+                    <ConversationEmptyState className="py-16">
+                      <div className="flex flex-col items-center gap-6">
+                        <img
+                          src={brand.logos.app}
+                          alt="Logo"
+                          className="h-12 w-auto max-w-[200px] object-contain opacity-80"
+                        />
+                        <div className="space-y-3 text-center">
+                          <h2 className="text-md font-semibold tracking-tight">
+                            {brand.subtitle}
+                          </h2>
+                          <p className="text-sm text-muted-foreground">
+                            随时为您解答问题、处理任务、提升效率
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-center gap-3">
+                          {[
+                            "智能问答",
+                            "数据分析",
+                            "文档生成",
+                            "流程自动化",
+                          ].map((label) => (
                             <span
                               key={label}
                               className="rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs text-muted-foreground"
                             >
                               {label}
                             </span>
-                          )
-                        )}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  </ConversationEmptyState>
+                    </ConversationEmptyState>
+                  )
                 ) : isMessagesLoading ? (
                   <MessageLoadingSkeleton />
                 ) : displayMessages.length === 0 ? (
                   <ConversationEmptyState className="py-16">
                     <div className="flex flex-col items-center gap-5">
-                      <img src={logo} alt="Logo" className="w-14 opacity-50" />
+                      <img
+                          src={brand.logos.app}
+                          alt="Logo"
+                          className="h-14 w-auto max-w-[220px] object-contain opacity-50"
+                      />
                       <div className="space-y-1.5 text-center">
                         <h3 className="text-sm font-medium">开始新对话</h3>
                         <p className="text-xs text-muted-foreground">
@@ -291,60 +369,56 @@ export function ChatPanel({
                     messages={displayMessages}
                     contact={contact}
                     hasCurrentTurnEnded={hasCurrentTurnEnded}
+                    conversationId={conversationId}
+                    activeHitl={activeHitl}
+                    onHitlApproved={onHitlApproved}
                   />
                 )}
 
                 {showStreamingIndicator && (
-                  <Message
-                    from="assistant"
+                  <ChatStreamingIndicator
+                    status={status}
+                    messages={composerMessages ?? messages}
                     className="mx-auto -mt-10 max-w-4xl"
-                  >
-                    <MessageContent className="rounded-lg bg-muted/40 px-3 py-2.5">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Spinner
-                          className="size-3.5"
-                          style={{ color: "#8B5CF6" }}
-                        />
-                        <Shimmer className="text-xs">正在生成回复...</Shimmer>
-                      </div>
-                    </MessageContent>
-                  </Message>
+                  />
                 )}
               </ConversationContent>
               <ConversationScrollButton />
             </Conversation>
 
-            <div className="mx-auto w-full max-w-4xl border-none py-4 px-1">
-              {pendingMessages && pendingMessages.length > 0 && (
-                <div className="mx-auto w-[98%]">
-                  <PendingMessageQueue
-                    queue={pendingMessages}
-                    onRemove={onPendingRemove ?? (() => { })}
-                    onSendNow={onPendingSendNow ?? (() => { })}
-                    onMoveUp={onPendingMoveUp ?? (() => { })}
-                    onMoveDown={onPendingMoveDown ?? (() => { })}
-                  />
-                </div>
-              )}
-              <ChatPromptInput
-                value={inputValue}
-                onChange={onInputChange}
-                onSubmit={onSend}
-                onStop={onStop}
-                status={status}
-                disabled={isSubmitDisabled}
-                placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"
-                size="compact"
-                className="w-full overflow-hidden bg-background/80 shadow-xl"
-                slashCommands={slashCommands}
-                mentionCandidates={mentionCandidates}
-                conversationId={conversationId}
-                onAttachmentsChange={onAttachmentsChange}
-              />
-              {error && (
-                <p className="mt-2 text-xs text-destructive">{error.message}</p>
-              )}
-            </div>
+            {readOnly ? (
+              <div className="mx-auto w-full max-w-4xl px-1 py-3 text-center text-xs text-muted-foreground">
+                只读 · 仅查看执行记录，如需派活请通过总管
+              </div>
+            ) : (
+              <div className="mx-auto w-full max-w-4xl border-none px-1 py-4">
+                <ChatComposerArea
+                  messages={composerMessages ?? messages}
+                  conversationId={conversationId!}
+                  inputValue={inputValue}
+                  onInputChange={onInputChange}
+                  onSend={handleComposerSend}
+                  onStop={() => onStop?.()}
+                  onHitlApproved={onHitlApproved}
+                  activeHitl={activeHitl}
+                  status={status}
+                  submitDisabled={isSubmitDisabled}
+                  placeholder="请输入任务，然后交给我, 键入 / 指定调用技能"
+                  size="compact"
+                  className="w-full"
+                  slashCommands={slashCommands}
+                  mentionCandidates={mentionCandidates}
+                  onAttachmentsChange={onAttachmentsChange}
+                  pendingMessages={pendingMessages}
+                  onPendingRemove={onPendingRemove}
+                  onPendingSendNow={onPendingSendNow}
+                  onPendingMoveUp={onPendingMoveUp}
+                  onPendingMoveDown={onPendingMoveDown}
+                  error={error}
+                  pendingQueueClassName="mx-auto w-[98%]"
+                />
+              </div>
+            )}
           </>
         </>
       )}

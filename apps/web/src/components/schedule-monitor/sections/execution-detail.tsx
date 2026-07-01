@@ -3,7 +3,7 @@ import { IconChevronDown, IconChevronRight } from "@tabler/icons-react"
 import { cn } from "@workspace/ui/lib/utils"
 import { Badge } from "@workspace/ui/components/badge"
 import type { TaskRun, TaskRunStatus } from "@/types/schedule-monitor"
-import { formatTaskDuration } from "@/lib/mock-data/schedule-monitor"
+import { formatTaskDuration } from "@/lib/schedule-monitor/format-duration"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 
 const STATUS_CONFIG: Record<
@@ -24,6 +24,11 @@ const STATUS_CONFIG: Record<
     className:
       "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
   },
+  queued: {
+    label: "排队中",
+    className:
+      "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-400",
+  },
   running: {
     label: "执行中",
     className:
@@ -41,8 +46,12 @@ const STATUS_CONFIG: Record<
   },
   cancelled: {
     label: "已取消",
+    className: "bg-muted text-muted-foreground dark:bg-muted/60",
+  },
+  superseded: {
+    label: "已打回",
     className:
-      "bg-muted text-muted-foreground dark:bg-muted/60",
+      "bg-gray-100 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400",
   },
 }
 
@@ -66,7 +75,7 @@ function TaskRunRow({ run }: { run: TaskRun }) {
   const config = STATUS_CONFIG[run.status] ?? STATUS_FALLBACK
 
   return (
-    <div className="rounded-md border mb-1">
+    <div className="mb-1 rounded-md border">
       <button
         type="button"
         className={cn(

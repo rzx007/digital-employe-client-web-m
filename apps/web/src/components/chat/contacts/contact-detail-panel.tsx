@@ -1,6 +1,7 @@
-import { useState } from "react"
 import { IconMessage, IconUsers } from "@tabler/icons-react"
 import { Button } from "@workspace/ui/components/button"
+import { switchToContact } from "@/lib/chat/conversation-selection"
+import { getContactId } from "@/lib/chat/contact-utils"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import {
   Tabs,
@@ -11,42 +12,30 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { useChatStore } from "@/stores/chat-store"
 import {
-  useAnomalies,
-  useMonthlyScheduleOverview,
-  useTaskSummary,
+  useExecutionMetrics7d,
   useTodayTaskRuns,
 } from "@/hooks/use-schedule-monitor-queries"
 import {
   getContactDisplayName,
   type ChatViewContact,
 } from "../shared/chat-view-shared"
-import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
-import { ScheduleCalendar } from "@/components/schedule-monitor/sections/schedule-calendar"
-import { TaskStatsCards } from "@/components/schedule-monitor/sections/task-stats-cards"
+import { EmployeeContactAvatar } from "./contact-avatars"
 import { ExecutionDetail } from "@/components/schedule-monitor/sections/execution-detail"
-import { AnomalyMonitor } from "@/components/schedule-monitor/sections/anomaly-monitor"
+import { ExecutionMetricsCard } from "@/components/schedule-monitor/sections/execution-metrics-card"
 import { EmployeeEditForm } from "@/components/employee/employee-edit-form"
 import { CuratorOverviewSection } from "./curator-overview-section"
+import { GrowthBrainSection } from "./growth-brain-section"
 
 export function ContactDetailPanel({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const selectedContact = useChatStore((s) => s.getSelectedContact())
-  const switchToContact = useChatStore((s) => s.switchToContact)
+  const selectedContact = useChatStore((s) => s.getDetailContact())
 
   const handleSendMessage = () => {
-    const contact = useChatStore.getState().getSelectedContact()
-    if (!contact) return
-    const id =
-      contact.type === "curator"
-        ? contact.curator?.id
-        : contact.type === "employee"
-          ? contact.employee?.id
-          : contact.group?.id
-    if (id) {
-      switchToContact(id)
-    }
+    if (!selectedContact) return
+    const id = getContactId(selectedContact)
+    if (id) switchToContact(id)
   }
 
   if (!selectedContact) {
@@ -75,28 +64,42 @@ export function ContactDetailPanel({
         <div className="mx-auto max-w-3xl space-y-6 p-6">
           <ContactProfileCard
             contact={selectedContact}
-            onSendMessage={handleSendMessage}
+            onSendMessage={
+              selectedContact.type === "curator"
+                ? handleSendMessage
+                : undefined
+            }
           />
           {selectedContact.type === "employee" &&
             selectedContact.employee?.id && (
-              <Tabs defaultValue="tasks" className="w-full">
+              <Tabs defaultValue="profile" className="w-full">
                 <TabsList variant="line" className="w-full">
-                  <TabsTrigger value="tasks" className="flex-1">
-                    任务监控
+                  <TabsTrigger value="profile" className="flex-1">
+                    资料与执行
                   </TabsTrigger>
-                  <TabsTrigger value="edit" className="flex-1">
-                    编辑员工
+                  <TabsTrigger value="growth" className="flex-1">
+                    成长履历
                   </TabsTrigger>
                 </TabsList>
-                <TabsContent value="edit">
-                  <EmployeeEditForm
-                    key={selectedContact.employee?.id}
-                    employeeId={selectedContact.employee?.id ?? ""}
-                  />
+                <TabsContent value="profile">
+                  <div className="space-y-6">
+                    <EmployeeEditForm
+                      key={selectedContact.employee?.id}
+                      employeeId={selectedContact.employee?.id ?? ""}
+                    />
+                    <div className="space-y-3 border-t pt-6">
+                      <h3 className="text-sm font-medium text-muted-foreground">
+                        执行历史
+                      </h3>
+                      <ContactExecutionSection
+                        employeeId={selectedContact.employee?.id ?? ""}
+                      />
+                    </div>
+                  </div>
                 </TabsContent>
-                <TabsContent value="tasks">
-                  <ContactMonitorSection
-                    employeeId={selectedContact.employee?.id ?? ""}
+                <TabsContent value="growth">
+                  <GrowthBrainSection
+                    employeeId={selectedContact.employee?.id ?? null}
                   />
                 </TabsContent>
               </Tabs>
@@ -113,57 +116,38 @@ function ContactProfileCard({
   onSendMessage,
 }: {
   contact: ChatViewContact
-  onSendMessage: () => void
+  onSendMessage?: () => void
 }) {
   const displayName = getContactDisplayName(contact)
 
   const role =
-    contact.type === "group"
-      ? `${contact.group?.participants.length ?? 0} 位成员`
-      : contact.type === "curator"
-        ? contact.curator?.role
-        : contact.employee?.role
+    contact.type === "curator" ? contact.curator?.role : contact.employee?.role
 
   const status =
     contact.type === "curator"
       ? contact.curator?.status
-      : contact.type === "employee"
-        ? contact.employee?.status
-        : undefined
+      : contact.employee?.status
 
   const avatarData =
-    contact.type === "curator"
-      ? contact.curator
-      : contact.type === "employee"
-        ? contact.employee
-        : undefined
+    contact.type === "curator" ? contact.curator : contact.employee
 
   const specialty =
     contact.type === "curator"
       ? contact.curator?.specialty
-      : contact.type === "employee"
-        ? contact.employee?.specialty
-        : undefined
+      : contact.employee?.specialty
 
   return (
     <div className="border bg-background p-6">
       <div className="flex items-start gap-4">
-        {contact.type === "group" ? (
-          <GroupMembersAvatar
-            participants={contact.group?.participants ?? []}
-            className="size-16"
-          />
-        ) : (
-          <EmployeeContactAvatar
-            name={avatarData?.name}
-            avatar={avatarData?.avatar}
-            status={status}
-            showStatus
-            className="size-16"
-            avatarClassName="size-16"
-            statusClassName="h-3 w-3"
-          />
-        )}
+        <EmployeeContactAvatar
+          name={avatarData?.name}
+          avatar={avatarData?.avatar}
+          status={status}
+          showStatus
+          className="size-16"
+          avatarClassName="size-16"
+          statusClassName="h-3 w-3"
+        />
 
         <div className="flex flex-1 flex-col gap-1">
           <h2 className="text-lg font-semibold">{displayName}</h2>
@@ -195,45 +179,27 @@ function ContactProfileCard({
         </div>
       </div>
 
-      <div className="mt-4">
-        <Button onClick={onSendMessage} className="gap-2">
-          <IconMessage className="size-4" />
-          发消息
-        </Button>
-      </div>
+      {onSendMessage && (
+        <div className="mt-4">
+          <Button onClick={onSendMessage} className="gap-2">
+            <IconMessage className="size-4" />
+            发消息
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
 
-function ContactMonitorSection({ employeeId }: { employeeId: string }) {
-  const now = new Date()
-  const [viewYear, setViewYear] = useState(now.getFullYear())
-  const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
-
-  const { data: overview } = useMonthlyScheduleOverview(viewYear, viewMonth)
+function ContactExecutionSection({ employeeId }: { employeeId: string }) {
   const { data: taskRuns = [] } = useTodayTaskRuns(employeeId)
-  const { data: summary } = useTaskSummary(employeeId)
-  const { data: anomalies = [] } = useAnomalies(employeeId)
-
-  const handleMonthChange = (year: number, month: number) => {
-    setViewYear(year)
-    setViewMonth(month)
-  }
+  const { data: executionMetrics } = useExecutionMetrics7d(employeeId)
 
   return (
     <div className="space-y-4">
-      {summary && <TaskStatsCards summary={summary} />}
-
-      {overview && (
-        <ScheduleCalendar
-          overview={overview}
-          onMonthChange={handleMonthChange}
-        />
-      )}
+      <ExecutionMetricsCard metrics={executionMetrics} />
 
       <ExecutionDetail runs={taskRuns} />
-
-      <AnomalyMonitor anomalies={anomalies} />
     </div>
   )
 }

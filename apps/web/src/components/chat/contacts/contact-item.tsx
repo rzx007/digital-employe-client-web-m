@@ -22,58 +22,81 @@ import {
   ContextMenuTrigger,
 } from "@workspace/ui/components/context-menu"
 import { cn } from "@workspace/ui/lib/utils"
-import type { Contact } from "@/lib/mock-data/ai-employees"
+import type { Contact } from "@/types/chat"
 import { useChatStore } from "@/stores/chat-store"
+import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key"
 import { chatKeys } from "@/lib/query-keys/chat"
 import { deleteEmployee } from "@/api/employee"
+import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
+import {
+  clearDetailContact,
+  clearSelectedContact,
+  selectContactForDetail,
+  switchToContact,
+} from "@/lib/chat/conversation-selection"
+import { getContactId } from "@/lib/chat/contact-utils"
 
-import { EmployeeContactAvatar, GroupMembersAvatar } from "./contact-avatars"
+import { EmployeeContactAvatar } from "./contact-avatars"
 import { EmployeeDetailDialog } from "@/components/employee/employee-detail-dialog"
-import { GroupDetailDialog } from "../dialogs/group-detail-dialog"
 
 interface ContactItemProps extends React.ComponentProps<"div"> {
   contact: Contact
   isCollapsed: boolean
+  /** select：仅选中（联系人 Tab）；openChat：进入对话（默认） */
+  clickAction?: "select" | "openChat"
   onDoubleClick?: () => void
+}
+
+function resolveClickAction(
+  contact: Contact,
+  clickAction: "select" | "openChat" | undefined
+): "select" | "openChat" {
+  if (clickAction) return clickAction
+  return contact.type === "curator" ? "openChat" : "select"
 }
 
 export function ContactItem({
   contact,
   isCollapsed,
+  clickAction: clickActionProp,
   onDoubleClick,
   className,
   ...props
 }: ContactItemProps) {
-  const { contacts, selectedContactId, setContacts, setSelectedContactId } =
+  const clickAction = resolveClickAction(contact, clickActionProp)
+  const { contacts, selectedContactId, detailContactId, setContacts } =
     useChatStore(
       useShallow((state) => ({
         contacts: state.contacts,
         selectedContactId: state.selectedContactId,
+        detailContactId: state.detailContactId,
         setContacts: state.setContacts,
-        setSelectedContactId: state.setSelectedContactId,
       }))
     )
-  const contactId =
-    contact.type === "curator"
-      ? contact.curator?.id
-      : contact.type === "employee"
-        ? contact.employee?.id
-        : contact.group?.id
-  const isSelected = selectedContactId === contactId
+  // 选择标识：带 type 前缀，避免群与员工同 id 串号
+  const contactId = getContactId(contact)
+  // 原始主键：用于删除等需要真实 id 的后端操作
+  const rawId =
+    contact.type === "curator" ? contact.curator?.id : contact.employee?.id
+  const isSelected =
+    clickAction === "select"
+      ? detailContactId === contactId
+      : selectedContactId === contactId
 
   const [alertOpen, setAlertOpen] = React.useState(false)
   const [detailOpen, setDetailOpen] = React.useState(false)
   const queryClient = useQueryClient()
 
   const displayName =
-    contact.type === "group"
-      ? contact.group?.name
-      : contact.type === "curator"
-        ? contact.curator?.name
-        : contact.employee?.name
+    contact.type === "curator" ? contact.curator?.name : contact.employee?.name
 
   const handleClick = () => {
-    setSelectedContactId(contactId || null)
+    if (!contactId) return
+    if (clickAction === "select") {
+      selectContactForDetail(contactId)
+      return
+    }
+    switchToContact(contactId)
   }
 
   const handleDetail = () => {
@@ -84,76 +107,71 @@ export function ContactItem({
     setAlertOpen(true)
   }
 
+  const focusAfterContactRemoved = (removedContactId: string) => {
+    if (detailContactId === removedContactId) {
+      clearDetailContact()
+    }
+    if (selectedContactId !== removedContactId) return
+    clearSelectedContact()
+    resetChatRightPanels()
+  }
+
   const handleDeleteConfirm = async () => {
     setAlertOpen(false)
 
-    if (contact.type === "employee" && contactId) {
+    if (contact.type === "employee" && rawId) {
       try {
-        await deleteEmployee(contactId)
-        // 删除成功后刷新联系人列表
+        await deleteEmployee(rawId)
+        setContacts(
+          contacts.filter(
+            (c) => !(c.type === "employee" && c.employee?.id === rawId)
+          )
+        )
         await queryClient.invalidateQueries({
           queryKey: chatKeys.contacts(),
         })
+        queryClient.removeQueries({
+          queryKey: conversationListQueryKey(contactId),
+        })
+        focusAfterContactRemoved(contactId)
         toast.success(`已删除「${displayName}」`)
-      } catch (error) {
+      } catch {
         toast.error("删除失败，请稍后重试")
       }
-    } else if (contact.type === "group" && contactId) {
-      // 如果是群组，暂时只在前端删除（需要后端支持群组删除API）
-      const updated = contacts.filter((c) => {
-        const id = c.group?.id
-        return id !== contactId
-      })
-      setContacts(updated)
-      if (selectedContactId === contactId) {
-        setSelectedContactId(null)
-      }
-      toast.success(`已删除「${displayName}」`)
     }
   }
 
-  const renderAvatar = () => {
-    if (contact.type === "group") {
-      return (
-        <GroupMembersAvatar
-          participants={contact.group?.participants}
-          className={cn(
-            isCollapsed ? "h-8 w-8" : "size-9 gap-1",
-            !isCollapsed && "item-[img]:h-[18px] item-[img]:w-[18px]"
-          )}
-          itemClassName={!isCollapsed ? "h-[18px] w-[18px]" : undefined}
-          fallbackClassName={!isCollapsed ? "text-[10px]" : undefined}
-          placeholderClassName={!isCollapsed ? "h-[18px] w-[18px]" : undefined}
-        />
-      )
-    }
+  const candidateCount =
+    contact.type === "employee"
+      ? (contact.employee?.skillCandidateCount ?? 0)
+      : 0
 
+  const renderAvatar = () => {
     const data = contact.type === "curator" ? contact.curator : contact.employee
 
     return (
-      <EmployeeContactAvatar
-        name={data?.name}
-        avatar={data?.avatar}
-        status={data?.status}
-        showStatus
-        avatarClassName={isCollapsed ? "h-8 w-8" : "h-10 w-10"}
-        statusClassName={isCollapsed ? "h-2 w-2" : "h-2.5 w-2.5"}
-      />
+      <div className="relative">
+        <EmployeeContactAvatar
+          name={data?.name}
+          avatar={data?.avatar}
+          status={data?.status}
+          showStatus
+          avatarClassName={isCollapsed ? "h-8 w-8" : "h-10 w-10"}
+          statusClassName={isCollapsed ? "h-2 w-2" : "h-2.5 w-2.5"}
+        />
+        {candidateCount > 0 ? (
+          <span
+            className="absolute -right-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-medium leading-4 text-white shadow"
+            title={`${candidateCount} 个新技能待确认`}
+          >
+            ✨{candidateCount}
+          </span>
+        ) : null}
+      </div>
     )
   }
 
   const renderText = () => {
-    if (contact.type === "group") {
-      return (
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate font-medium">{contact.group?.name}</span>
-          <span className="truncate text-muted-foreground">
-            {contact.group?.participants.length} 位成员
-          </span>
-        </div>
-      )
-    }
-
     const data = contact.type === "curator" ? contact.curator : contact.employee
 
     return (
@@ -195,15 +213,6 @@ export function ContactItem({
     if (contact.type === "employee") {
       return (
         <EmployeeDetailDialog
-          contact={contact}
-          open={detailOpen}
-          onOpenChange={setDetailOpen}
-        />
-      )
-    }
-    if (contact.type === "group") {
-      return (
-        <GroupDetailDialog
           contact={contact}
           open={detailOpen}
           onOpenChange={setDetailOpen}

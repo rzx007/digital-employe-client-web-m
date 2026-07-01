@@ -11,7 +11,6 @@ import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 import { useAllTaskExecutions } from "@/hooks/use-schedule-monitor-queries"
 import { EmployeeContactAvatar } from "./contact-avatars"
-import type { TaskExecution } from "@/types/schedule-monitor"
 
 function StatCard({
   label,
@@ -123,7 +122,7 @@ export function CuratorOverviewSection() {
         }
       }
 
-      let totalCount = executions.length
+      const totalCount = executions.length
       let successCount = 0
       let failedCount = 0
       let pendingCount = 0

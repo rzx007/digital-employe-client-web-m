@@ -1,8 +1,10 @@
 import logging
+from typing import Any
 
 import httpx
 
 from src.core.config import get_settings, join_base_and_path
+from src.core.remote_gateway import RemoteGateway
 from src.service.local_skill_service import LocalSkillService
 from src.utils.http_client import create_agent_interface_http_client
 
@@ -67,7 +69,10 @@ class AgentInterfaceService:
 
             timeout = settings.skill_remote_timeout
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.get(
+                response = await RemoteGateway.async_request(
+                    "remote_skills",
+                    client,
+                    "GET",
                     url,
                     params=params,
                     headers=self._headers(token),
@@ -121,20 +126,26 @@ class AgentInterfaceService:
         return available
 
     async def get_skill_detail(
-        self, skill_id: int, token: str | None = None
+        self,
+        skill_id: int,
+        token: str | None = None,
+        workspace_id: int | None = None,
+        include_skill_content: bool = True,
     ) -> dict | None:
         """
         获取技能详情
 
         Args:
             skill_id: 技能ID
+            workspace_id: 工作空间 ID（本地负 ID 技能需与 list_local_skills 一致）
+            include_skill_content: 是否包含 SKILL.md 全文（招聘等场景仅需元数据）
 
         Returns:
             Optional[Dict]: 技能详情
         """
         try:
             if skill_id < 0:
-                local_skills = LocalSkillService.list_local_skills()
+                local_skills = LocalSkillService.list_local_skills(workspace_id)
                 matched_skill = next(
                     (
                         skill
@@ -144,24 +155,46 @@ class AgentInterfaceService:
                     None,
                 )
                 if not matched_skill:
-                    logger.warning("未找到本地技能详情 skill_id=%s", skill_id)
+                    logger.warning(
+                        "未找到本地技能详情 skill_id=%s workspace_id=%s",
+                        skill_id,
+                        workspace_id,
+                    )
                     return None
                 skill_name = str(matched_skill.get("skillName") or "").strip()
                 if not skill_name:
                     return None
-                detail = LocalSkillService.get_local_skill_detail(skill_name)
-                return {
+                description = str(matched_skill.get("description") or "").strip()
+                zh_raw = matched_skill.get("displayNameZh")
+                display_zh = (
+                    zh_raw.strip()
+                    if isinstance(zh_raw, str) and zh_raw.strip()
+                    else skill_name
+                )
+                result: dict[str, Any] = {
                     "id": skill_id,
                     "skillName": skill_name,
-                    "description": "",
+                    "displayNameZh": display_zh,
+                    "description": description,
+                    "prompt": "",
                     "directoryId": None,
                     "directoryName": "本地技能",
-                    "skillContent": detail.get("skillMdContent"),
-                    "skill_content": detail.get("skillMdContent"),
-                    "files": detail.get("files", []),
-                    "importedAt": detail.get("importedAt"),
-                    "path": detail.get("path"),
+                    "status": 1,
+                    "createTime": "",
+                    "updateTime": "",
                 }
+                if not include_skill_content:
+                    return result
+                detail = LocalSkillService.get_local_skill_detail(
+                    skill_name, workspace_id
+                )
+                skill_md = detail.get("skillMdContent")
+                if skill_md:
+                    result["skillContent"] = skill_md
+                result["files"] = detail.get("files", [])
+                result["importedAt"] = detail.get("importedAt")
+                result["path"] = detail.get("path")
+                return result
 
             settings = get_settings()
             detail_path = settings.skill_remote_detail_path.format(skill_id=skill_id)
@@ -173,12 +206,27 @@ class AgentInterfaceService:
                 return None
             timeout = settings.skill_remote_timeout
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.get(url, headers=self._headers(token))
+                response = await RemoteGateway.async_request("remote_skills", client, "GET", url, headers=self._headers(token))
                 response.raise_for_status()
                 payload = response.json()
                 if isinstance(payload, dict) and "data" in payload:
-                    return payload["data"]
-                return payload if isinstance(payload, dict) else None
+                    data = payload["data"]
+                else:
+                    data = payload if isinstance(payload, dict) else None
+                if isinstance(data, dict) and not include_skill_content:
+                    data = {
+                        k: v
+                        for k, v in data.items()
+                        if k
+                        not in (
+                            "skillContent",
+                            "skill_content",
+                            "files",
+                            "path",
+                            "importedAt",
+                        )
+                    }
+                return data
         except Exception as e:
             logger.error("获取技能详情失败: %s", e, exc_info=True)
             return None
@@ -201,11 +249,7 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return None
             async with create_agent_interface_http_client() as client:
-                response = await client.get(
-                    url,
-                    params={"id": skill_id},
-                    headers=self._headers(token),
-                )
+                response = await RemoteGateway.async_request("remote_skills", client, "GET", url, params={"id": skill_id}, headers=self._headers(token))
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
@@ -233,11 +277,7 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return []
             async with create_agent_interface_http_client() as client:
-                response = await client.post(
-                    url,
-                    json=skill_ids,
-                    headers=self._headers(token),
-                )
+                response = await RemoteGateway.async_request("remote_skills", client, "POST", url, json=skill_ids, headers=self._headers(token))
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
@@ -260,7 +300,7 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return []
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url, headers=self._headers(token))
+                response = await RemoteGateway.async_request("remote_skills", client, "GET", url, headers=self._headers(token))
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
@@ -288,7 +328,7 @@ class AgentInterfaceService:
                 logger.error("未配置 Agent Interface 地址（AGENT_INTERFACE_BASE_URL）。")
                 return None
             async with create_agent_interface_http_client() as client:
-                response = await client.get(url, headers=self._headers(token))
+                response = await RemoteGateway.async_request("remote_skills", client, "GET", url, headers=self._headers(token))
                 response.raise_for_status()
                 return response.content
         except Exception as e:

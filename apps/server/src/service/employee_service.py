@@ -3,49 +3,75 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import uuid
 from datetime import date
 from pathlib import Path
-from zipfile import ZipFile
 
-import httpx
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
+from src.core.request_utils import DEFAULT_USER_ID
 from src.models.employee import Employee
 from src.models.employee_mcp import EmployeeMcp
 from src.models.employee_skill import EmployeeSkill
 from src.models.workspace import Workspace
 from src.schemas.employee import EmployeeCreate, EmployeeUpdate, ShiftScheduleCreateWithoutEmployee
 from src.service.mcp_service import McpService
-from src.service.local_skill_service import LocalSkillService
 from src.service.skill_service import SkillService
+from src.service.local_skill_service import LocalSkillService
 from src.service.task_scheduler_service import TaskSchedulerService
 from src.service.task_service import TaskService
 from src.service.workspace_service import WorkspaceService
 
 logger = logging.getLogger(__name__)
 
+# 技能候选 slug：小写字母数字 + 连字符（与 librarian 产出一致），用于防路径穿越校验。
+_SKILL_CANDIDATE_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
+def _growth_brain_root_for(employee_id: int) -> Path:
+    from src.service.agent.paths import resolve_employee_memories_dir
+    return resolve_employee_memories_dir(employee_id=employee_id).parent
+
+
+def _new_pending_employee_code() -> str:
+    """创建员工前的唯一占位 code，避免 (workspace_id, employee_code) 唯一约束冲突。"""
+    return f"pending-{uuid.uuid4().hex}"
+
+
 # (展示名称, 技能目录名元组, 简介)
 _BUILTIN_SEED_EMPLOYEES: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
     ("飞书助手", ("lark-base",), "内置飞书多维表格等能力。"),
     ("技能制作助手", ("skill-creator",), "协助编写与管理技能（Skills）。"),
-    ("工作台助手", ("feishu-workbench",), "工作台展示相关能力。"),
+    (
+        "环境管家",
+        ("env-steward",),
+        "诊断并修复 Python / Node.js / Git / curl 等主机环境问题。",
+    ),
+    (
+        "文档办公助手",
+        ("docx", "pptx", "xlsx", "pdf"),
+        "处理 Word、Excel、PPT、PDF 等办公文档的创建、编辑与转换。",
+    ),
+    (
+        "浏览器助手",
+        ("browser-runtime",),
+        "在桌面端内嵌浏览器中打开网页、填表、点击与抽取内容。",
+    ),
+    (
+        "问题反馈助手",
+        ("bug-reporter",),
+        "收集并提交 BUG 反馈到官方后台。",
+    ),
 )
 
 
 class EmployeeService:
     LONG_TERM_SHIFT_END_DATE = "9999-12-31"
-
-    @staticmethod
-    def _extract_shift_schedule(meta: dict) -> dict:
-        shift_schedule = meta.get("shift_schedule")
-        if isinstance(shift_schedule, dict):
-            return shift_schedule
-        return {}
 
     @staticmethod
     def _safe_skill_file_path(skill_dir: Path, relative_path: str) -> Path | None:
@@ -106,11 +132,17 @@ class EmployeeService:
         )
 
     @staticmethod
-    def ensure_curator_employee(db: Session, workspace_id: int) -> Employee:
-        """确保总管员工存在（每工作空间唯一），不存在则自动创建。"""
+    def ensure_curator_employee(
+        db: Session, user_id: str | None, workspace_id: int
+    ) -> Employee:
+        """确保总管员工存在（每用户唯一），不存在则自动创建。
+
+        存在性按 user_id 判定；创建时同时盖 user_id 与 workspace_id（后者为
+        过渡期的装饰性列）。
+        """
         existing = db.scalar(
             select(Employee).where(
-                Employee.workspace_id == workspace_id,
+                Employee.user_id == user_id,
                 Employee.is_curator.is_(True),
             )
         )
@@ -118,6 +150,7 @@ class EmployeeService:
             return existing
 
         curator = Employee(
+            user_id=user_id,
             workspace_id=workspace_id,
             employee_code="curator",
             name="总管助手",
@@ -160,6 +193,13 @@ class EmployeeService:
             "metadata": metadata,
             "shift_schedule": shift_schedule,
             "is_curator": bool(employee.is_curator),
+            # 自定义头像：有则给「带版本号的相对 URL」(前端拼后端 base 加载、版本号防缓存)，
+            # 无则 None → 前端回落到「名字前两个字」文本头像。
+            "avatar": (
+                f"/employees/{employee.id}/avatar?v={int(employee.updated_at.timestamp())}"
+                if getattr(employee, "avatar_url", None)
+                else None
+            ),
             "created_at": employee.created_at,
             "updated_at": employee.updated_at,
         }
@@ -187,6 +227,8 @@ class EmployeeService:
                     "prompt": r.prompt,
                     "skillContent": r.skill_content,
                     "skill_content": r.skill_content,
+                    # 能进 employee_skills 表即代表已分配=已启用；表无禁用态，固定 status=1。
+                    "status": 1,
                 }
                 for r in rows
             ]
@@ -195,6 +237,80 @@ class EmployeeService:
         if isinstance(nested, list):
             return [x for x in nested if isinstance(x, dict)]
         return []
+
+    @staticmethod
+    def get_employee_local_skill_ids(db, employee) -> list[int]:
+        """该员工现有的本地/工作区技能 localId（负数）列表。"""
+        snapshot = EmployeeService._employee_skills_snapshot(db, employee)
+        ids: list[int] = []
+        for row in snapshot:
+            sid = row.get("skill_id")
+            if isinstance(sid, int) and sid < 0:
+                ids.append(sid)
+        return ids
+
+    @staticmethod
+    def _assigned_skill_rows(
+        db: Session, user_id: str | None, skill_name: str, local_id: int | None = None
+    ) -> list[EmployeeSkill]:
+        """查某用户名下已分配某本地/工作区技能的 EmployeeSkill 行（按 employee 所有者 user_id 收口）。
+
+        user_id 为 None 时返回空列表——避免 `Employee.user_id == None` 退化成 IS NULL、
+        跨用户误匹配 user_id 为空的历史员工。
+        """
+        if user_id is None:
+            return []
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        conds = [EmployeeSkill.skill_name == normalized]
+        if local_id is not None:
+            conds.append(EmployeeSkill.skill_id == local_id)
+        return list(
+            db.scalars(
+                select(EmployeeSkill)
+                .join(Employee, EmployeeSkill.employee_id == Employee.id)
+                .where(Employee.user_id == user_id, or_(*conds))
+            ).all()
+        )
+
+    @staticmethod
+    def list_skill_assignees(
+        db: Session,
+        *,
+        user_id: str,
+        skill_name: str,
+        local_id: int | None = None,
+    ) -> list[dict[str, int | str]]:
+        """返回已分配该本地/工作区技能的员工（查 employee_skills 表，按 user 过滤）。"""
+        rows = EmployeeService._assigned_skill_rows(
+            db, user_id, skill_name, local_id
+        )
+        if not rows:
+            return []
+
+        employee_ids = sorted({row.employee_id for row in rows})
+        employees = {
+            emp.id: emp
+            for emp in db.scalars(
+                select(Employee).where(Employee.id.in_(employee_ids))
+            ).all()
+        }
+
+        assignees: list[dict[str, int | str]] = []
+        seen: set[int] = set()
+        for eid in employee_ids:
+            if eid in seen:
+                continue
+            seen.add(eid)
+            emp = employees.get(eid)
+            if emp is None:
+                continue
+            assignees.append(
+                {
+                    "employee_id": emp.id,
+                    "employee_name": emp.name or f"员工#{emp.id}",
+                }
+            )
+        return assignees
 
     @staticmethod
     def _employee_mcps_snapshot(db: Session, employee: Employee) -> list[dict]:
@@ -236,82 +352,20 @@ class EmployeeService:
         meta["tasks"] = TaskService.list_employee_tasks_as_dict(db, employee.id)
         data["metadata"] = meta
         data["mcps"] = meta["mcps"]
+        # 技能候选计数：联系人列表/卡片用来显示「✨N 个新技能待确认」角标。
+        data["skill_candidate_count"] = EmployeeService._skill_candidate_count(employee.id)
         return data
 
     @staticmethod
-    def _download_zip(token: str | None = None) -> Path:
-        settings = get_settings()
-        if not settings.employee_zip_url:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="未配置员工ZIP下载地址（REMOTE_API_BASE_URL + EMPLOYEE_ZIP_PATH）。")
-
-        tmp_dir = Path(settings.employee_tmp_dir)
-        if not tmp_dir.is_absolute():
-            tmp_dir = Path.cwd() / tmp_dir
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-
-        zip_path = tmp_dir / f"employees-{uuid.uuid4().hex}.zip"
-        headers = {"token": token or ""}
-        with httpx.stream(
-            "GET",
-            settings.employee_zip_url,
-            timeout=120.0,
-            headers=headers,
-        ) as resp:
-            resp.raise_for_status()
-            with zip_path.open("wb") as f:
-                for chunk in resp.iter_bytes():
-                    f.write(chunk)
-        return zip_path
-
-    @staticmethod
-    def _extract_zip(zip_path: Path, extract_dir: Path) -> Path:
-        if extract_dir.exists():
-            shutil.rmtree(extract_dir, ignore_errors=True)
-        extract_dir.mkdir(parents=True, exist_ok=True)
-        with ZipFile(zip_path, "r") as zip_file:
-            zip_file.extractall(extract_dir)
-        return extract_dir
-
-    @staticmethod
-    def _resolve_employee_dirs(extract_dir: Path) -> list[Path]:
-        level_one = [p for p in extract_dir.iterdir() if p.is_dir()]
-        if len(level_one) == 1:
-            candidate = level_one[0]
-            has_employee_payload = (
-                candidate / "skills").is_dir() or any(candidate.glob("*.json"))
-            if has_employee_payload:
-                return [candidate]
-            children = [p for p in candidate.iterdir() if p.is_dir()]
-            if children:
-                return children
-        return level_one
-
-    @staticmethod
-    def _flatten_wrapped_extract_dir(extract_dir: Path) -> Path:
-        level_one = [p for p in extract_dir.iterdir() if p.is_dir()]
-        if len(level_one) != 1:
-            return extract_dir
-
-        wrapper = level_one[0]
-        has_employee_payload = (
-            wrapper / "skills").is_dir() or any(wrapper.glob("*.json"))
-        if has_employee_payload:
-            return extract_dir
-
-        children = [p for p in wrapper.iterdir()]
-        if not children:
-            return extract_dir
-
-        for child in children:
-            shutil.move(str(child), extract_dir / child.name)
-        wrapper.rmdir()
-        logger.info(
-            "Flattened wrapped employee extract dir: wrapper=%s target=%s",
-            wrapper,
-            extract_dir,
-        )
-        return extract_dir
+    def _skill_candidate_count(employee_id: int) -> int:
+        """该员工待确认的技能候选数（<brain>/skill_candidates/*.md）。容错→0。"""
+        try:
+            cand_dir = _growth_brain_root_for(employee_id) / "skill_candidates"
+            if not cand_dir.is_dir():
+                return 0
+            return sum(1 for p in cand_dir.glob("*.md") if p.is_file())
+        except Exception:
+            return 0
 
     @staticmethod
     def _load_json_file(path: Path) -> dict:
@@ -381,32 +435,6 @@ class EmployeeService:
                 target.write_text(content, encoding="utf-8")
 
     @staticmethod
-    def _extract_employee_payload(employee_dir: Path) -> tuple[dict, list[dict]]:
-        meta: dict = {}
-        json_files = sorted(employee_dir.glob("*.json"))
-        if json_files:
-            priority_names = {"meta.json", "employee.json", "info.json"}
-            meta_file = next(
-                (p for p in json_files if p.name.lower() in priority_names), json_files[0])
-            meta = EmployeeService._load_json_file(meta_file)
-
-        skills_dir = employee_dir / "skills"
-        if not skills_dir.exists():
-            candidates = [p for p in employee_dir.rglob(
-                "*") if p.is_dir() and "skill" in p.name.lower()]
-            if candidates:
-                skills_dir = candidates[0]
-
-        skills: list[dict] = []
-        if skills_dir.exists():
-            skills.append({"skills_dir": str(skills_dir)})
-        return meta, skills
-
-    @staticmethod
-    def _write_skills(skills: list[dict]) -> list[dict]:
-        return skills
-
-    @staticmethod
     def _load_employee_meta(employee: Employee) -> dict:
         try:
             meta = json.loads(employee.meta_json or "{}")
@@ -415,6 +443,45 @@ class EmployeeService:
         if not isinstance(meta, dict):
             meta = {}
         return meta
+
+    @staticmethod
+    def _sync_employee_meta_from_update(
+        db: Session,
+        employee: Employee,
+        payload: EmployeeUpdate,
+    ) -> None:
+        """将员工表字段与关联数据同步到 meta_json，与 create_employee 写入结构一致。"""
+        meta = EmployeeService._load_employee_meta(employee)
+
+        if payload.employee_name is not None:
+            meta["employee_name"] = payload.employee_name
+        if payload.capability_desc is not None:
+            meta["capability_desc"] = payload.capability_desc
+        if "status" in payload.model_fields_set:
+            meta["status"] = payload.status
+        if "detail_page_url" in payload.model_fields_set:
+            meta["detail_page_url"] = payload.detail_page_url
+
+        if "shift_schedule" in payload.model_fields_set:
+            try:
+                shift = json.loads(employee.shift_schedule_json or "{}")
+            except json.JSONDecodeError:
+                shift = {}
+            if isinstance(shift, dict):
+                meta["shift_schedule"] = shift
+
+        if "skill_ids" in payload.model_fields_set:
+            meta["skills"] = EmployeeService._employee_skills_snapshot(
+                db, employee
+            )
+        if "mcp_ids" in payload.model_fields_set:
+            meta["mcps"] = EmployeeService._employee_mcps_snapshot(db, employee)
+        if "tasks" in payload.model_fields_set:
+            meta["tasks"] = TaskService.list_employee_tasks_as_dict(
+                db, employee.id
+            )
+
+        employee.meta_json = json.dumps(meta, ensure_ascii=False)
 
     @staticmethod
     def _normalize_tasks(tasks: list | None) -> list[dict]:
@@ -545,6 +612,7 @@ class EmployeeService:
             db.add(
                 EmployeeMcp(
                     workspace_id=employee.workspace_id,
+                    user_id=employee.user_id,
                     employee_id=employee.id,
                     mcp_id=mcp_id,
                     mcp_server_name=mcp_server_name,
@@ -556,52 +624,6 @@ class EmployeeService:
                     api_updated_at=api_updated_at,
                 )
             )
-
-    @staticmethod
-    def _validate_and_fetch_skills(skill_ids: list[int] | None, token: str) -> list[dict]:
-        if not skill_ids:
-            return []
-        details: list[dict] = []
-        seen: set[int] = set()
-        for raw_id in skill_ids:
-            skill_id = int(raw_id)
-            if skill_id in seen:
-                continue
-            seen.add(skill_id)
-            detail = SkillService.get_remote_skill(int(skill_id), token)
-            if int(detail.get("status") or 0) != 1:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"技能未启用，skill_id={skill_id}",
-                )
-            skill_content = detail.get("skillContent")
-            if not skill_content:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"技能内容为空，skill_id={skill_id}",
-                )
-            try:
-                if isinstance(skill_content, str):
-                    parsed_content = json.loads(skill_content)
-                elif isinstance(skill_content, dict):
-                    parsed_content = skill_content
-                else:
-                    raise ValueError("skillContent 不是字符串或对象")
-                if not isinstance(parsed_content, dict):
-                    raise ValueError("skillContent 解析后不是对象")
-            except (json.JSONDecodeError, ValueError) as exc:
-                logger.error(
-                    "技能 skillContent 解析失败 skill_id=%s: %s",
-                    skill_id,
-                    exc,
-                    exc_info=True,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"技能内容格式不合法，skill_id={skill_id}",
-                ) from exc
-            details.append(detail)
-        return details
 
     @staticmethod
     def _validate_and_fetch_local_skills(
@@ -637,11 +659,15 @@ class EmployeeService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"本地技能信息不完整，skill_id={local_id}",
                 )
+            display_name_zh = LocalSkillService.resolve_display_name_zh(
+                skill_name,
+                {"displayNameZh": item.get("displayNameZh")},
+            )
             details.append(
                 {
                     "id": local_id,
                     "skillName": skill_name,
-                    "displayNameZh": skill_name,
+                    "displayNameZh": display_name_zh,
                     "description": f"本地技能：{skill_name}",
                     "prompt": None,
                     "skillContent": None,
@@ -650,6 +676,72 @@ class EmployeeService:
                 }
             )
         return details
+
+    @staticmethod
+    def _remote_skill_detail_to_payload(skill_id: int, raw: dict) -> dict:
+        skill_name = raw.get("skillName") or raw.get("skill_name")
+        if not skill_name or not str(skill_name).strip():
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="远程技能详情缺少 skillName。",
+            )
+        display_zh = raw.get("displayNameZh") or raw.get("display_name_zh")
+        return {
+            "id": skill_id,
+            "skillName": str(skill_name).strip(),
+            "displayNameZh": (
+                str(display_zh).strip()
+                if isinstance(display_zh, str) and display_zh.strip()
+                else str(skill_name).strip()
+            ),
+            "description": raw.get("description"),
+            "prompt": raw.get("prompt"),
+            "skillContent": raw.get("skillContent"),
+            "source": "remote",
+        }
+
+    @staticmethod
+    def _validate_and_fetch_remote_skills(
+        skill_ids: list[int] | None,
+        token: str,
+    ) -> list[dict]:
+        if not skill_ids:
+            return []
+        remote_ids = sorted({int(v) for v in skill_ids if int(v) > 0})
+        if not remote_ids:
+            return []
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="未登录，无法分配远程技能（正整数 skill_id）。",
+            )
+
+        details: list[dict] = []
+        for skill_id in remote_ids:
+            raw = SkillService.get_remote_skill(skill_id, token)
+            if int(raw.get("status") or 0) != 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"远程技能未启用，无法分配: skill_id={skill_id}",
+                )
+            payload = EmployeeService._remote_skill_detail_to_payload(skill_id, raw)
+            details.append(payload)
+        return details
+
+    @staticmethod
+    def _resolve_skills_for_assignment(
+        skill_ids: list[int] | None,
+        *,
+        workspace_id: int,
+        token: str,
+    ) -> tuple[list[dict], list[dict]]:
+        """拆分为远程技能与本地技能详情（供落盘与 EmployeeSkill 写入）。"""
+        ids = skill_ids or []
+        remote_skills = EmployeeService._validate_and_fetch_remote_skills(ids, token)
+        local_skills = EmployeeService._validate_and_fetch_local_skills(
+            ids, workspace_id
+        )
+        return remote_skills, local_skills
 
     @staticmethod
     def _build_skills_json_payload(
@@ -675,42 +767,89 @@ class EmployeeService:
         return str(skill_content)
 
     @staticmethod
+    def _materialize_one_skill(employee_root: Path, skill: dict) -> Path | None:
+        """把单个技能(本地 copytree / 远程 file_map)落盘到 employee_root/<skillName>/。
+        返回技能目录；无有效内容则 None。"""
+        skill_name = skill.get("skillName")
+        if not isinstance(skill_name, str) or not skill_name.strip():
+            return None
+        skill_dir = employee_root / skill_name.strip()
+
+        if str(skill.get("source") or "").strip().lower() == "local":
+            local_path = Path(str(skill.get("path") or "").strip())
+            if local_path.is_dir():
+                shutil.copytree(local_path, skill_dir, dirs_exist_ok=True,
+                                ignore=shutil.ignore_patterns(".history"))
+                return skill_dir
+            return None
+
+        file_map = EmployeeService._skill_content_to_file_map(skill.get("skillContent"))
+        if not file_map:
+            return None
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        for relative_path, content in file_map.items():
+            target = EmployeeService._safe_skill_file_path(skill_dir, relative_path)
+            if target is None:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+        return skill_dir
+
+    @staticmethod
     def _save_skills_to_skill_path(employee: Employee, skills: list[dict]) -> Path:
-        """将技能全量覆盖落盘到 local-employees/<员工ID>/skills/。"""
+        """增量落盘员工私有技能：只增删 assigned 技能，绝不碰 grown:*（采纳/自改进）。"""
+        from src.service import skill_provenance
         employee_root = (
             EmployeeService._resolve_skill_root() / str(employee.id) / "skills"
         )
-        if employee_root.exists():
-            shutil.rmtree(employee_root, ignore_errors=True)
         employee_root.mkdir(parents=True, exist_ok=True)
-        for skill in skills:
-            if not isinstance(skill, dict):
-                continue
-            skill_name = skill.get("skillName")
-            if not isinstance(skill_name, str) or not skill_name.strip():
-                continue
-            skill_dir = employee_root / skill_name.strip()
 
-            # 本地技能：直接复制本地技能目录到员工私有目录
-            if str(skill.get("source") or "").strip().lower() == "local":
-                local_path = Path(str(skill.get("path") or "").strip())
-                if local_path.is_dir():
-                    shutil.copytree(local_path, skill_dir, dirs_exist_ok=True)
-                continue
+        desired = {
+            str(s.get("skillName")).strip(): s
+            for s in skills
+            if isinstance(s, dict) and str(s.get("skillName") or "").strip()
+        }
 
-            file_map = EmployeeService._skill_content_to_file_map(
-                skill.get("skillContent"))
-            if not file_map:
+        current_assigned = {
+            info.name
+            for info in skill_provenance.scan_employee_skills(employee_root)
+            if info.origin == "assigned"
+        }
+
+        # 删：被取消勾选的 assigned（grown:* 不在 current_assigned，天然保留）
+        for name in current_assigned - set(desired):
+            shutil.rmtree(employee_root / name, ignore_errors=True)
+
+        # 增：新勾选的库/远程技能。已存在的 assigned 跳过重 copy（保住 locallyModified 改进版）
+        for name, skill in desired.items():
+            if name in current_assigned:
                 continue
-            skill_dir.mkdir(parents=True, exist_ok=True)
-            for relative_path, content in file_map.items():
-                target = EmployeeService._safe_skill_file_path(
-                    skill_dir, relative_path)
-                if target is None:
+            # 不用库版本覆盖同名的 grown 技能（采纳/自改进的成果优先）
+            existing_dir = employee_root / name
+            if existing_dir.is_dir():
+                existing_origin = skill_provenance.read_origin(existing_dir).origin or ""
+                if existing_origin.startswith("grown"):
+                    # 该员工已有同名成长技能，库版本不覆盖——分配对此技能静默无效，记日志可诊断
+                    logger.info(
+                        "assign: 技能 %r 被同名成长技能遮蔽，库版本未应用(employee=%s)",
+                        name, employee.id,
+                    )
                     continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content, encoding="utf-8")
-        # 返回 skill 根目录
+            # assigned 技能必须带真实 id；缺 id 跳过（不写 skill_id=0）
+            sid = skill.get("id")
+            if not sid:
+                logger.warning("assign: 技能 %r 缺 id，跳过落盘", name)
+                continue
+            target = EmployeeService._materialize_one_skill(employee_root, skill)
+            if target is not None:
+                skill_provenance.write_origin(
+                    target,
+                    origin="assigned",
+                    skill_id=int(sid),
+                    prompt=EmployeeService._skill_detail_prompt_to_text(skill.get("prompt")),
+                    display_name_zh=str(skill.get("displayNameZh") or "") or None,
+                    description=skill.get("description"),
+                )
         return employee_root
 
     @staticmethod
@@ -720,27 +859,6 @@ class EmployeeService:
         prompt_str = prompt if isinstance(prompt, str) else str(prompt)
         prompt_str = prompt_str.strip()
         return prompt_str or None
-
-    @staticmethod
-    def _replace_employee_skills(db: Session, employee: Employee, skills: list[dict]) -> None:
-        db.execute(delete(EmployeeSkill).where(
-            EmployeeSkill.employee_id == employee.id))
-        for item in skills:
-            db.add(
-                EmployeeSkill(
-                    workspace_id=employee.workspace_id,
-                    employee_id=employee.id,
-                    skill_id=int(item.get("id")),
-                    skill_name=str(item.get("skillName") or ""),
-                    skill_name_zh=str(item.get("displayNameZh") or ""),
-                    skill_description=item.get("description"),
-                    prompt=EmployeeService._skill_detail_prompt_to_text(
-                        item.get("prompt")),
-                    skill_content=EmployeeService._skill_detail_skill_content_to_text(
-                        item.get("skillContent")),
-                )
-            )
-        employee.skills_json = json.dumps(skills, ensure_ascii=False)
 
     @staticmethod
     def _replace_shift_schedule(
@@ -776,86 +894,11 @@ class EmployeeService:
         return payload
 
     @staticmethod
-    def sync_workspace_employees(
-        db: Session,
-        workspace: Workspace,
-        token: str | None = None,
-    ) -> list[Employee]:
-        zip_path: Path | None = None
-        extract_dir: Path | None = None
-        should_cleanup_zip = False
-        try:
-            zip_path = EmployeeService._download_zip(token=token)
-            should_cleanup_zip = True
-            if not zip_path.exists():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"从远程接口未找到员工ZIP文件：{zip_path}",
-                )
-            extract_dir = EmployeeService._resolve_local_employees_root()
-            extract_dir.parent.mkdir(parents=True, exist_ok=True)
-            extract_dir = EmployeeService._extract_zip(zip_path, extract_dir)
-            extract_dir = EmployeeService._flatten_wrapped_extract_dir(
-                extract_dir)
-            employee_dirs = EmployeeService._resolve_employee_dirs(extract_dir)
-
-            synced: list[Employee] = []
-            for employee_dir in employee_dirs:
-                employee_code = employee_dir.name
-                meta, skills_paths = EmployeeService._extract_employee_payload(
-                    employee_dir)
-                skills = EmployeeService._write_skills(skills_paths)
-
-                existing = db.scalar(
-                    select(Employee).where(
-                        Employee.workspace_id == workspace.id,
-                        Employee.employee_code == employee_code,
-                    )
-                )
-
-                if existing:
-                    employee = existing
-                else:
-                    employee = Employee(
-                        workspace_id=workspace.id, employee_code=employee_code)
-                    db.add(employee)
-
-                employee.name = str(meta.get("name") or meta.get(
-                    "employee_name") or employee_code)
-                employee.description = (
-                    meta.get("description")
-                    or meta.get("skill_description")
-                    or meta.get("skillDescription")
-                    or meta.get("skills_description")
-                    or meta.get("技能描述")
-                    or meta.get("描述")
-                    or None
-                )
-                employee.version = str(meta.get("version") or "")
-                employee.skills_json = json.dumps(skills, ensure_ascii=False)
-                employee.meta_json = json.dumps(meta, ensure_ascii=False)
-                employee.shift_schedule_json = json.dumps(
-                    EmployeeService._extract_shift_schedule(meta), ensure_ascii=False)
-                synced.append(employee)
-
-            db.commit()
-            for employee in synced:
-                db.refresh(employee)
-            return synced
-        except httpx.HTTPError as exc:
-            logger.error("同步员工 ZIP 下载失败: %s", exc, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY, detail=f"获取员工ZIP失败：{exc}") from exc
-        finally:
-            if should_cleanup_zip and zip_path and zip_path.exists():
-                zip_path.unlink(missing_ok=True)
-
-    @staticmethod
-    def list_employees(db: Session, workspace_id: int) -> list[Employee]:
+    def list_employees(db: Session, user_id: str) -> list[Employee]:
         return list(
             db.scalars(
-                select(Employee).where(Employee.workspace_id ==
-                                       workspace_id).order_by(Employee.id.desc())
+                select(Employee).where(Employee.user_id ==
+                                       user_id).order_by(Employee.id.desc())
             ).all()
         )
 
@@ -876,43 +919,43 @@ class EmployeeService:
     ) -> Employee:
         employee = EmployeeService.get_employee(db, employee_id)
         changed_tasks = False
+
+        if employee.is_curator:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不能修改总管助手。",
+            )
+
         if payload.employee_name is not None:
+            existing_employee = db.scalar(
+                select(Employee).where(
+                    Employee.user_id == employee.user_id,
+                    Employee.name == payload.employee_name,
+                    Employee.id != employee.id,
+                )
+            )
+            if existing_employee:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="员工名称已存在",
+                )
             employee.name = payload.employee_name
         if payload.capability_desc is not None:
             employee.description = payload.capability_desc
-        # if payload.version is not None:
-        #     employee.version = payload.version
-
-        # 这里需要加一个判断条件，新的员工姓名不能与其他员工姓名相同
-        existing_employee = db.scalar(
-            select(Employee).where(
-                Employee.workspace_id == employee.workspace_id,
-                Employee.name == payload.employee_name,
-                Employee.id != employee.id,
-            )
-        )
-        if existing_employee:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
-        else:
-            employee.name = payload.employee_name
 
         if "skill_ids" in payload.model_fields_set:
             skill_ids = payload.skill_ids or []
-            remote_skill_ids = [int(v) for v in skill_ids if int(v) > 0]
-            remote_skills = EmployeeService._validate_and_fetch_skills(
-                remote_skill_ids, token
+            remote_skills, local_skills = EmployeeService._resolve_skills_for_assignment(
+                skill_ids,
+                workspace_id=employee.workspace_id,
+                token=token,
             )
-            local_skills = EmployeeService._validate_and_fetch_local_skills(
-                skill_ids, employee.workspace_id
-            )
-            merged_skills = [*remote_skills, *local_skills]
-            EmployeeService._replace_employee_skills(db, employee, merged_skills)
             employee.skills_json = EmployeeService._build_skills_json_payload(
                 employee,
                 remote_skills,
                 local_skills,
             )
+            EmployeeService.reconcile_employee_skills(db, employee)
 
         if "mcp_ids" in payload.model_fields_set:
             mcp_details = EmployeeService._validate_and_fetch_mcps(payload.mcp_ids, token)
@@ -928,6 +971,8 @@ class EmployeeService:
             TaskService.upsert_employee_tasks(
                 db, employee.workspace_id, employee.id, normalized
             )
+
+        EmployeeService._sync_employee_meta_from_update(db, employee, payload)
         db.commit()
         db.refresh(employee)
         if changed_tasks:
@@ -937,9 +982,24 @@ class EmployeeService:
 
     @staticmethod
     def delete_employee(db: Session, employee_id: int) -> None:
+        # 注意（SP2）：不要在此清理产物。产物现为「项目共享」——同项目所有员工与
+        # 总管共用 <product_root>/{artifacts,uploads,skills-draft}。删单个员工只删
+        # DB 行 / 最近联系人 / 重排定时任务；产物清理只在删工作空间时发生
+        # （WorkspaceService.delete_workspace）。请勿在此恢复任何产物 rmtree。
         employee = EmployeeService.get_employee(db, employee_id)
+        if employee.is_curator:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不能删除总管助手。",
+            )
+        workspace_id = employee.workspace_id
         db.delete(employee)
         db.commit()
+        from src.service.recent_contact_service import RecentContactService
+
+        RecentContactService.delete_by_target(
+            db, workspace_id, "employee", employee_id
+        )
         TaskSchedulerService.reload_jobs()
 
     @staticmethod
@@ -970,11 +1030,12 @@ class EmployeeService:
                 if desc_raw is not None and str(desc_raw).strip()
                 else f"本地技能：{sn}"
             )
+            display_name_zh = LocalSkillService.resolve_display_name_zh(sn, meta)
             out.append(
                 {
                     "id": local_id,
                     "skillName": sn,
-                    "displayNameZh": sn,
+                    "displayNameZh": display_name_zh,
                     "description": description,
                     "prompt": None,
                     "skillContent": None,
@@ -983,6 +1044,318 @@ class EmployeeService:
                 }
             )
         return out
+
+    @staticmethod
+    def _patch_employee_skills_json_for_local_skill(
+        employee: Employee,
+        skill_name: str,
+        *,
+        display_name_zh: str | None,
+        description: str | None,
+        skill_md_content: str | None,
+    ) -> None:
+        """兼容旧版 skills_json（技能对象列表）中的展示字段与 SKILL.md 内容。"""
+        try:
+            data = json.loads(employee.skills_json or "[]")
+        except json.JSONDecodeError:
+            return
+        if not isinstance(data, list) or not data:
+            return
+        if (
+            len(data) == 1
+            and isinstance(data[0], dict)
+            and isinstance(data[0].get("skills_dir"), str)
+        ):
+            return
+
+        changed = False
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("skillName") or "").strip() != skill_name:
+                continue
+            changed = True
+            item["displayNameZh"] = display_name_zh or skill_name
+            if description is not None:
+                item["description"] = description
+            if skill_md_content is not None:
+                item["skillContent"] = json.dumps(
+                    {LocalSkillService.SKILL_MD_NAME: skill_md_content},
+                    ensure_ascii=False,
+                )
+        if changed:
+            employee.skills_json = json.dumps(data, ensure_ascii=False)
+
+    @staticmethod
+    def _refresh_employee_meta_skills(db: Session, employee: Employee) -> None:
+        meta = EmployeeService._load_employee_meta(employee)
+        meta["skills"] = EmployeeService._employee_skills_snapshot(db, employee)
+        employee.meta_json = json.dumps(meta, ensure_ascii=False)
+
+    @staticmethod
+    def reconcile_employee_skills(db: Session, employee: Employee) -> None:
+        """唯一的「磁盘 → EmployeeSkill」投影。幂等。改动磁盘技能集后必调。"""
+        from src.service import skill_provenance
+        from src.service.basic_file_reader import read_text_with_encoding_fallback
+
+        skills_root = (
+            EmployeeService._resolve_skill_root() / str(employee.id) / "skills"
+        )
+        disk = skill_provenance.scan_employee_skills(skills_root)
+
+        for info in disk:
+            if info.origin is None:
+                d = skills_root / info.name
+                row = db.scalars(
+                    select(EmployeeSkill).where(
+                        EmployeeSkill.employee_id == employee.id,
+                        EmployeeSkill.skill_name == info.name,
+                    )
+                ).first()
+                try:
+                    # legacy 行皆为 assigned（grown 是本次新增、必带标记，故无标记目录必非 grown）。
+                    # 库技能 localId 为负，不能用 >0 判定，否则会把库分配技能误标为 grown。
+                    if row is not None and row.skill_id is not None:
+                        skill_provenance.write_origin(d, origin="assigned", skill_id=row.skill_id)
+                    else:
+                        skill_provenance.write_origin(
+                            d, origin="grown:adopted",
+                            skill_id=skill_provenance.next_grown_skill_id(skills_root))
+                except OSError:
+                    logger.warning("reconcile: backfill write_origin failed: %s", d, exc_info=True)
+        disk = skill_provenance.scan_employee_skills(skills_root)
+
+        disk_by_name = {info.name: info for info in disk}
+        existing = {
+            r.skill_name: r
+            for r in db.scalars(
+                select(EmployeeSkill).where(EmployeeSkill.employee_id == employee.id)
+            ).all()
+        }
+
+        for name, row in existing.items():
+            if name not in disk_by_name:
+                db.delete(row)
+
+        for name, info in disk_by_name.items():
+            skill_md = skills_root / name / skill_provenance.SKILL_MD
+            try:
+                content = (
+                    read_text_with_encoding_fallback(skill_md)
+                    if skill_md.is_file() else None
+                )
+            except OSError:
+                logger.warning("reconcile: read SKILL.md failed: %s", skill_md, exc_info=True)
+                content = None
+            row = existing.get(name)
+            if row is None:
+                skill_id = info.skill_id
+                if skill_id is None:
+                    # 兜底（标记损坏极少触发）：生成并立即落盘，保证下次 reconcile 复用同一 id
+                    skill_id = skill_provenance.next_grown_skill_id(skills_root)
+                    skill_provenance.write_origin(
+                        skills_root / name,
+                        origin=(info.origin or "grown:adopted"),
+                        skill_id=skill_id,
+                    )
+                row = EmployeeSkill(
+                    workspace_id=employee.workspace_id,
+                    user_id=employee.user_id,
+                    employee_id=employee.id,
+                    skill_id=skill_id,
+                    skill_name=name,
+                )
+                db.add(row)
+            row.skill_name_zh = info.display_name_zh or ""
+            row.skill_description = info.description
+            row.prompt = info.prompt
+            row.skill_content = content
+
+        db.flush()
+        EmployeeService._refresh_employee_meta_skills(db, employee)
+
+    @staticmethod
+    def sync_local_skill_to_assignees(
+        db: Session,
+        *,
+        user_id: str,
+        workspace_id: int,
+        skill_name: str,
+    ) -> int:
+        """
+        本地技能保存后，同步已分配该技能的员工：
+        employee_skills 表、员工私有 skills 目录、skills_json / meta_json 快照。
+        """
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        skill_dir = LocalSkillService._resolve_editable_skill_dir(
+            normalized, workspace_id
+        )
+        meta = LocalSkillService._read_meta(skill_dir)
+        local_id = LocalSkillService._parse_local_id(meta.get("localId"))
+
+        zh_raw = meta.get("displayNameZh")
+        display_name_zh = (
+            zh_raw.strip()
+            if isinstance(zh_raw, str) and zh_raw.strip()
+            else None
+        )
+        desc_raw = meta.get("description")
+        description = (
+            desc_raw.strip()
+            if isinstance(desc_raw, str) and desc_raw.strip()
+            else None
+        )
+
+        skill_md_path = skill_dir / LocalSkillService.SKILL_MD_NAME
+        skill_md_content = (
+            skill_md_path.read_text(encoding="utf-8")
+            if skill_md_path.is_file()
+            else None
+        )
+
+        rows = EmployeeService._assigned_skill_rows(
+            db, user_id, skill_name, local_id
+        )
+        if not rows:
+            return 0
+
+        employee_ids = {row.employee_id for row in rows}
+        employees = {
+            emp.id: emp
+            for emp in db.scalars(
+                select(Employee).where(Employee.id.in_(employee_ids))
+            ).all()
+        }
+
+        # 先无条件把全部 assignee 行写成库版本（含 skill_content）。这对「已私改」的
+        # assignee 是暂时性错值——会在下方循环里被无条件的 reconcile 从其私有磁盘纠回。
+        # 安全：db.commit() 延后到所有 reconcile 之后，中途任一 reconcile 抛错则整体回滚，
+        # 不会把这里的暂时错值落库。
+        for row in rows:
+            row.skill_name_zh = display_name_zh or ""
+            if description is not None:
+                row.skill_description = description
+            if skill_md_content is not None:
+                row.skill_content = skill_md_content
+
+        from src.service import skill_provenance
+        for employee_id in employee_ids:
+            employee = employees.get(employee_id)
+            if employee is None:
+                continue
+
+            target_dir = (
+                EmployeeService._resolve_skill_root()
+                / str(employee.id)
+                / "skills"
+                / normalized
+            )
+
+            # (b) 私有改进优先：已私改(locallyModified)或 grown 的私有副本，不被库版本覆盖。
+            # 跳过者也不调 _patch_employee_skills_json（库的显示名/描述不灌给已分叉的副本）——
+            # reconcile 会从其私有 meta 派生行，保留员工自己那一整份（含元数据）。
+            skip_overwrite = False
+            if target_dir.is_dir():
+                info = skill_provenance.read_origin(target_dir)
+                if info.locally_modified or (info.origin or "").startswith("grown"):
+                    skip_overwrite = True
+
+            if not skip_overwrite:
+                target_dir.parent.mkdir(parents=True, exist_ok=True)
+                if target_dir.exists():
+                    shutil.rmtree(target_dir, ignore_errors=True)
+                shutil.copytree(skill_dir, target_dir, dirs_exist_ok=False,
+                                ignore=shutil.ignore_patterns(".history"))
+                EmployeeService._patch_employee_skills_json_for_local_skill(
+                    employee,
+                    normalized,
+                    display_name_zh=display_name_zh,
+                    description=description,
+                    skill_md_content=skill_md_content,
+                )
+
+            # 不论是否覆盖都重投影：被跳过者借此把上方行内写纠回其私有磁盘内容
+            EmployeeService.reconcile_employee_skills(db, employee)
+
+        db.commit()
+        logger.info(
+            "Synced local skill %r to %s employee(s) for user %s (source workspace %s)",
+            normalized,
+            len(employee_ids),
+            user_id,
+            workspace_id,
+        )
+        return len(employee_ids)
+
+    @staticmethod
+    def unassign_local_skill_from_assignees(
+        db: Session,
+        *,
+        user_id: str,
+        skill_name: str,
+        local_id: int | None = None,
+    ) -> int:
+        """删除本地技能时，同步解除已分配员工的绑定与私有目录副本（按 user 过滤）。"""
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        rows = EmployeeService._assigned_skill_rows(
+            db, user_id, skill_name, local_id
+        )
+        if not rows:
+            return 0
+
+        employee_ids = {row.employee_id for row in rows}
+        employees = {
+            emp.id: emp
+            for emp in db.scalars(
+                select(Employee).where(Employee.id.in_(employee_ids))
+            ).all()
+        }
+
+        for row in rows:
+            db.delete(row)
+
+        for employee_id in employee_ids:
+            employee = employees.get(employee_id)
+            if employee is None:
+                continue
+
+            target_dir = (
+                EmployeeService._resolve_skill_root()
+                / str(employee.id)
+                / "skills"
+                / normalized
+            )
+            if target_dir.exists():
+                shutil.rmtree(target_dir, ignore_errors=True)
+
+            try:
+                data = json.loads(employee.skills_json or "[]")
+            except json.JSONDecodeError:
+                data = []
+            if isinstance(data, list) and data:
+                first = data[0]
+                if isinstance(first, dict) and "skills_dir" not in first:
+                    filtered = [
+                        item
+                        for item in data
+                        if isinstance(item, dict)
+                        and str(item.get("skillName") or "").strip() != normalized
+                    ]
+                    employee.skills_json = json.dumps(
+                        filtered, ensure_ascii=False
+                    )
+
+            # 收口走 reconcile：rmtree 已移除该技能磁盘目录，投影据此收敛 EmployeeSkill 行。
+            EmployeeService.reconcile_employee_skills(db, employee)
+
+        db.commit()
+        logger.info(
+            "Unassigned local skill %r from %s employee(s) for user %s",
+            normalized,
+            len(employee_ids),
+            user_id,
+        )
+        return len(employee_ids)
 
     @staticmethod
     def _employee_skill_name_set(db: Session, employee: Employee) -> set[str]:
@@ -994,15 +1367,23 @@ class EmployeeService:
         return names
 
     @staticmethod
-    def ensure_builtin_seed_employees(db: Session, workspace: Workspace) -> None:
-        """将本地技能目录（含启动时同步的内置技能）绑定到默认三名员工；按名称+技能集合幂等。"""
+    def ensure_builtin_seed_employees(
+        db: Session, user_id: str | None, workspace_id: int
+    ) -> None:
+        """将本地技能目录（含启动时同步的内置技能）绑定到默认种子员工；按用户+名称幂等。
+
+        存在性按 (user_id, name) 判定；创建时同时盖 user_id 与 workspace_id
+        （后者为过渡期的装饰性列）。
+        """
+        # 防御式同步：避免调用方未先执行 seed_builtin_skills 时找不到新增内置技能。
+        LocalSkillService.seed_builtin_skills()
         local_root = LocalSkillService._resolve_local_root().resolve()
         logger.info(local_root)
         for name, skill_names, description in _BUILTIN_SEED_EMPLOYEES:
             expected = frozenset(skill_names)
             existing = db.scalar(
                 select(Employee).where(
-                    Employee.workspace_id == workspace.id,
+                    Employee.user_id == user_id,
                     Employee.name == name,
                 )
             )
@@ -1035,8 +1416,9 @@ class EmployeeService:
 
             meta = {"employee_name": name, "status": 1}
             employee = Employee(
-                workspace_id=workspace.id,
-                employee_code="0",
+                user_id=user_id,
+                workspace_id=workspace_id,
+                employee_code=_new_pending_employee_code(),
                 name=name,
                 description=description,
                 version="",
@@ -1048,7 +1430,6 @@ class EmployeeService:
             db.flush()
             employee.employee_code = str(employee.id)
 
-            EmployeeService._replace_employee_skills(db, employee, payloads)
             EmployeeService._replace_employee_mcps(db, employee, [])
             EmployeeService._replace_shift_schedule(db, employee, None)
             employee.skills_json = EmployeeService._build_skills_json_payload(
@@ -1056,6 +1437,7 @@ class EmployeeService:
                 [],
                 payloads,
             )
+            EmployeeService.reconcile_employee_skills(db, employee)
             db.commit()
             db.refresh(employee)
             logger.info(
@@ -1068,11 +1450,14 @@ class EmployeeService:
     @staticmethod
     def create_employee(db: Session, obj_in: EmployeeCreate, token: str) -> Employee:
         workspace_id = obj_in.workspace_id or get_settings().default_workspace_id
-        WorkspaceService.get_workspace(db, workspace_id)
+        workspace = WorkspaceService.get_workspace(db, workspace_id)
+        # 员工为用户级：归属以 workspace owner 为权威，未认领（owner=None）的
+        # 工作空间回落到招聘侧传入的 obj_in.user_id（运行时用户）。
+        owner_user_id = workspace.user_id or obj_in.user_id or DEFAULT_USER_ID
 
         existing = db.scalar(
             select(Employee).where(
-                Employee.workspace_id == workspace_id,
+                Employee.user_id == owner_user_id,
                 Employee.name == obj_in.employee_name,
             )
         )
@@ -1081,12 +1466,10 @@ class EmployeeService:
                 status_code=status.HTTP_400_BAD_REQUEST, detail="员工名称已存在")
 
         skill_ids = obj_in.skill_ids or []
-        remote_skill_ids = [int(v) for v in skill_ids if int(v) > 0]
-        remote_skills = EmployeeService._validate_and_fetch_skills(
-            remote_skill_ids, token
-        )
-        local_skills = EmployeeService._validate_and_fetch_local_skills(
-            skill_ids, workspace_id
+        remote_skills, local_skills = EmployeeService._resolve_skills_for_assignment(
+            skill_ids,
+            workspace_id=workspace_id,
+            token=token,
         )
         mcp_details = EmployeeService._validate_and_fetch_mcps(obj_in.mcp_ids, token)
 
@@ -1100,8 +1483,9 @@ class EmployeeService:
         }
 
         employee = Employee(
+            user_id=owner_user_id,
             workspace_id=workspace_id,
-            employee_code="0",
+            employee_code=_new_pending_employee_code(),
             name=obj_in.employee_name,
             description=obj_in.capability_desc,
             version="",
@@ -1113,9 +1497,6 @@ class EmployeeService:
         db.flush()
         employee.employee_code = str(employee.id)
 
-        EmployeeService._replace_employee_skills(
-            db, employee, [*remote_skills, *local_skills]
-        )
         EmployeeService._replace_employee_mcps(db, employee, mcp_details)
         EmployeeService._replace_shift_schedule(db, employee, shift_schedule)
         employee.skills_json = EmployeeService._build_skills_json_payload(
@@ -1123,6 +1504,7 @@ class EmployeeService:
             remote_skills,
             local_skills,
         )
+        EmployeeService.reconcile_employee_skills(db, employee)
         db.commit()
         db.refresh(employee)
 
@@ -1131,3 +1513,239 @@ class EmployeeService:
             db.refresh(employee)
             TaskSchedulerService.reload_jobs()
         return employee
+
+    @staticmethod
+    def build_employee_growth_brain(db: Session, employee_id: int) -> dict:
+        """聚合员工大脑(profile/技能/记忆/journal)只读展示数据。缺失给空。容错。"""
+        import json as _json
+        from src.service.agent.paths import list_available_skills
+        from src.service.basic_file_reader import read_text_with_encoding_fallback
+
+        brain = _growth_brain_root_for(employee_id)
+
+        def _read(p: Path) -> str:
+            try:
+                return read_text_with_encoding_fallback(p) if p.is_file() else ""
+            except Exception:
+                return ""
+
+        profile_md = _read(brain / "profile.md")
+        memories_md = _read(brain / "memories" / "AGENTS.md")
+        skills_dir = brain / "skills"
+        try:
+            skills_list = list_available_skills(skills_dir) if skills_dir.is_dir() else []
+        except Exception:
+            skills_list = []
+        journal_entries: list[dict] = []
+        jdir = brain / "journal"
+        if jdir.is_dir():
+            for fp in sorted(jdir.glob("*.jsonl")):
+                try:
+                    for line in fp.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            e = _json.loads(line)
+                        except ValueError:
+                            continue
+                        journal_entries.append({
+                            "ts": e.get("ts", ""),
+                            "task_name": e.get("task_name", ""),
+                            "status": e.get("status", ""),
+                            "duration_ms": e.get("duration_ms"),
+                        })
+                except OSError:
+                    continue
+        journal_entries = journal_entries[-30:]
+
+        # 技能候选（librarian 从重复成功打法自动晋升出的候选，待人确认才转正式技能）
+        skill_candidates: list[dict] = []
+        cand_dir = brain / "skill_candidates"
+        if cand_dir.is_dir():
+            for fp in sorted(cand_dir.glob("*.md")):
+                meta = EmployeeService._parse_skill_candidate_meta(_read(fp))
+                if meta:
+                    skill_candidates.append(meta)
+
+        # 技能编辑审计（employee 改过技能时写入，供成长面板消费）
+        recent_skill_edits: list[dict] = []
+        audit_file = brain / "skill_edits.jsonl"
+        if audit_file.is_file():
+            try:
+                for line in audit_file.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        e = _json.loads(line)
+                    except ValueError:
+                        continue
+                    recent_skill_edits.append({
+                        "ts": e.get("ts", ""),
+                        "skill_name": e.get("skill_name", ""),
+                        "reason": e.get("reason", ""),
+                        "backup_version": e.get("backup_version"),
+                    })
+            except OSError:
+                pass
+        recent_skill_edits = recent_skill_edits[-20:]
+
+        # 技能生命周期（归档/置顶状态），best-effort
+        skill_lifecycle: dict = {}
+        try:
+            from src.service.learning import curator as _curator
+            skill_lifecycle = _curator.get_lifecycle_snapshot(brain)
+        except Exception:
+            skill_lifecycle = {}
+
+        # 员工闲置归档建议（只提示，不自动归档），best-effort
+        archive_suggestion = None
+        try:
+            from src.service.learning import curator as _curator
+            archive_suggestion = _curator.employee_archive_suggestion(db, employee_id)
+        except Exception:
+            archive_suggestion = None
+
+        return {
+            "profile_md": profile_md,
+            "skills_list": skills_list,
+            "memories_md": memories_md,
+            "journal_entries": journal_entries,
+            "skill_candidates": skill_candidates,
+            "recent_skill_edits": recent_skill_edits,
+            "skill_lifecycle": skill_lifecycle,
+            "archive_suggestion": archive_suggestion,
+        }
+
+    @staticmethod
+    def _parse_skill_candidate_meta(text: str) -> dict | None:
+        """从技能候选 md 的 frontmatter 解析 name/zh/description。无 name 则忽略。"""
+        if not text or not text.lstrip().startswith("---"):
+            return None
+        body = text.lstrip()[3:]
+        end = body.find("\n---")
+        if end == -1:
+            return None
+        meta: dict[str, str] = {}
+        for line in body[:end].splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                meta[k.strip()] = v.strip()
+        name = meta.get("name", "")
+        if not name:
+            return None
+        return {
+            "name": name,
+            "zh": meta.get("zh", name),
+            "description": meta.get("description", ""),
+        }
+
+    @staticmethod
+    def _validate_skill_slug(slug: str) -> str:
+        """技能候选 slug 必须是小写连字符（防路径穿越）；非法 → 400。"""
+        if not slug or not _SKILL_CANDIDATE_SLUG_RE.match(slug):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="非法技能标识（仅允许小写字母、数字、连字符）。",
+            )
+        return slug
+
+    @staticmethod
+    def adopt_skill_candidate(db: Session, employee_id: int, slug: str) -> dict:
+        """采纳技能候选 → 转为该员工的正式技能 skills/<slug>/SKILL.md，并消费掉候选。
+
+        人确认动作：候选只有经此才转正。已存在同名 active 技能 → 409 不覆盖。
+        """
+        EmployeeService.get_employee(db, employee_id)  # 不存在 → 404
+        slug = EmployeeService._validate_skill_slug(slug)
+        from src.service.basic_file_reader import read_text_with_encoding_fallback
+
+        brain = _growth_brain_root_for(employee_id)
+        cand = brain / "skill_candidates" / f"{slug}.md"
+        if not cand.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"未找到技能候选「{slug}」。",
+            )
+        target_dir = brain / "skills" / slug
+        if (target_dir / "SKILL.md").is_file():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"已存在同名技能「{slug}」，未覆盖。",
+            )
+        content = read_text_with_encoding_fallback(cand)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / "SKILL.md").write_text(content, encoding="utf-8")
+        # 写标记 + 投影为 best-effort：即便此处失败（如磁盘异常），技能文件已落盘，
+        # 下次任一 reconcile 的迁移自愈会把这个无标记目录回填为 grown:adopted 并补 DB 行，
+        # 故不因投影失败让整个采纳 500。与下方 cand.unlink() 的容错哲学一致。
+        try:
+            from src.service import skill_provenance
+            skills_root = brain / "skills"
+            skill_provenance.write_origin(
+                target_dir,
+                origin="grown:adopted",
+                skill_id=skill_provenance.next_grown_skill_id(skills_root),
+            )
+            emp = db.get(Employee, employee_id)
+            if emp is not None:
+                EmployeeService.reconcile_employee_skills(db, emp)
+        except Exception:  # noqa: BLE001 - 投影失败不致命，reconcile 自愈兜底
+            logger.warning(
+                "adopt: provenance/reconcile failed for eid=%s slug=%s (将由后续 reconcile 自愈)",
+                employee_id, slug, exc_info=True,
+            )
+        try:
+            cand.unlink()
+        except OSError:
+            logger.warning("adopt: failed to remove candidate %s", cand, exc_info=True)
+        logger.info("adopt_skill_candidate eid=%s slug=%s", employee_id, slug)
+        return {"adopted": slug}
+
+    @staticmethod
+    def dismiss_skill_candidate(db: Session, employee_id: int, slug: str) -> dict:
+        """忽略技能候选 → 删除候选文件（幂等：不存在也算成功）。"""
+        EmployeeService.get_employee(db, employee_id)  # 不存在 → 404
+        slug = EmployeeService._validate_skill_slug(slug)
+        brain = _growth_brain_root_for(employee_id)
+        cand = brain / "skill_candidates" / f"{slug}.md"
+        if cand.is_file():
+            cand.unlink()
+        logger.info("dismiss_skill_candidate eid=%s slug=%s", employee_id, slug)
+        return {"dismissed": slug}
+
+    @staticmethod
+    def restore_skill_lifecycle(db: Session, employee_id: int, skill_name: str) -> dict:
+        """手动恢复已归档技能的生命周期状态 → status=active。
+
+        employee_id 不存在 → 404。
+        校验 skill_name 防路径穿越（与 _normalize_skill_name 同规则）。
+        操作是 best-effort 文件写入。
+        """
+        EmployeeService.get_employee(db, employee_id)  # 不存在 → 404
+        from src.service.local_skill_service import LocalSkillService
+        from src.service.learning import curator as _curator
+
+        name = LocalSkillService._normalize_skill_name(skill_name)
+        brain = _growth_brain_root_for(employee_id)
+        _curator.restore_skill(brain, name)
+        logger.info("restore_skill_lifecycle eid=%s skill=%s", employee_id, name)
+        return {"skillName": name, "status": "active"}
+
+    @staticmethod
+    def set_skill_pinned(db: Session, employee_id: int, skill_name: str, pinned: bool) -> dict:
+        """设置技能置顶（pinned=True 永不老化）或取消置顶。
+
+        employee_id 不存在 → 404。
+        校验 skill_name 防路径穿越。
+        """
+        EmployeeService.get_employee(db, employee_id)  # 不存在 → 404
+        from src.service.local_skill_service import LocalSkillService
+        from src.service.learning import curator as _curator
+
+        name = LocalSkillService._normalize_skill_name(skill_name)
+        brain = _growth_brain_root_for(employee_id)
+        _curator.set_pinned(brain, name, pinned)
+        logger.info("set_skill_pinned eid=%s skill=%s pinned=%s", employee_id, name, pinned)
+        return {"skillName": name, "pinned": pinned}

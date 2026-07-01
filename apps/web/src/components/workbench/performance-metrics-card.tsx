@@ -1,9 +1,4 @@
-﻿import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@workspace/ui/components/avatar"
-import { IconHelpCircle } from "@tabler/icons-react"
+﻿import { IconHelpCircle } from "@tabler/icons-react"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import {
   Tooltip,
@@ -12,34 +7,6 @@ import {
 } from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 import { useCurrentMonthPerformance } from "@/hooks/use-performance-queries"
-import { useAuthStore } from "@/stores/auth-store"
-import Avatar1 from "@/assets/avaters/1.png"
-import Avatar2 from "@/assets/avaters/2.png"
-import Avatar3 from "@/assets/avaters/3.png"
-import Avatar4 from "@/assets/avaters/4.png"
-import Avatar5 from "@/assets/avaters/5.png"
-import Avatar6 from "@/assets/avaters/6.png"
-import Avatar7 from "@/assets/avaters/7.png"
-import Avatar8 from "@/assets/avaters/8.png"
-import Avatar9 from "@/assets/avaters/9.png"
-
-const avatars = [
-  Avatar1,
-  Avatar2,
-  Avatar3,
-  Avatar4,
-  Avatar5,
-  Avatar6,
-  Avatar7,
-  Avatar8,
-  Avatar9,
-  Avatar1,
-]
-
-function getUserAvatarSrc(userId?: string | number | null) {
-  if (!userId) return Avatar1
-  return avatars[parseInt(userId.toString(), 10) % 10]
-}
 
 function formatMoney(value: number): string {
   return `¥ ${new Intl.NumberFormat("zh-CN", {
@@ -64,11 +31,7 @@ function formatMonthPeriod(monthRaw: string): string {
   return `${y}年${monthNum}月`
 }
 
-function PerformanceLabelWithHelp({
-  className,
-}: {
-  className?: string
-}) {
+function PerformanceLabelWithHelp({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-1", className)}>
       绩效
@@ -102,11 +65,16 @@ function MetricCard({
   className?: string
 }) {
   return (
-    <div className={cn("flex flex-col justify-between gap-1 px-3 py-3 sm:px-4", className)}>
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+    <div
+      className={cn(
+        "flex flex-col justify-between gap-1 px-3 py-3 sm:px-4",
+        className
+      )}
+    >
+      <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
         {label}
       </span>
-      <span className="text-2xl font-semibold tabular-nums tracking-tight">
+      <span className="text-2xl font-semibold tracking-tight tabular-nums">
         {value}
       </span>
       {hint ? (
@@ -118,8 +86,6 @@ function MetricCard({
 
 function CompactPerformanceCard() {
   const { data, isLoading, isError } = useCurrentMonthPerformance()
-  const user = useAuthStore((s) => s.user)
-  const avatarSrc = getUserAvatarSrc(user?.id)
 
   if (isError) return null
 
@@ -128,12 +94,9 @@ function CompactPerformanceCard() {
       <div className="overflow-hidden rounded-lg border">
         <div className="h-0.5 bg-primary/80" />
         <div className="space-y-2 p-3">
-          <div className="flex items-center gap-2.5">
-            <Skeleton className="size-8 shrink-0 rounded-full" />
-            <div className="flex-1 space-y-1">
-              <Skeleton className="h-3.5 w-20" />
-              <Skeleton className="h-2.5 w-28" />
-            </div>
+          <div className="space-y-1">
+            <Skeleton className="h-3.5 w-20" />
+            <Skeleton className="h-2.5 w-28" />
           </div>
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-full" />
@@ -149,23 +112,15 @@ function CompactPerformanceCard() {
     <div className="overflow-hidden rounded-lg border">
       <div className="h-0.5 bg-primary/80" />
       <div className="p-3">
-        <div className="flex items-center gap-2.5">
-          <Avatar className="size-8 shrink-0">
-            <AvatarImage src={avatarSrc} alt={data.name} />
-            <AvatarFallback className="bg-muted text-xs font-semibold text-muted-foreground">
-              {data.name.slice(0, 1)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm font-semibold">{data.name}</span>
-              <span className="text-[10px] text-muted-foreground">
-                工号 {data.staff_no || "--"}
-              </span>
-            </div>
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
-              {formatMonthPeriod(data.month)}
-            </div>
+        <div className="min-w-0">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-semibold">{data.name}</span>
+            <span className="text-[10px] text-muted-foreground">
+              工号 {data.staff_no || "--"}
+            </span>
+          </div>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">
+            {formatMonthPeriod(data.month)}
           </div>
         </div>
 
@@ -189,7 +144,9 @@ function CompactPerformanceCard() {
             </div>
             <div className="grid grid-cols-2 gap-2 rounded-md border border-border/50 p-2">
               <div className="flex flex-col">
-                <span className="text-[10px] text-muted-foreground">当月金额</span>
+                <span className="text-[10px] text-muted-foreground">
+                  当月金额
+                </span>
                 <span className="text-[11px] font-semibold tabular-nums">
                   {formatMoney(data.balance)}
                 </span>
@@ -200,7 +157,9 @@ function CompactPerformanceCard() {
                   {formatRank(data.rank)}
                 </span>
                 {data.rank === -1 ? (
-                  <span className="text-[9px] text-muted-foreground">暂无排名</span>
+                  <span className="text-[9px] text-muted-foreground">
+                    暂无排名
+                  </span>
                 ) : null}
               </div>
             </div>
@@ -245,14 +204,16 @@ function FullPerformanceCard() {
             <p className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
               {formatMonthPeriod(data.month)}
             </p>
-            <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="mt-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
               绩效周期
             </p>
           </div>
 
           <div className="shrink-0 text-right">
-            <div className="text-sm font-medium text-foreground">{data.name}</div>
-            <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="text-sm font-medium text-foreground">
+              {data.name}
+            </div>
+            <div className="mt-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
               工号 {data.staff_no || "--"}
             </div>
           </div>
@@ -263,14 +224,11 @@ function FullPerformanceCard() {
         <div className="grid grid-cols-3 gap-3">
           <MetricCard
             label={
-              <PerformanceLabelWithHelp className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground" />
+              <PerformanceLabelWithHelp className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase" />
             }
             value={data.gdp.toFixed(2)}
           />
-          <MetricCard
-            label="当月金额"
-            value={formatMoney(data.balance)}
-          />
+          <MetricCard label="当月金额" value={formatMoney(data.balance)} />
           <MetricCard
             label="排名"
             value={formatRank(data.rank)}

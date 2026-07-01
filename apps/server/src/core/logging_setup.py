@@ -9,6 +9,12 @@ from pathlib import Path
 from src.core.config import get_default_logs_dir
 
 
+def _is_windows_log_lock_error(exc: BaseException) -> bool:
+    if isinstance(exc, PermissionError):
+        return True
+    return getattr(exc, "winerror", None) == 32
+
+
 class WindowsSafeTimedRotatingFileHandler(TimedRotatingFileHandler):
     """TimedRotatingFileHandler that handles Windows file-locking during rotation."""
 
@@ -18,16 +24,17 @@ class WindowsSafeTimedRotatingFileHandler(TimedRotatingFileHandler):
             return
         try:
             super().doRollover()
-        except PermissionError:
-            self.stream.close()
-            self.stream = None
-            try:
-                super().doRollover()
-            finally:
-                if self.stream is None:
+        except OSError as exc:
+            if not _is_windows_log_lock_error(exc):
+                raise
+            # WinError 32: 旧 backend / Electron 仍在 tail app.log，无法 rename
+            if self.stream is None:
+                try:
                     self.stream = self._open()
+                except OSError:
+                    pass
 
-# ~/.digital-employee/logs/
+# ~/.boban-staff/logs/
 _LOG_DIR = get_default_logs_dir()
 _APP_LOG = _LOG_DIR / "app.log"
 _ERROR_LOG = _LOG_DIR / "error.log"
@@ -58,7 +65,7 @@ def _timed_log_attached(root: logging.Logger, log_path: Path) -> bool:
 
 
 def setup_logging() -> Path:
-    """将应用日志按日写入 ~/.digital-employee/logs/app.log，ERROR 及以上单独按日写入 error.log，并输出到控制台。"""
+    """将应用日志按日写入 ~/.boban-staff/logs/app.log，ERROR 及以上单独按日写入 error.log，并输出到控制台。"""
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     root = logging.getLogger()

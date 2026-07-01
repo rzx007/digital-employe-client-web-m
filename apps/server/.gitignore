@@ -16,6 +16,12 @@ __pycache__/
 *.so
 .Python
 
+# setuptools 构建产物（每次构建生成，勿入库）
+*.egg-info/
+
+# uv workspace 模式下子包 lock 不被使用，权威为仓库根 uv.lock
+uv.lock
+
 # Deep Agent filesystem (if using local backend)
 .deepagent_fs/
 agent_files/

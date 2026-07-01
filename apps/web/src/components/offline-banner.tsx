@@ -26,7 +26,7 @@ export function OfflineBanner({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-50 bg-destructive px-4 py-2 text-center text-xs text-destructive-foreground",
+        "text-destructive-foreground fixed right-0 bottom-0 left-0 z-50 bg-destructive px-4 py-2 text-center text-xs",
         className
       )}
     >

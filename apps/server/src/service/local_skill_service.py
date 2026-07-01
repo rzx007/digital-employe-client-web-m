@@ -10,6 +10,7 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 from fastapi import HTTPException, status
@@ -19,12 +20,60 @@ from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# 内置技能目录名 → 页面展示中文名（build-in-skills/）
+BUILTIN_SKILL_DISPLAY_NAMES: dict[str, str] = {
+    "lark-base": "飞书多维表格",
+    "feishu-workbench": "飞书工作台",
+    "skill-creator": "技能制作",
+    "env-steward": "环境管家",
+    "browser-runtime": "内嵌浏览器",
+    "bug-reporter": "问题反馈",
+    "docx": "Word 文档",
+    "doc-coauthoring": "文档协作写作",
+    "pdf": "PDF 处理",
+    "pptx": "PPT 演示文稿",
+    "xlsx": "Excel 表格",
+    "html-ppt": "HTML 幻灯片",
+}
+
 
 class LocalSkillService:
     META_FILE_NAME = ".skill-meta.json"
     SKILL_MD_NAME = "SKILL.md"
     SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
     LOCAL_SKILL_ID_START = -100
+
+    @staticmethod
+    def resolve_display_name_zh(
+        skill_name: str,
+        meta: dict | None = None,
+    ) -> str:
+        """解析技能中文展示名：meta → 内置映射 → 目录名。"""
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        if meta:
+            zh_raw = meta.get("displayNameZh")
+            if isinstance(zh_raw, str) and zh_raw.strip():
+                return zh_raw.strip()
+        mapped = BUILTIN_SKILL_DISPLAY_NAMES.get(normalized)
+        if mapped:
+            return mapped
+        return normalized
+
+    @staticmethod
+    def build_recruit_summary(
+        description: str,
+        skill_name: str = "",
+        max_chars: int | None = None,
+    ) -> str:
+        """将技能描述规范化为招聘用摘要（默认保留全文，不截断）。"""
+        text = (description or "").strip()
+        if not text:
+            text = (skill_name or "").strip()
+        if not text:
+            return ""
+        if max_chars is not None and len(text) > max_chars:
+            return text[:max_chars]
+        return text
 
     @staticmethod
     def _resolve_local_root(workspace_id: int | None = None) -> Path:
@@ -45,7 +94,9 @@ class LocalSkillService:
         configured_root = Path(
             os.path.expandvars(os.path.expanduser(settings.builtin_skills_path))
         )
-        source_relative_root = Path(__file__).resolve().parents[1] / "build-in-skills"
+        from src.service.agent.paths import BUILD_IN_SKILLS_DIR
+
+        source_relative_root = BUILD_IN_SKILLS_DIR
         executable_relative_root = Path(sys.executable).resolve().parent / "build-in-skills"
 
         candidates: list[Path] = [
@@ -55,7 +106,7 @@ class LocalSkillService:
         ]
         # PyInstaller onefile 兜底：资源被展开到 _MEIPASS 临时目录。
         if hasattr(sys, "_MEIPASS"):
-            meipass_root = Path(getattr(sys, "_MEIPASS")) / "src" / "build-in-skills"
+            meipass_root = Path(getattr(sys, "_MEIPASS")) / "build-in-skills"
             candidates.append(meipass_root)
 
         for candidate in candidates:
@@ -66,8 +117,41 @@ class LocalSkillService:
         return configured_root
 
     @staticmethod
+    def _unwrap_overescaped(value: str) -> str:
+        """剥掉 LLM 调工具时偶发多套的外层引号/反斜杠。
+
+        模型本应传 `workbench-builder`，却偶发把字符串参数多做一层 JSON 转义传成
+        `"\\"workbench-builder\\""`（含字面反斜杠和引号）→ 过不了 SKILL_NAME_PATTERN
+        报「skillName 格式非法」。这里反复剥去首尾成对的引号（含被反斜杠转义的 \\"）
+        与零散反斜杠，把它还原成裸技能名。对正常输入（本就无引号）是无操作。
+        """
+        s = value.strip()
+        # 反复剥：去掉首尾的反斜杠+引号组合，再去掉首尾成对的普通引号/反斜杠。
+        for _ in range(4):  # 最多套几层，给足余量；正常输入一轮即稳定
+            prev = s
+            s = s.strip()
+            # 先去首尾被转义的引号 \" ... \"
+            if s.startswith('\\"') and s.endswith('\\"') and len(s) > 4:
+                s = s[2:-2]
+            # 再去首尾成对的普通引号 " ... " 或 ' ... '
+            elif (
+                len(s) >= 2
+                and s[0] == s[-1]
+                and s[0] in ("\"", "'")
+            ):
+                s = s[1:-1]
+            else:
+                # 去掉零散的首尾反斜杠
+                s = s.strip("\\").strip()
+            if s == prev:
+                break
+        return s
+
+    @staticmethod
     def _normalize_skill_name(skill_name: str) -> str:
-        normalized = (skill_name or "").strip()
+        # 先剥 LLM 偶发多套的外层引号/反斜杠（如 \"workbench-builder\"），再校验，
+        # 避免本可救的双重转义入参被直接判「格式非法」。
+        normalized = LocalSkillService._unwrap_overescaped(skill_name or "")
         if not normalized:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -279,6 +363,44 @@ class LocalSkillService:
         return description
 
     @staticmethod
+    def _packaged_builtin_skill_names(source_root: Path) -> set[str]:
+        """build-in-skills 中合法内置技能目录名（与 seed 判定规则一致）。"""
+        names: set[str] = set()
+        if not source_root.is_dir():
+            return names
+        for item in source_root.iterdir():
+            if not item.is_dir():
+                continue
+            if not LocalSkillService.SKILL_NAME_PATTERN.match(item.name):
+                continue
+            if not (item / LocalSkillService.SKILL_MD_NAME).is_file():
+                continue
+            names.add(item.name)
+        return names
+
+    @staticmethod
+    def _prune_stale_builtin_skills(
+        local_root: Path,
+        packaged_names: set[str],
+    ) -> int:
+        """以 build-in-skills 为权威，删除本机 builtin 中已下架的技能目录。"""
+        removed = 0
+        if not local_root.is_dir():
+            return removed
+        for child in local_root.iterdir():
+            if not child.is_dir():
+                continue
+            if child.name in packaged_names:
+                continue
+            logger.info(
+                "Remove stale builtin skill not in build-in-skills: %s",
+                child.name,
+            )
+            shutil.rmtree(child)
+            removed += 1
+        return removed
+
+    @staticmethod
     def seed_builtin_skills() -> dict[str, int]:
         """
         将包内 build-in-skills 同步到 LOCAL_SKILLS_PATH/builtin（共享目录）。
@@ -290,9 +412,14 @@ class LocalSkillService:
         logger.info("local_root: %s", local_root)
         if not source_root.is_dir():
             logger.info("Skip builtin skill seed: packaged source missing %s", source_root)
-            return {"copied_items": 0}
+            return {"copied_items": 0, "removed_items": 0}
 
+        packaged_names = LocalSkillService._packaged_builtin_skill_names(source_root)
         local_root.mkdir(parents=True, exist_ok=True)
+        removed_items = LocalSkillService._prune_stale_builtin_skills(
+            local_root,
+            packaged_names,
+        )
         copied_items = 0
         reserved_global = LocalSkillService._reserved_negative_ids_universal()
         for item in sorted(source_root.iterdir(), key=lambda p: p.name.lower()):
@@ -327,6 +454,14 @@ class LocalSkillService:
             description = LocalSkillService._extract_description_from_skill_md(
                 target_dir / LocalSkillService.SKILL_MD_NAME
             )
+            source_meta = LocalSkillService._read_meta(item)
+            display_zh = LocalSkillService.resolve_display_name_zh(
+                normalized,
+                {
+                    "displayNameZh": existing_meta.get("displayNameZh")
+                    or source_meta.get("displayNameZh"),
+                },
+            )
             meta = {
                 "skillName": normalized,
                 "localId": local_id,
@@ -334,22 +469,51 @@ class LocalSkillService:
                 "importedAt": datetime.now().isoformat(timespec="seconds"),
                 "overwrite": True,
                 "description": description,
+                "recruitSummary": LocalSkillService.build_recruit_summary(
+                    description, normalized
+                ),
+                "displayNameZh": display_zh,
             }
             LocalSkillService._write_meta(target_dir, meta)
             copied_items += 1
 
         logger.info(
-            "Seeded builtin skills into local-skills: source=%s target=%s copied_items=%s",
+            "Seeded builtin skills into local-skills: source=%s target=%s "
+            "copied_items=%s removed_items=%s",
             source_root,
             local_root,
             copied_items,
+            removed_items,
         )
-        return {"copied_items": copied_items}
+        return {"copied_items": copied_items, "removed_items": removed_items}
 
     @staticmethod
     def local_skill_exists(skill_name: str, workspace_id: int | None = None) -> bool:
         normalized = LocalSkillService._normalize_skill_name(skill_name)
         return LocalSkillService._skill_dir(normalized, workspace_id).is_dir()
+
+    @staticmethod
+    def pack_skill_dir_to_zip(skill_dir: Path) -> bytes:
+        """把一个技能目录打包成 zip（zip 内以目录名为根）。要求含 SKILL.md。"""
+        skill_dir = Path(skill_dir)
+        if not skill_dir.is_dir():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"草稿技能目录不存在: {skill_dir}",
+            )
+        if not (skill_dir / LocalSkillService.SKILL_MD_NAME).is_file():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="草稿技能缺少 SKILL.md，无法保存",
+            )
+        root_name = skill_dir.name
+        buf = io.BytesIO()
+        with ZipFile(buf, "w", ZIP_DEFLATED) as zf:
+            for path in sorted(skill_dir.rglob("*")):
+                if path.is_file():
+                    arcname = f"{root_name}/{path.relative_to(skill_dir).as_posix()}"
+                    zf.write(path, arcname)
+        return buf.getvalue()
 
     @staticmethod
     def import_local_skill_zip(
@@ -358,6 +522,7 @@ class LocalSkillService:
         file_bytes: bytes,
         overwrite: bool = False,
         workspace_id: int | None = None,
+        display_name_zh: str | None = None,
     ) -> dict:
         settings = get_settings()
         normalized = LocalSkillService._normalize_skill_name(skill_name)
@@ -405,7 +570,12 @@ class LocalSkillService:
                 "importedAt": datetime.now().isoformat(timespec="seconds"),
                 "overwrite": overwrite,
                 "description": description,
+                "recruitSummary": LocalSkillService.build_recruit_summary(
+                    description, normalized
+                ),
             }
+            if display_name_zh and str(display_name_zh).strip():
+                meta["displayNameZh"] = str(display_name_zh).strip()
             LocalSkillService._write_meta(target_dir, meta)
             return {
                 "skillName": normalized,
@@ -415,6 +585,118 @@ class LocalSkillService:
             }
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @staticmethod
+    def save_draft_skill(
+        *,
+        draft_dir: Path,
+        skill_name: str,
+        workspace_id: int,
+        overwrite: bool = False,
+        display_name_zh: str | None = None,
+    ) -> dict:
+        """把草稿目录注册进本地技能库（复用 import 链路），返回 import 结果含 localId。"""
+        zip_bytes = LocalSkillService.pack_skill_dir_to_zip(draft_dir)
+        return LocalSkillService.import_local_skill_zip(
+            skill_name=skill_name,
+            file_name=f"{skill_name}.zip",
+            file_bytes=zip_bytes,
+            overwrite=overwrite,
+            workspace_id=workspace_id,
+            display_name_zh=display_name_zh,
+        )
+
+    @staticmethod
+    def _safe_write_under_skill_dir(skill_dir: Path, relative_path: str) -> Path | None:
+        relative = Path(relative_path)
+        if relative.is_absolute() or ".." in relative.parts:
+            return None
+        return skill_dir / relative
+
+    @staticmethod
+    def install_skill_from_file_map(
+        *,
+        skill_name: str,
+        file_map: dict[str, str],
+        workspace_id: int,
+        overwrite: bool = False,
+        display_name_zh: str | None = None,
+        description: str | None = None,
+        source_file_name: str = "remote:skillContent",
+    ) -> dict:
+        """
+        将相对路径 -> 文本 映射写入当前工作区 local-skills/<workspace_id>/<skill_name>/，
+        与员工侧从远程 skillContent 落盘逻辑一致（参见 EmployeeService._save_skills_to_skill_path）。
+        """
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        already_exists = LocalSkillService.local_skill_exists(normalized, workspace_id)
+        if already_exists and not overwrite:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"本地已存在同名技能: {normalized}",
+            )
+        if not file_map:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="技能文件内容为空。",
+            )
+
+        local_root = LocalSkillService._resolve_local_root(workspace_id)
+        local_root.mkdir(parents=True, exist_ok=True)
+        target_dir = local_root / normalized
+
+        existing_local_id: int | None = None
+        if target_dir.exists():
+            existing_meta = LocalSkillService._read_meta(target_dir)
+            existing_local_id = LocalSkillService._parse_local_id(
+                existing_meta.get("localId")
+            )
+            shutil.rmtree(target_dir, ignore_errors=True)
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for relative_path, content in file_map.items():
+            target = LocalSkillService._safe_write_under_skill_dir(
+                target_dir, relative_path
+            )
+            if target is None:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            body = content if isinstance(content, str) else str(content)
+            target.write_text(body, encoding="utf-8")
+
+        desc: str | None = None
+        if isinstance(description, str) and description.strip():
+            desc = description.strip()
+        if not desc:
+            skill_md = target_dir / LocalSkillService.SKILL_MD_NAME
+            if skill_md.exists():
+                desc = LocalSkillService._extract_description_from_skill_md(
+                    skill_md
+                ) or None
+
+        if existing_local_id is not None:
+            local_id = existing_local_id
+        else:
+            universal_reserved = LocalSkillService._reserved_negative_ids_universal()
+            local_id = LocalSkillService._next_id_below_reserved(universal_reserved)
+
+        meta = {
+            "skillName": normalized,
+            "localId": local_id,
+            "sourceFileName": source_file_name,
+            "importedAt": datetime.now().isoformat(timespec="seconds"),
+            "overwrite": overwrite,
+            "description": desc,
+        }
+        if display_name_zh and str(display_name_zh).strip():
+            meta["displayNameZh"] = str(display_name_zh).strip()
+        LocalSkillService._write_meta(target_dir, meta)
+        return {
+            "skillName": normalized,
+            "localId": local_id,
+            "path": str(target_dir),
+            "overwritten": already_exists and overwrite,
+        }
 
     @staticmethod
     def list_local_skills(workspace_id: int | None = None) -> list[dict]:
@@ -427,7 +709,7 @@ class LocalSkillService:
         # 合并列表内 localId 唯一：先内置后 workspace，重复或缺失则重新分配并写回 meta
         claimed_local_ids: set[int] = set()
 
-        def _load_skills_from_dir(root: Path) -> list[dict]:
+        def _load_skills_from_dir(root: Path, *, is_builtin: bool) -> list[dict]:
             if not root.exists():
                 return []
             dir_items: list[dict] = []
@@ -446,6 +728,15 @@ class LocalSkillService:
                 else:
                     local_id = parsed
                 claimed_local_ids.add(local_id)
+                description = meta.get("description") or ""
+                recruit_summary = meta.get("recruitSummary") or ""
+                if not recruit_summary and description:
+                    recruit_summary = LocalSkillService.build_recruit_summary(
+                        str(description), skill_dir.name
+                    )
+                    meta["recruitSummary"] = recruit_summary
+                    LocalSkillService._write_meta(skill_dir, meta)
+                zh = meta.get("displayNameZh")
                 dir_items.append(
                     {
                         "skillName": skill_dir.name,
@@ -453,25 +744,244 @@ class LocalSkillService:
                         "path": str(skill_dir),
                         "hasSkillMd": (skill_dir / LocalSkillService.SKILL_MD_NAME).exists(),
                         "importedAt": meta.get("importedAt"),
-                        "description": meta.get("description"),
-                }
+                        "description": description,
+                        "recruitSummary": recruit_summary,
+                            "displayNameZh": zh if isinstance(zh, str) else None,
+                        "isBuiltin": is_builtin,
+                    }
                 )
             return dir_items
 
         # 总是包含 builtin 技能
-        items.extend(_load_skills_from_dir(builtin_root))
+        items.extend(_load_skills_from_dir(builtin_root, is_builtin=True))
 
         # 如果指定了 workspace_id，再添加该 workspace 的自定义技能
         # 同名技能会被 workspace 自定义版本覆盖
         if workspace_id is not None:
             workspace_root = LocalSkillService._resolve_local_root(workspace_id)
-            workspace_skills = _load_skills_from_dir(workspace_root)
+            workspace_skills = _load_skills_from_dir(workspace_root, is_builtin=False)
             skill_map = {item["skillName"]: item for item in items}
             for skill in workspace_skills:
                 skill_map[skill["skillName"]] = skill
             items = list(skill_map.values())
 
         return items
+
+    @staticmethod
+    def _resolve_editable_skill_dir(
+        skill_name: str,
+        workspace_id: int | None = None,
+    ) -> Path:
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        if workspace_id is not None:
+            workspace_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+            if workspace_dir.is_dir():
+                return workspace_dir
+
+        builtin_dir = LocalSkillService._skill_dir(normalized, None)
+        if builtin_dir.is_dir():
+            return builtin_dir
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"未找到本地技能: {normalized}",
+        )
+
+    @staticmethod
+    def _is_under_builtin(skill_dir: Path) -> bool:
+        builtin_root = LocalSkillService._resolve_builtin_root().resolve()
+        try:
+            return skill_dir.resolve().is_relative_to(builtin_root)
+        except ValueError:
+            return False
+
+    @staticmethod
+    def _fork_builtin_to_workspace(skill_name: str, workspace_id: int) -> Path:
+        """把全局内置技能复制一份到当前工作区，返回工作区目录。
+
+        复制后该技能在本工作区即成为可独立编辑、可删除的本地技能，
+        全局内置原版保持不变。若工作区已存在同名目录则直接返回。
+        """
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        builtin_dir = LocalSkillService._skill_dir(normalized, None)
+        if not builtin_dir.is_dir():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"未找到内置技能: {normalized}",
+            )
+        target_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+        if target_dir.is_dir():
+            return target_dir
+
+        local_root = LocalSkillService._resolve_local_root(workspace_id)
+        local_root.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(builtin_dir, target_dir, dirs_exist_ok=False)
+
+        meta = LocalSkillService._read_meta(target_dir)
+        reserved = LocalSkillService._reserved_negative_ids_universal()
+        meta["skillName"] = normalized
+        meta["localId"] = LocalSkillService._next_id_below_reserved(reserved)
+        meta["importedAt"] = datetime.now().isoformat(timespec="seconds")
+        meta["sourceFileName"] = f"fork:builtin:{normalized}"
+        LocalSkillService._write_meta(target_dir, meta)
+        return target_dir
+
+    @staticmethod
+    def ensure_editable_from_employee_copy(
+        skill_name: str, workspace_id: int, employee_id: int
+    ) -> "Path | None":
+        """确保技能在工作区技能库有可编辑副本，供 update_local_skill 写入。
+
+        - 工作区已有副本 → 返回该目录（无需 fork）。
+        - 内置存在 → 返回 None（交给 update_local_skill(target="workspace") fork 内置）。
+        - 都无、但员工私有副本存在 → 把私有副本固化为工作区本地技能并返回新目录。
+        - 都无 → 抛 HTTPException(404) 明确技能无可编辑来源。
+        """
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        workspace_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+        if workspace_dir.is_dir():
+            return workspace_dir
+        builtin_dir = LocalSkillService._skill_dir(normalized, None)
+        if builtin_dir.is_dir():
+            return None  # update_local_skill(target="workspace") 会 fork 内置
+        # 远程直分配：无库文件，从员工私有副本固化
+        from src.service.employee_service import EmployeeService
+        private_dir = (
+            EmployeeService._resolve_skill_root()
+            / str(employee_id)
+            / "skills"
+            / normalized
+        )
+        if not (private_dir / LocalSkillService.SKILL_MD_NAME).is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"未找到可编辑技能来源（工作区/内置/员工私有副本均无）: {normalized}",
+            )
+        local_root = LocalSkillService._resolve_local_root(workspace_id)
+        local_root.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(private_dir, workspace_dir, dirs_exist_ok=False)
+        meta = LocalSkillService._read_meta(workspace_dir)
+        reserved = LocalSkillService._reserved_negative_ids_universal()
+        meta["skillName"] = normalized
+        meta["localId"] = LocalSkillService._next_id_below_reserved(reserved)
+        meta["importedAt"] = datetime.now().isoformat(timespec="seconds")
+        meta["sourceFileName"] = f"fork:employee:{employee_id}:{normalized}"
+        LocalSkillService._write_meta(workspace_dir, meta)
+        return workspace_dir
+
+    @staticmethod
+    def update_local_skill(
+        skill_name: str,
+        workspace_id: int | None = None,
+        *,
+        display_name_zh: str | None = None,
+        skill_md_content: str | None = None,
+        target: Literal["workspace", "builtin"] | None = None,
+    ) -> dict:
+        if display_name_zh is None and skill_md_content is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="至少需要更新一项。",
+            )
+
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+
+        # 工作区已有同名副本时，始终写副本（target 无意义）。
+        workspace_dir: Path | None = None
+        if workspace_id is not None:
+            candidate = LocalSkillService._skill_dir(normalized, workspace_id)
+            if candidate.is_dir():
+                workspace_dir = candidate
+
+        if workspace_dir is not None:
+            skill_dir = workspace_dir
+        elif target == "workspace":
+            # 内置技能"复制另存"：先 fork 到工作区，再写入副本。
+            if workspace_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="缺少工作区，无法将内置技能复制到工作区。",
+                )
+            skill_dir = LocalSkillService._fork_builtin_to_workspace(
+                normalized, workspace_id
+            )
+        else:
+            # 内置技能"覆盖保存"或本地技能：沿用原解析（工作区优先，其次内置）。
+            skill_dir = LocalSkillService._resolve_editable_skill_dir(
+                normalized, workspace_id
+            )
+        meta = LocalSkillService._read_meta(skill_dir)
+        meta["skillName"] = meta.get("skillName") or normalized
+        result: dict = {"skillName": normalized}
+
+        if display_name_zh is not None:
+            trimmed = (display_name_zh or "").strip()
+            if len(trimmed) > 255:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="中文名称不能超过 255 个字符。",
+                )
+            if trimmed:
+                meta["displayNameZh"] = trimmed
+            else:
+                meta.pop("displayNameZh", None)
+            result["displayNameZh"] = trimmed or None
+
+        if skill_md_content is not None:
+            settings = get_settings()
+            encoded = skill_md_content.encode("utf-8")
+            if len(encoded) > settings.client_skill_import_max_bytes:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"SKILL.md 超过大小限制: "
+                        f"{settings.client_skill_import_max_bytes} 字节。"
+                    ),
+                )
+            skill_md = skill_dir / LocalSkillService.SKILL_MD_NAME
+            skill_md.write_text(skill_md_content, encoding="utf-8")
+            description = LocalSkillService._extract_description_from_skill_md(
+                skill_md
+            )
+            meta["description"] = description
+            meta["recruitSummary"] = LocalSkillService.build_recruit_summary(
+                description, normalized
+            )
+            result["skillMdContent"] = skill_md_content
+
+        LocalSkillService._write_meta(skill_dir, meta)
+        result["isBuiltin"] = LocalSkillService._is_under_builtin(skill_dir)
+        return result
+
+    @staticmethod
+    def update_display_name_zh(
+        skill_name: str,
+        display_name_zh: str,
+        workspace_id: int | None = None,
+    ) -> dict:
+        updated = LocalSkillService.update_local_skill(
+            skill_name,
+            workspace_id,
+            display_name_zh=display_name_zh,
+        )
+        return {
+            "skillName": updated["skillName"],
+            "displayNameZh": updated.get("displayNameZh"),
+        }
+
+    @staticmethod
+    def delete_workspace_skill(skill_name: str, workspace_id: int) -> None:
+        """仅删除当前工作区目录下的技能文件夹，不删除 builtin 下的内置技能。"""
+        normalized = LocalSkillService._normalize_skill_name(skill_name)
+        skill_dir = LocalSkillService._skill_dir(normalized, workspace_id)
+        if not skill_dir.is_dir():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"未找到可删除的本地技能（可能仅为内置技能或名称不存在）: {normalized}"
+                ),
+            )
+        shutil.rmtree(skill_dir)
 
     @staticmethod
     def get_local_skill_detail(skill_name: str, workspace_id: int | None = None) -> dict:
@@ -502,7 +1012,15 @@ class LocalSkillService:
         files: list[str] = []
         for path in sorted(skill_dir.rglob("*")):
             if path.is_file():
-                files.append(path.relative_to(skill_dir).as_posix())
+                rel = path.relative_to(skill_dir).as_posix()
+                if not rel.startswith(".history/"):
+                    files.append(rel)
+        builtin_root = LocalSkillService._resolve_builtin_root().resolve()
+        try:
+            is_builtin = skill_dir.resolve().is_relative_to(builtin_root)
+        except ValueError:
+            is_builtin = False
+        zh = meta.get("displayNameZh")
         return {
             "skillName": skill_name,
             "localId": LocalSkillService._parse_local_id(meta.get("localId")),
@@ -510,6 +1028,8 @@ class LocalSkillService:
             "importedAt": meta.get("importedAt"),
             "skillMdContent": skill_md_content,
             "files": files,
+            "displayNameZh": zh if isinstance(zh, str) else None,
+            "isBuiltin": is_builtin,
         }
 
     @staticmethod
@@ -542,5 +1062,7 @@ class LocalSkillService:
                 if not path.is_file():
                     continue
                 arcname = path.relative_to(skill_dir).as_posix()
+                if arcname.startswith(".history/"):
+                    continue
                 zip_file.write(path, arcname)
         return f"{skill_name}.zip", buffer.getvalue()

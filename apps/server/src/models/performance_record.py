@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String, UniqueConstraint
+from sqlalchemy import Float, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
+from src.db.types import CstDateTime
 
 from src.db.base import Base
 from src.models.workspace import cst_now
@@ -33,9 +34,9 @@ class PerformanceRecord(Base):
     assessment_department: Mapped[str] = mapped_column(
         String(255), nullable=True, default=""
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=cst_now)
+    created_at: Mapped[datetime] = mapped_column(CstDateTime, default=cst_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        CstDateTime,
         default=cst_now,
         onupdate=cst_now,
     )

@@ -1,31 +1,37 @@
 import { create } from "zustand"
 
+import { useArtifactStore } from "@/stores/artifact-store"
+import { useBrowserStore } from "@/stores/browser-store"
+import { useChatStore } from "@/stores/chat-store"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
+
 interface MonitorStore {
   isOpen: boolean
-  isFullscreen: boolean
   targetEmployeeId: string | null
   targetEmployeeName: string
 
   openMonitor: (employeeId: string, employeeName: string) => void
   setTargetEmployee: (employeeId: string, employeeName: string) => void
   closeMonitor: () => void
-  toggleFullscreen: () => void
-  setFullscreen: (fullscreen: boolean) => void
 }
 
 export const useMonitorStore = create<MonitorStore>((set) => ({
   isOpen: false,
-  isFullscreen: false,
   targetEmployeeId: null,
   targetEmployeeName: "",
 
-  openMonitor: (employeeId, employeeName) =>
+  openMonitor: (employeeId, employeeName) => {
+    useArtifactStore.getState().closeArtifact()
+    useTasksPanelStore.getState().close()
+    // 浏览器改为最小化（保活）而非销毁——切到监控 panel 不中断浏览器操作。
+    useBrowserStore.getState().minimizeBrowser()
+    useChatStore.getState().setActiveTab("chat")
     set({
       isOpen: true,
-      isFullscreen: false,
       targetEmployeeId: employeeId,
       targetEmployeeName: employeeName,
-    }),
+    })
+  },
 
   setTargetEmployee: (employeeId, employeeName) =>
     set({
@@ -36,13 +42,7 @@ export const useMonitorStore = create<MonitorStore>((set) => ({
   closeMonitor: () =>
     set({
       isOpen: false,
-      isFullscreen: false,
       targetEmployeeId: null,
       targetEmployeeName: "",
     }),
-
-  toggleFullscreen: () =>
-    set((state) => ({ isFullscreen: !state.isFullscreen })),
-
-  setFullscreen: (fullscreen) => set({ isFullscreen: fullscreen }),
 }))

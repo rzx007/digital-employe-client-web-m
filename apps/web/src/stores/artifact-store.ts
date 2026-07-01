@@ -1,35 +1,100 @@
 import { create } from "zustand"
 import type { Artifact } from "@/types/artifact"
+import type {
+  ClearPendingResourceRef,
+  PendingResource,
+  UpsertPendingResourceInput,
+} from "@/lib/chat/pending-resources"
+
+import { useBrowserStore } from "@/stores/browser-store"
+import { useMonitorStore } from "@/stores/monitor-store"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
+
+export type {
+  ClearPendingResourceRef,
+  PendingResource,
+  UpsertPendingResourceInput,
+}
+
+function closeOtherSidePanels() {
+  useMonitorStore.getState().closeMonitor()
+  useTasksPanelStore.getState().close()
+  // 浏览器改为最小化（保活）而非销毁——切到本 panel 不中断浏览器操作。
+  useBrowserStore.getState().minimizeBrowser()
+}
 
 interface ArtifactStore {
   activeArtifactId: string | null
   activeResourcePath: string | null
+  activeSubConversationId: number | null
   isPanelOpen: boolean
   artifacts: Map<string, Artifact>
+  pendingByConversation: Map<string, Map<string, PendingResource>>
 
   openArtifact: (id: string) => void
   openResource: (path: string) => void
+  openSubConversation: (conversationId: number) => void
   closeArtifact: () => void
   addArtifact: (artifact: Artifact) => void
   removeArtifact: (id: string) => void
   setPanelOpen: (open: boolean) => void
   updateArtifactContent: (id: string, content: string) => void
+  upsertPendingResource: (
+    conversationId: string | number,
+    input: UpsertPendingResourceInput
+  ) => void
+  clearPendingResource: (
+    conversationId: string | number,
+    ref: ClearPendingResourceRef
+  ) => void
+  clearPendingConversation: (conversationId: string | number) => void
+  getPendingResources: (conversationId: string | number) => PendingResource[]
 }
 
-export const useArtifactStore = create<ArtifactStore>((set) => ({
+function toConversationKey(conversationId: string | number) {
+  return String(conversationId)
+}
+
+export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   activeArtifactId: null,
   activeResourcePath: null,
+  activeSubConversationId: null,
   isPanelOpen: false,
   artifacts: new Map(),
+  pendingByConversation: new Map(),
 
-  openArtifact: (id) =>
-    set({ activeArtifactId: id, activeResourcePath: null, isPanelOpen: true }),
-  openResource: (path) =>
-    set({ activeArtifactId: null, activeResourcePath: path, isPanelOpen: true }),
+  openArtifact: (id) => {
+    closeOtherSidePanels()
+    set({
+      activeArtifactId: id,
+      activeResourcePath: null,
+      activeSubConversationId: null,
+      isPanelOpen: true,
+    })
+  },
+  openResource: (path) => {
+    closeOtherSidePanels()
+    set({
+      activeArtifactId: null,
+      activeResourcePath: path,
+      activeSubConversationId: null,
+      isPanelOpen: true,
+    })
+  },
+  openSubConversation: (conversationId) => {
+    closeOtherSidePanels()
+    set({
+      activeArtifactId: null,
+      activeResourcePath: null,
+      activeSubConversationId: conversationId,
+      isPanelOpen: true,
+    })
+  },
   closeArtifact: () =>
     set({
       activeArtifactId: null,
       activeResourcePath: null,
+      activeSubConversationId: null,
       isPanelOpen: false,
     }),
   addArtifact: (artifact) =>
@@ -52,8 +117,15 @@ export const useArtifactStore = create<ArtifactStore>((set) => ({
       }
       return { artifacts }
     }),
-  setPanelOpen: (open) =>
-    set({ isPanelOpen: open, ...(open ? {} : { activeResourcePath: null }) }),
+  setPanelOpen: (open) => {
+    if (open) closeOtherSidePanels()
+    set({
+      isPanelOpen: open,
+      ...(open
+        ? {}
+        : { activeResourcePath: null, activeSubConversationId: null }),
+    })
+  },
   updateArtifactContent: (id, content) =>
     set((state) => {
       const artifacts = new Map(state.artifacts)
@@ -64,4 +136,73 @@ export const useArtifactStore = create<ArtifactStore>((set) => ({
       }
       return state
     }),
+  upsertPendingResource: (conversationId, input) =>
+    set((state) => {
+      const key = toConversationKey(conversationId)
+      const existingMap = state.pendingByConversation.get(key)
+      const existing = existingMap?.get(input.toolCallId)
+      if (
+        existing &&
+        existing.path === input.path &&
+        existing.content === input.content &&
+        existing.isStreaming === input.isStreaming
+      ) {
+        return state
+      }
+
+      const pendingByConversation = new Map(state.pendingByConversation)
+      const nextMap = new Map(existingMap ?? [])
+      nextMap.set(input.toolCallId, {
+        toolCallId: input.toolCallId,
+        path: input.path,
+        content: input.content,
+        isStreaming: input.isStreaming,
+        updatedAt: Date.now(),
+      })
+      pendingByConversation.set(key, nextMap)
+      return { pendingByConversation }
+    }),
+  clearPendingResource: (conversationId, ref) =>
+    set((state) => {
+      const key = toConversationKey(conversationId)
+      const existingMap = state.pendingByConversation.get(key)
+      if (!existingMap?.size) return state
+
+      let deleteKey: string | null = null
+      if ("toolCallId" in ref && ref.toolCallId) {
+        deleteKey = ref.toolCallId
+      } else if ("path" in ref && ref.path) {
+        for (const [mapKey, pending] of existingMap) {
+          if (pending.path === ref.path) {
+            deleteKey = mapKey
+            break
+          }
+        }
+      }
+      if (!deleteKey || !existingMap.has(deleteKey)) return state
+
+      const pendingByConversation = new Map(state.pendingByConversation)
+      const nextMap = new Map(existingMap)
+      nextMap.delete(deleteKey)
+      if (nextMap.size === 0) {
+        pendingByConversation.delete(key)
+      } else {
+        pendingByConversation.set(key, nextMap)
+      }
+      return { pendingByConversation }
+    }),
+  clearPendingConversation: (conversationId) =>
+    set((state) => {
+      const key = toConversationKey(conversationId)
+      if (!state.pendingByConversation.has(key)) return state
+      const pendingByConversation = new Map(state.pendingByConversation)
+      pendingByConversation.delete(key)
+      return { pendingByConversation }
+    }),
+  getPendingResources: (conversationId) => {
+    const map = get().pendingByConversation.get(
+      toConversationKey(conversationId)
+    )
+    return map ? Array.from(map.values()) : []
+  },
 }))

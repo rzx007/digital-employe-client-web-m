@@ -10,7 +10,9 @@ export interface SheetRendererProps {
 
 export const SheetRenderer = ({ artifact, className }: SheetRendererProps) => {
   return (
-    <ScrollArea className={cn("min-h-0 min-w-0 flex-1 overflow-auto p-4", className)}>
+    <ScrollArea
+      className={cn("min-h-0 min-w-0 flex-1 overflow-auto p-4", className)}
+    >
       <MessageResponse className="min-w-0 overflow-x-auto">
         {artifact.content}
       </MessageResponse>

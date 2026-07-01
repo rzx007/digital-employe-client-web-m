@@ -2,7 +2,7 @@
 node_modules
 .pnp
 .pnp.js
-
+.pnpm-store/*
 # Local env files
 .env
 .env.local
@@ -10,10 +10,17 @@ node_modules
 .env.test.local
 .env.production.local
 .history/*
+.venv/*
 apps/simple-agents/*
 apps/web/py-server/*
 apps/server/data/*
-apps/server/__pycache__/*
+
+# Python bytecode / cache (任意位置)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
 apps/server/.venv
 apps/server/.python-version
 apps/server/.pytest_cache
@@ -32,6 +39,10 @@ coverage
 .claude
 .CLAUDE.md
 
+# IDE
+.idea/
+.vscode/
+
 # Turbo
 .turbo
 
@@ -46,11 +57,13 @@ npm-debug.log*
 
 # Misc
 .DS_Store
-*.pem
+activaton-keys/*
+!apps/server/src/core/activation/public_key.pem
 *.local
 .history
 dist-electron
-release
+/release
+apps/web/release/
 apps/server/micro_agent.egg-info/PKG-INFO
 apps/server/micro_agent.egg-info/requires.txt
 apps/server/micro_agent.egg-info/SOURCES.txt
@@ -59,3 +72,5 @@ apps/server/micro_agent.egg-info/PKG-INFO
 apps/server/micro_agent.egg-info/requires.txt
 apps/server/micro_agent.egg-info/SOURCES.txt
 apps/server/micro_agent.egg-info/top_level.txt
+docs/secrets/
+.superpowers/

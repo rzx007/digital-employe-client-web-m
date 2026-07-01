@@ -10,9 +10,7 @@ export function isImageAttachment(file: PromptAttachmentFile): boolean {
   return IMAGE_EXTENSIONS.has(getFilenameExtension(file.filename || ""))
 }
 
-export function splitAttachmentsByImage(
-  files: PromptAttachmentFile[],
-): {
+export function splitAttachmentsByImage(files: PromptAttachmentFile[]): {
   imageFiles: PromptAttachmentFile[]
   otherFiles: PromptAttachmentFile[]
 } {

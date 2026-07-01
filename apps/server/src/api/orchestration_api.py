@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -11,10 +11,13 @@ from src.models.employee_task import EmployeeTask
 from src.models.orchestration_plan import OrchestrationPlan
 from src.models.task_execution_log import TaskExecutionLog
 from src.models.response import BaseResponse, ListResponse, ResponseBase
-from src.schemas.orchestration import OrchestrationPlanDetail, OrchestrationPlanRead, OrchestrationTaskItem
+from src.schemas.orchestration import OrchestrationPlanDetail, OrchestrationPlanRead, OrchestrationTaskEdit, OrchestrationTaskItem, OrchestrationTaskRework
+from src.service.agent.orchestrator.rework import redispatch_task_in_session
 
 router = APIRouter(tags=["编排"])
 logger = logging.getLogger(__name__)
+
+_REWORK_DEFAULT_NOTE = "请在上一稿基础上修订重做。"
 
 
 def _compute_plan_progress(db: Session, plan: OrchestrationPlan) -> tuple[int, int, str]:
@@ -74,30 +77,31 @@ def _compute_plan_progress(db: Session, plan: OrchestrationPlan) -> tuple[int, i
 
 
 def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[OrchestrationTaskItem]:
+    from src.service.task_service import TaskService
+
     tasks = list(
         db.scalars(
             select(EmployeeTask).where(EmployeeTask.orchestration_plan_id == plan.id).order_by(EmployeeTask.id.asc())
         ).all()
     )
+    latest_logs = TaskService.latest_execution_logs_by_task_ids(
+        db, [t.id for t in tasks]
+    )
     items: list[OrchestrationTaskItem] = []
     for t in tasks:
-        status: str = "pending"
+        task_status: str = "pending"
+        latest_log = None
         if t.execute_mode == "scheduled":
-            status = "pending"
+            task_status = "pending"
         else:
-            from src.models.task_execution_log import TaskExecutionLog
-            log = db.scalars(
-                select(TaskExecutionLog).where(
-                    TaskExecutionLog.task_id == t.id,
-                ).order_by(TaskExecutionLog.id.desc()).limit(1)
-            ).first()
-            if log:
-                if log.run_status == "success":
-                    status = "success"
-                elif log.run_status in ("failed", "cancelled"):
-                    status = log.run_status
-                elif log.run_status == "running":
-                    status = "running"
+            latest_log = latest_logs.get(t.id)
+            if latest_log:
+                if latest_log.run_status == "success":
+                    task_status = "success"
+                elif latest_log.run_status in ("failed", "cancelled"):
+                    task_status = latest_log.run_status
+                elif latest_log.run_status == "running":
+                    task_status = "running"
 
         items.append(OrchestrationTaskItem(
             task_id=t.id,
@@ -110,9 +114,22 @@ def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[Orchestratio
             cron=t.cron_expression,
             execute_mode=t.execute_mode,
             priority=t.priority,
-            status=status,
+            status=task_status,
+            conversation_id=(
+                latest_log.conversation_id if latest_log is not None else None
+            ),
+            orchestrator_conversation_id=plan.conversation_id,
         ))
     return items
+
+
+def _get_plan_in_workspace(
+    db: Session, workspace_id: int, plan_id: int
+) -> OrchestrationPlan | None:
+    plan = db.get(OrchestrationPlan, plan_id)
+    if not plan or plan.workspace_id != workspace_id:
+        return None
+    return plan
 
 
 @router.get(
@@ -121,16 +138,18 @@ def _build_task_items(db: Session, plan: OrchestrationPlan) -> list[Orchestratio
 )
 def list_plans(
     workspace_id: int,
+    conversation_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> ListResponse[OrchestrationPlanRead]:
-    plans = list(
-        db.scalars(
-            select(OrchestrationPlan)
-            .where(OrchestrationPlan.workspace_id == workspace_id)
-            .order_by(OrchestrationPlan.id.desc())
-            .limit(50)
-        ).all()
+    stmt = (
+        select(OrchestrationPlan)
+        .where(OrchestrationPlan.workspace_id == workspace_id)
+        .order_by(OrchestrationPlan.id.desc())
+        .limit(50)
     )
+    if conversation_id is not None:
+        stmt = stmt.where(OrchestrationPlan.conversation_id == conversation_id)
+    plans = list(db.scalars(stmt).all())
     result: list[OrchestrationPlanRead] = []
     for p in plans:
         plan_data = OrchestrationPlanRead.model_validate(p)
@@ -143,7 +162,11 @@ def list_plans(
 
 
 @router.get("/orchestration/plans/{plan_id}", response_model=ResponseBase[OrchestrationPlanDetail])
-def get_plan(plan_id: int, db: Session = Depends(get_db)) -> ResponseBase[OrchestrationPlanDetail]:
+def get_plan(
+    plan_id: int,
+    conversation_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> ResponseBase[OrchestrationPlanDetail]:
     plan = db.get(OrchestrationPlan, plan_id)
     if not plan:
         from fastapi import HTTPException
@@ -153,25 +176,39 @@ def get_plan(plan_id: int, db: Session = Depends(get_db)) -> ResponseBase[Orches
     plan_data.completed_tasks = completed
     plan_data.total_tasks = max(total, plan.total_tasks)
     plan_data.status = status
+    from src.service.orchestration_lifecycle import (
+        collect_plan_deliverables,
+        resolve_run_id_for_conversation,
+    )
+
+    if conversation_id is None:
+        # 不传 → 全 plan（向后兼容）。
+        artifacts = collect_plan_deliverables(db, plan.id)
+    else:
+        run_id = resolve_run_id_for_conversation(db, plan.id, conversation_id)
+        # 会话非任何 run 的会话 → 空，避免主对话显示定时轮产物。
+        artifacts = (
+            [] if run_id is None
+            else collect_plan_deliverables(db, plan.id, run_id=run_id)
+        )
+
     return ResponseBase(data=OrchestrationPlanDetail(
         plan=plan_data,
         tasks=_build_task_items(db, plan),
+        artifacts=artifacts,
     ))
 
 
-@router.put("/orchestration/plans/{plan_id}/confirm", response_model=BaseResponse)
-def confirm_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
-    plan = db.get(OrchestrationPlan, plan_id)
-    if not plan:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+def _confirm_plan(db: Session, plan: OrchestrationPlan) -> BaseResponse:
     if plan.status != "pending":
         return BaseResponse(code=400, msg=f"计划当前状态为 {plan.status}，无法确认", data=None)
 
-    from src.service.orchestrator_agent import _execute_plan
+    from src.service.agent.orchestrator import _execute_plan
+
     result = _execute_plan(db, plan, plan.workspace_id)
 
     from src.service.workspace_events import WorkspaceEventBus
+
     WorkspaceEventBus.push(plan.workspace_id, {
         "type": "orchestration_plan_generated",
         "plan_id": plan.id,
@@ -179,21 +216,100 @@ def confirm_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
     })
 
     return BaseResponse(data={
-        "plan_id": plan_id,
+        "plan_id": plan.id,
         "status": "executing",
         "result": result,
     })
+
+
+def _cancel_plan(db: Session, plan: OrchestrationPlan) -> BaseResponse:
+    from src.service.orchestration_lifecycle import cancel_orchestration_plan
+
+    err = cancel_orchestration_plan(db, plan.id)
+    if err:
+        return BaseResponse(code=400, msg=err, data=None)
+    return BaseResponse(data={"plan_id": plan.id, "status": "cancelled"})
+
+
+@router.put(
+    "/workspaces/{workspace_id}/orchestration/plans/{plan_id}/confirm",
+    response_model=BaseResponse,
+)
+def confirm_plan_in_workspace(
+    workspace_id: int, plan_id: int, db: Session = Depends(get_db)
+) -> BaseResponse:
+    plan = _get_plan_in_workspace(db, workspace_id, plan_id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    return _confirm_plan(db, plan)
+
+
+@router.put(
+    "/workspaces/{workspace_id}/orchestration/plans/{plan_id}/cancel",
+    response_model=BaseResponse,
+)
+def cancel_plan_in_workspace(
+    workspace_id: int, plan_id: int, db: Session = Depends(get_db)
+) -> BaseResponse:
+    plan = _get_plan_in_workspace(db, workspace_id, plan_id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    return _cancel_plan(db, plan)
+
+
+@router.put(
+    "/workspaces/{workspace_id}/orchestration/plans/{plan_id}/tasks/{task_id}",
+    response_model=BaseResponse,
+)
+def update_plan_task(
+    workspace_id: int,
+    plan_id: int,
+    task_id: int,
+    body: OrchestrationTaskEdit,
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """编辑待确认计划的子任务（inline-edit：仅 prompt / 换员工，confirm 前可改）。"""
+    from src.service.orchestration_lifecycle import update_pending_plan_task
+
+    data = update_pending_plan_task(
+        db, workspace_id, plan_id, task_id,
+        prompt=body.prompt, employee_id=body.employee_id,
+    )
+    return BaseResponse(data=data)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/orchestration/tasks/{task_id}/rework",
+    response_model=BaseResponse,
+)
+def rework_plan_task(
+    workspace_id: int,
+    task_id: int,
+    body: OrchestrationTaskRework,
+    db: Session = Depends(get_db),
+) -> BaseResponse:
+    """用户对已交付/失败子任务发起返修(#3/#7)：在原员工会话续聊重做。
+
+    复用总管一线质检的返工通道(redispatch_task_in_session)：含返工次数上限、
+    前置 gate、作废下游等既有约束。返回 {ok, message}，ok=False 表示被拒/达上限。
+    """
+    note = (body.note or "").strip() or _REWORK_DEFAULT_NOTE
+    message = redispatch_task_in_session(workspace_id, task_id, note)
+    ok = not (message.startswith("错误") or "已达上限" in message)
+    return BaseResponse(data={"ok": ok, "message": message})
+
+
+@router.put("/orchestration/plans/{plan_id}/confirm", response_model=BaseResponse)
+def confirm_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
+    plan = db.get(OrchestrationPlan, plan_id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
+    return _confirm_plan(db, plan)
 
 
 @router.put("/orchestration/plans/{plan_id}/cancel", response_model=BaseResponse)
 def cancel_plan(plan_id: int, db: Session = Depends(get_db)) -> BaseResponse:
     plan = db.get(OrchestrationPlan, plan_id)
     if not plan:
-        from fastapi import HTTPException
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="编排计划不存在")
-    if plan.status not in ("pending", "confirmed"):
-        return BaseResponse(code=400, msg=f"计划当前状态为 {plan.status}，无法取消", data=None)
-
-    plan.status = "cancelled"
-    db.commit()
-    return BaseResponse(data={"plan_id": plan_id, "status": "cancelled"})
+    return _cancel_plan(db, plan)

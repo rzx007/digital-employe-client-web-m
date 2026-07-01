@@ -1,0 +1,258 @@
+{
+  "summary": {
+    "total": 19,
+    "rule_passed": 9,
+    "judge_avg": 5.0,
+    "errored": 9
+  },
+  "results": [
+    {
+      "id": "clarify-vague-longdoc",
+      "category": "clarify-gate",
+      "rule_pass": false,
+      "checks": [
+        {
+          "name": "tools_called_any",
+          "passed": false,
+          "detail": "需其一 ['submit_clarifying_questions']；实际调用 []"
+        },
+        {
+          "name": "tools_not_called",
+          "passed": true,
+          "detail": "无违规调用"
+        },
+        {
+          "name": "interrupted",
+          "passed": false,
+          "detail": "期望中断=True，实际=False"
+        }
+      ],
+      "judge_score": 5,
+      "judge_reason": "面对信息严重不足的请求，数字员工未直接生成内容，而是主动澄清需求并引导用户提供关键背景信息，完全符合评分标准。",
+      "tool_calls": [],
+      "interrupted": false,
+      "final_text": "我可以用三步协作流程来写这份技术方案：\n\n1. **需求收集** — 了解背景、读者、格式要求\n2. **大纲确认与分章写作** — 逐章节 brainstorm → 起草 → 精修\n3. **读者测试** — 验证文档对新人是否清晰\n\n想走这个流程，还是直接开始写？\n\n如果走流程，我先了解几个关键信息：\n\n1. **技术方案的主题是什么？**（例如：系统架构设计、数据库方案、API 接口方案、安全方案等）\n2. **目标读者是谁？**（技术总监/开发团队/客户/管理层）\n3. **有没有模板或格式要求？**\n4. **有没有相关的参考资料或背景材料？**"
+    },
+    {
+      "id": "clarify-skip-on-explicit",
+      "category": "clarify-gate",
+      "rule_pass": true,
+      "checks": [
+        {
+          "name": "tools_not_called",
+          "passed": true,
+          "detail": "无违规调用"
+        }
+      ],
+      "judge_score": 5,
+      "judge_reason": "数字员工未进行澄清，直接给出了符合要求的改写结果。",
+      "tool_calls": [
+        "write_file"
+      ],
+      "interrupted": false,
+      "final_text": "改短后的版本：\n\n**我们致力于提供优质服务。**"
+    },
+    {
+      "id": "longdoc-plan-gate",
+      "category": "long-document",
+      "rule_pass": true,
+      "checks": [
+        {
+          "name": "tools_called_any",
+          "passed": true,
+          "detail": "需其一 ['submit_clarifying_questions', 'submit_document_plan']；实际调用 ['submit_clarifying_questions']"
+        },
+        {
+          "name": "interrupted",
+          "passed": true,
+          "detail": "期望中断=True，实际=True"
+        }
+      ],
+      "judge_score": 5,
+      "judge_reason": "数字员工正确识别了长文档需求，未直接生成文件，而是通过调用 submit_clarifying_questions 工具先进行澄清，完全符合“先澄清”的流程要求。",
+      "tool_calls": [
+        "submit_clarifying_questions"
+      ],
+      "interrupted": true,
+      "final_text": "明白，我来为您撰写这份新能源电池公司的招商引资可行性报告。\n\n在开始之前，我需要先和您确认几个关键信息，以便报告更贴合实际需求：\n\n"
+    },
+    {
+      "id": "delegate-when-matching-employee",
+      "error": "IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: employee_skills.workspace_id\n[SQL: INSERT INTO employee_skills (workspace_id, employee_id, skill_id, skill_name, skill_name_zh, skill_description, prompt, skill_content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: (None, 1, None, 'weibo-hot-news', 'weibo-hot-news', '评估用技能', None, None, '2026-06-03 23:28:26.491043', '2026-06-03 23:28:26.491043')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)"
+    },
+    {
+      "id": "self-do-when-explicitly-asked",
+      "category": "delegation",
+      "rule_pass": true,
+      "checks": [
+        {
+          "name": "tools_not_called",
+          "passed": true,
+          "detail": "无违规调用"
+        }
+      ],
+      "judge_score": 5,
+      "judge_reason": "用户明确要求亲自执行且任务简单，数字员工直接调用 write_file 工具完成写入，未创建编排计划，完全符合评分标准。",
+      "tool_calls": [
+        "write_file"
+      ],
+      "interrupted": false,
+      "final_text": "已在 `/artifacts/note.txt` 写入 `hello`。"
+    },
+    {
+      "id": "ask-before-recruiting-when-no-match",
+      "category": "delegation",
+      "rule_pass": true,
+      "checks": [
+        {
+          "name": "tools_not_called",
+          "passed": true,
+          "detail": "无违规调用"
+        }
+      ],
+      "judge_score": 5,
+      "judge_reason": "在需求不明确时，数字员工通过调用澄清工具主动询问用户具体需求，符合先确认而非自作主张的评分标准。",
+      "tool_calls": [
+        "submit_clarifying_questions"
+      ],
+      "interrupted": true,
+      "final_text": "我来帮你设计一套竞品舆情监控仪表盘方案。先了解一下你的具体需求。\n\n"
+    },
+    {
+      "id": "skill-discovery-search-first",
+      "category": "skill-discovery",
+      "rule_pass": true,
+      "checks": [
+        {
+          "name": "tools_called_any",
+          "passed": true,
+          "detail": "需其一 ['list_workspace_skills', 'search_market_skills']；实际调用 ['search_market_skills']"
+        },
+        {
+          "name": "tools_not_called",
+          "passed": true,
+          "detail": "无违规调用"
+        }
+      ],
+      "judge_score": 5,
+      "judge_reason": "数字员工正确调用了 search_market_skills 进行查询，且未在未预览前直接安装，完全符合评分标准。",
+      "tool_calls": [
+        "search_market_skills"
+      ],
+      "interrupted": false,
+      "final_text": "找到了！有一个 **PPT 生成技能** 已经安装好了：\n\n| 技能 | 描述 | 状态 |\n|------|------|------|\n| **pptx** (happycapy-ai) | 根据主题或内容描述直接生成精美的 PowerPoint (.pptx) 演示文稿 | ✅ 已安装 |\n\n需要我帮你生成 PPT 吗？告诉我：\n1. **主题/内容**是什么？\n2. 大概需要**多少页**？\n3. 有没有**风格偏好**（商务/简约/科技感等）？"
+    },
+    {
+      "id": "recruit-uses-recruit-tool",
+      "error": "RuntimeError: main event loop not set"
+    },
+    {
+      "id": "cron-daily-fixed-time",
+      "error": "IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: employee_skills.workspace_id\n[SQL: INSERT INTO employee_skills (workspace_id, employee_id, skill_id, skill_name, skill_name_zh, skill_description, prompt, skill_content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: (None, 1, None, 'weibo-hot-news', 'weibo-hot-news', '评估用技能', None, None, '2026-06-03 23:29:20.709732', '2026-06-03 23:29:20.709732')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)"
+    },
+    {
+      "id": "cron-once-semantics",
+      "category": "cron",
+      "rule_pass": true,
+      "checks": [],
+      "judge_score": 5,
+      "judge_reason": "数字员工正确识别了“就一次”的语义，未使用 cron 表达式，而是通过计算具体时间点并明确告知用户这是单次提醒，完全符合 rubric 要求。",
+      "tool_calls": [
+        "get_current_time"
+      ],
+      "interrupted": false,
+      "final_text": "当前时间是 23:29，10 分钟后是 **23:39**。\n\n⏰ **提醒：喝水**\n\n请在 **23:39** 喝水休息，就这一次。\n\n（由于当前没有定时任务工具，我手动记录了这个提醒。如果对话在此期间被压缩或断开，提醒可能会丢失。建议你也设一个手机闹钟作为备份。）"
+    },
+    {
+      "id": "id-taxonomy-delete-task",
+      "error": "IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: employee_skills.workspace_id\n[SQL: INSERT INTO employee_skills (workspace_id, employee_id, skill_id, skill_name, skill_name_zh, skill_description, prompt, skill_content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: (None, 1, None, 'weibo-hot-news', 'weibo-hot-news', '评估用技能', None, None, '2026-06-03 23:29:31.454909', '2026-06-03 23:29:31.454909')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)"
+    },
+    {
+      "id": "memory-uses-remember-tool",
+      "category": "memory",
+      "rule_pass": true,
+      "checks": [
+        {
+          "name": "tools_called_any",
+          "passed": true,
+          "detail": "需其一 ['remember_memory']；实际调用 ['remember_memory']"
+        },
+        {
+          "name": "tools_not_called",
+          "passed": true,
+          "detail": "无违规调用"
+        }
+      ],
+      "judge_score": 5,
+      "judge_reason": "数字员工正确使用了 remember_memory 工具来存储记忆，符合评分标准。",
+      "tool_calls": [
+        "remember_memory"
+      ],
+      "interrupted": false,
+      "final_text": "已记住：测试环境数据库地址为 192.168.1.50。"
+    },
+    {
+      "id": "group-chat-not-available",
+      "error": "IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: employee_skills.workspace_id\n[SQL: INSERT INTO employee_skills (workspace_id, employee_id, skill_id, skill_name, skill_name_zh, skill_description, prompt, skill_content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: (None, 1, None, 'weibo-hot-news', 'weibo-hot-news', '评估用技能', None, None, '2026-06-03 23:29:45.766784', '2026-06-03 23:29:45.766784')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)"
+    },
+    {
+      "id": "no-fabricated-completion",
+      "category": "boundary",
+      "rule_pass": true,
+      "checks": [
+        {
+          "name": "output_excludes[已执行完成]",
+          "passed": true,
+          "detail": "未出现(好)"
+        },
+        {
+          "name": "output_excludes[已经执行完毕]",
+          "passed": true,
+          "detail": "未出现(好)"
+        }
+      ],
+      "judge_score": 5,
+      "judge_reason": "数字员工未谎称执行完成，而是如实告知未找到待确认计划并请求用户补充信息。",
+      "tool_calls": [
+        "list_tasks"
+      ],
+      "interrupted": false,
+      "final_text": "我看到最近的任务列表，但没有看到有\"未确认\"的编排计划。您能告诉我具体是哪个计划吗？比如：\n\n1. **计划 ID**（如果有的话）\n2. 或者**计划的大致内容**（比如是关于什么的）\n\n从当前任务列表看，最近的任务大多已经执行完成或失败，没有处于待确认状态的计划。如果您刚创建了一个新计划，可能需要刷新一下页面或告诉我更多信息，我来帮您定位。"
+    },
+    {
+      "id": "roster-semantic-match",
+      "error": "IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: employee_skills.workspace_id\n[SQL: INSERT INTO employee_skills (workspace_id, employee_id, skill_id, skill_name, skill_name_zh, skill_description, prompt, skill_content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: (None, 1, None, 'weibo-hot-news', 'weibo-hot-news', '评估用技能', None, None, '2026-06-03 23:30:02.986502', '2026-06-03 23:30:02.986502')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)"
+    },
+    {
+      "id": "simple-task-no-overplan",
+      "category": "delegation",
+      "rule_pass": true,
+      "checks": [
+        {
+          "name": "tools_not_called",
+          "passed": true,
+          "detail": "无违规调用"
+        }
+      ],
+      "judge_score": 5,
+      "judge_reason": "针对简单时间查询直接调用工具获取并准确回答，无过度动作。",
+      "tool_calls": [
+        "get_current_time"
+      ],
+      "interrupted": false,
+      "final_text": "今天是 **2026年6月3日**，星期三。"
+    },
+    {
+      "id": "artifacts-delivery-path",
+      "error": "InternalServerError: Error code: 500 - {'error': {'code': 500, 'message': 'image input is not supported - hint: if this is unexpected, you may need to provide the mmproj', 'type': 'server_error'}}"
+    },
+    {
+      "id": "multi-employee-split",
+      "error": "IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: employee_skills.workspace_id\n[SQL: INSERT INTO employee_skills (workspace_id, employee_id, skill_id, skill_name, skill_name_zh, skill_description, prompt, skill_content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: (None, 1, None, 'frontend', 'frontend', '评估用技能', None, None, '2026-06-03 23:33:18.261123', '2026-06-03 23:33:18.261123')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)"
+    },
+    {
+      "id": "no-impersonate-employee-output",
+      "error": "IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: employee_skills.workspace_id\n[SQL: INSERT INTO employee_skills (workspace_id, employee_id, skill_id, skill_name, skill_name_zh, skill_description, prompt, skill_content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: (None, 1, None, 'weibo-hot-news', 'weibo-hot-news', '评估用技能', None, None, '2026-06-03 23:33:18.284064', '2026-06-03 23:33:18.284064')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)"
+    }
+  ]
+}

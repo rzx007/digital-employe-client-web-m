@@ -16,10 +16,7 @@ import {
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 import type { DeptTreeNode } from "@/lib/dept-tree"
-import {
-  formatSelectedDeptSummary,
-  isPathSelected,
-} from "@/lib/dept-tree"
+import { formatSelectedDeptSummary, isPathSelected } from "@/lib/dept-tree"
 
 const hideScrollbar =
   "[scrollbar-width:none] [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:h-0"
@@ -42,7 +39,7 @@ function DeptTreeRows({
       {nodes.map((node) => {
         const path = [...pathPrefix, node.id]
         const idAttr = path.join("-")
-        const hasChildren = !!(node.children?.length)
+        const hasChildren = !!node.children?.length
         const checked = isPathSelected(selectedPaths, path)
 
         if (!hasChildren) {
@@ -58,7 +55,7 @@ function DeptTreeRows({
                 />
                 <Label
                   htmlFor={`reg-dept-${idAttr}`}
-                  className="cursor-pointer font-normal leading-snug"
+                  className="cursor-pointer leading-snug font-normal"
                 >
                   {node.name}
                 </Label>
@@ -92,13 +89,13 @@ function DeptTreeRows({
                     />
                     <Label
                       htmlFor={`reg-dept-${idAttr}`}
-                      className="cursor-pointer flex-1 py-0.5 font-normal leading-snug"
+                      className="flex-1 cursor-pointer py-0.5 leading-snug font-normal"
                     >
                       {node.name}
                     </Label>
                   </div>
                   <CollapsibleContent>
-                    <div className="ml-1 mt-0.5 border-l border-border/60 pl-2">
+                    <div className="mt-0.5 ml-1 border-l border-border/60 pl-2">
                       <DeptTreeRows
                         nodes={node.children!}
                         pathPrefix={path}
@@ -158,7 +155,7 @@ export function RegisterDeptTree({
           className={cn(
             "h-auto min-h-10 w-full justify-between rounded-xs px-3 py-2 text-left font-normal",
             !summary && "text-muted-foreground",
-            className,
+            className
           )}
         >
           <span className="line-clamp-2 flex-1 text-sm leading-snug">
@@ -173,10 +170,7 @@ export function RegisterDeptTree({
         className="z-[100] max-h-[min(24rem,calc(100vh-8rem))] w-[min(var(--radix-popover-trigger-width),22rem)] gap-0 border border-border p-0 shadow-lg"
       >
         <ScrollArea
-          className={cn(
-            "max-h-72 overflow-y-auto p-2",
-            hideScrollbar,
-          )}
+          className={cn("max-h-72 overflow-y-auto p-2", hideScrollbar)}
         >
           <DeptTreeRows
             nodes={nodes}

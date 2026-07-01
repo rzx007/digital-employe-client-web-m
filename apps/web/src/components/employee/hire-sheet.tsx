@@ -10,7 +10,6 @@ import { Label } from "@workspace/ui/components/label"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Separator } from "@workspace/ui/components/separator"
 import { Sheet, SheetContent } from "@workspace/ui/components/sheet"
-import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
 import {
   createEmployee,
@@ -18,22 +17,9 @@ import {
   type RecruitmentCandidate,
 } from "@/api/employee"
 import type { McpListItem } from "@/api/types"
-import {
-  tasksToApiPayload,
-  type ScheduleTaskListItem,
-  type ShiftScheduleForm,
-} from "@/types/task"
-import { useSkillListQuery } from "@/hooks/use-skill-queries"
+import { useEmployeePickerSkillsQuery } from "@/hooks/use-skill-queries"
 
 import { CapabilityPickerDialog } from "./capability-picker-dialog"
-import { ScheduleTaskConfig } from "./schedule-task-config"
-
-const EMPTY_SCHEDULE: ShiftScheduleForm = {
-  start_date: "",
-  end_date: "",
-  status: 1,
-  notes: "",
-}
 
 export function HireSheet({
   open,
@@ -51,10 +37,6 @@ export function HireSheet({
     candidate.capability_desc ?? ""
   )
   const [isSubmitting, setIsSubmitting] = React.useState(false)
-  const [showScheduleAndTask, setShowScheduleAndTask] = React.useState(false)
-  const [tasks, setTasks] = React.useState<ScheduleTaskListItem[]>([])
-  const [schedule, setSchedule] =
-    React.useState<ShiftScheduleForm>(EMPTY_SCHEDULE)
 
   const [selectedMcpIds, setSelectedMcpIds] = React.useState<number[]>(
     candidate.mcp_ids ?? []
@@ -63,16 +45,13 @@ export function HireSheet({
     candidate.skill_ids ?? []
   )
   const [allMcpList, setAllMcpList] = React.useState<McpListItem[]>([])
-  const { data: allSkillList = [] } = useSkillListQuery()
+  const { data: allSkillList = [] } = useEmployeePickerSkillsQuery()
   const [pickerOpen, setPickerOpen] = React.useState(false)
 
   React.useEffect(() => {
     if (open) {
       setName(candidate.employee_name)
       setDescription(candidate.capability_desc ?? "")
-      setShowScheduleAndTask(false)
-      setTasks([])
-      setSchedule({ ...EMPTY_SCHEDULE })
       setSelectedMcpIds(candidate.mcp_ids ?? [])
       setSelectedSkillIds(candidate.skill_ids ?? [])
 
@@ -96,7 +75,8 @@ export function HireSheet({
     [selectedMcpIds, allMcpList]
   )
   const effectiveSkillIds = React.useMemo(
-    () => selectedSkillIds.filter((id) => allSkillList.some((s) => s.id === id)),
+    () =>
+      selectedSkillIds.filter((id) => allSkillList.some((s) => s.id === id)),
     [selectedSkillIds, allSkillList]
   )
 
@@ -109,8 +89,12 @@ export function HireSheet({
   }
 
   const handlePickerConfirm = (mcpIds: number[], skillIds: number[]) => {
-    setSelectedMcpIds(mcpIds.filter((id) => allMcpList.some((m) => m.id === id)))
-    setSelectedSkillIds(skillIds.filter((id) => allSkillList.some((s) => s.id === id)))
+    setSelectedMcpIds(
+      mcpIds.filter((id) => allMcpList.some((m) => m.id === id))
+    )
+    setSelectedSkillIds(
+      skillIds.filter((id) => allSkillList.some((s) => s.id === id))
+    )
   }
 
   const handleSubmit = async () => {
@@ -127,8 +111,6 @@ export function HireSheet({
         status: 1,
         mcp_ids: effectiveMcpIds,
         skill_ids: effectiveSkillIds,
-        shift_schedule: showScheduleAndTask ? schedule : null,
-        tasks: showScheduleAndTask ? tasksToApiPayload(tasks) : [],
       })
       toast.success(`已成功录用「${name.trim()}」`)
       onSuccess()
@@ -260,35 +242,6 @@ export function HireSheet({
                   </p>
                 )}
             </div>
-
-            <Separator />
-
-            <div className="flex items-center justify-between">
-              <Label
-                htmlFor="show-schedule-task"
-                className="cursor-pointer text-xs text-muted-foreground"
-              >
-                同时配置排班和任务
-              </Label>
-              <Switch
-                id="show-schedule-task"
-                checked={showScheduleAndTask}
-                onCheckedChange={setShowScheduleAndTask}
-              />
-            </div>
-
-            {showScheduleAndTask && (
-              <ScheduleTaskConfig
-                capabilities={candidate.mcps ?? []}
-                capabilityIds={effectiveMcpIds}
-                skillIds={effectiveSkillIds}
-                skills={candidate.skills ?? []}
-                tasks={tasks}
-                schedule={schedule}
-                onTasksChange={setTasks}
-                onScheduleChange={setSchedule}
-              />
-            )}
           </div>
         </ScrollArea>
 

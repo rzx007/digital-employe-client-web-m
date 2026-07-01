@@ -45,8 +45,7 @@ function firstChildArray(o: Record<string, unknown>): unknown[] | null {
 }
 
 function pickId(o: Record<string, unknown>): number | null {
-  const raw =
-    o.id ?? o.deptId ?? o.departmentId ?? o.orgId ?? o.value ?? o.key
+  const raw = o.id ?? o.deptId ?? o.departmentId ?? o.orgId ?? o.value ?? o.key
   if (raw === undefined || raw === null) return null
   if (typeof raw === "number" && !Number.isNaN(raw)) return raw
   if (typeof raw === "string") {
@@ -112,7 +111,7 @@ export function parseDeptTreePayload(raw: unknown): DeptTreeNode[] {
 /** 从树根沿 path 解析末端节点名称（用于选择摘要） */
 export function deptPathDisplayLabel(
   roots: DeptTreeNode[],
-  path: number[],
+  path: number[]
 ): string {
   let cur: DeptTreeNode[] | undefined = roots
   let label = ""
@@ -128,7 +127,7 @@ export function deptPathDisplayLabel(
 /** 多选路径展示为「部门A、部门B」 */
 export function formatSelectedDeptSummary(
   roots: DeptTreeNode[],
-  paths: number[][],
+  paths: number[][]
 ): string {
   if (!paths.length) return ""
   return paths.map((p) => deptPathDisplayLabel(roots, p)).join("、")

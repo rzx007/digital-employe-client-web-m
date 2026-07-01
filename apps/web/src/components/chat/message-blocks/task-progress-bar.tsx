@@ -1,9 +1,9 @@
-"use client"
-
-import * as React from "react"
 import { cn } from "@workspace/ui/lib/utils"
+import { getContactId } from "@/lib/chat/contact-utils"
+import { navigateToEmployeeFromCurator } from "@/lib/chat/curator-navigation"
 import { useChatStore } from "@/stores/chat-store"
 import type { OrchestrationTaskProgress } from "./orchestration-plan-card"
+import { TaskReworkButton } from "./task-rework-button"
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "待执行",
@@ -36,12 +36,34 @@ function humanCron(cron: string | null | undefined): string | null {
   return `每天 ${hour}:${min}`
 }
 
+function openTaskExecution(
+  task: OrchestrationTaskProgress,
+  curatorConversationId: string | number | null | undefined
+) {
+  if (task.conversation_id == null || task.employee_id == null) return
+  const state = useChatStore.getState()
+  const curator = state.getCuratorContact()
+  const curatorContactId = getContactId(curator)
+  if (!curatorContactId) return
+  const resolvedCuratorConversationId =
+    curatorConversationId ?? state.selectedConversationId
+  if (resolvedCuratorConversationId == null) return
+
+  navigateToEmployeeFromCurator({
+    curatorContactId,
+    curatorConversationId: resolvedCuratorConversationId,
+    employeeId: String(task.employee_id),
+    employeeConversationId: task.conversation_id,
+  })
+}
+
 export function TaskProgressBar({
-  planId,
-  summary,
+  planId: _planId,
+  summary: _summary,
   total,
   completed,
   tasks,
+  curatorConversationId,
   className,
 }: {
   planId: number
@@ -49,14 +71,24 @@ export function TaskProgressBar({
   total: number
   completed: number
   tasks: OrchestrationTaskProgress[]
+  curatorConversationId?: string | number | null
   className?: string
 }) {
-  const setSelectedContactId = useChatStore((s) => s.setSelectedContactId)
-  const setSelectedConversationId = useChatStore(
-    (s) => s.setSelectedConversationId
-  )
-
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0
+  const anyFailed = tasks.some((t) => t.status === "failed")
+  const allSettled = total > 0 && completed >= total
+  const headerLabel = allSettled ? (anyFailed ? "部分失败" : "已完成") : "执行中"
+  const headerClass = allSettled
+    ? anyFailed
+      ? "text-amber-600 dark:text-amber-400"
+      : "text-green-600 dark:text-green-400"
+    : "text-foreground"
+  const barClass = allSettled
+    ? anyFailed
+      ? "bg-amber-500"
+      : "bg-green-500"
+    : "bg-blue-500"
+  const isMulti = total > 1
 
   return (
     <div
@@ -66,18 +98,25 @@ export function TaskProgressBar({
       )}
     >
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-semibold">执行中</p>
-        <span className="text-xs text-muted-foreground">
-          {completed}/{total} ({pct}%)
-        </span>
+        <p className={cn("text-sm font-semibold", headerClass)}>{headerLabel}</p>
+        {isMulti ? (
+          <span className="text-xs text-muted-foreground">
+            {completed}/{total} ({pct}%)
+          </span>
+        ) : null}
       </div>
 
-      <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-blue-500 transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      {isMulti ? (
+        <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn(
+              "h-full rounded-full transition-all duration-500",
+              barClass
+            )}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      ) : null}
 
       <div className="space-y-1">
         {tasks.map((task) => (
@@ -110,16 +149,20 @@ export function TaskProgressBar({
                 {humanCron(task.cron)}
               </span>
             )}
-            {task.conversation_id ? (
+            {task.conversation_id != null && task.employee_id != null ? (
               <button
                 type="button"
                 className="shrink-0 text-[10px] text-blue-500 hover:underline"
-                onClick={() => {
-                  setSelectedContactId(String(task.conversation_id))
-                }}
+                onClick={() => openTaskExecution(task, curatorConversationId)}
               >
                 查看
               </button>
+            ) : null}
+            {task.status === "success" ? (
+              <TaskReworkButton taskId={task.task_id} mode="revise" />
+            ) : null}
+            {task.status === "failed" ? (
+              <TaskReworkButton taskId={task.task_id} mode="retry" />
             ) : null}
             <span
               className={cn(

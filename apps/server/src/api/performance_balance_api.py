@@ -5,11 +5,12 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.core.deps import require_capability
 from src.db.session import get_db
 from src.models.response import ResponseBase
 from src.service.performance_balance_service import PerformanceBalanceService
 
-router = APIRouter(tags=["绩效管理"])
+router = APIRouter(tags=["绩效管理"], dependencies=[Depends(require_capability("remote_performance"))])
 
 
 @router.get(

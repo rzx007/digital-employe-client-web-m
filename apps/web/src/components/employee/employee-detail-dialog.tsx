@@ -24,11 +24,18 @@ import {
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Separator } from "@workspace/ui/components/separator"
 import { Skeleton } from "@workspace/ui/components/skeleton"
+import { useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import type { MetadataSkill } from "@/api/types"
-import type { Contact } from "@/lib/mock-data/ai-employees"
-import { createDiceBearAvatar } from "@/lib/avatar"
-import { useChatStore } from "@/stores/chat-store"
+import type { Contact } from "@/types/chat"
+import { enterChatTab } from "@/lib/chat/conversation-selection"
 import { useEmployeeDetailQuery } from "@/hooks/use-chat-queries"
+import {
+  uploadEmployeeAvatar,
+  deleteEmployeeAvatar,
+} from "@/api/employee"
+import { getServerBaseUrl } from "@/lib/request"
+import { chatKeys } from "@/lib/query-keys/chat"
 
 import { EmployeeContactAvatar } from "../chat/contact-avatars"
 
@@ -103,11 +110,63 @@ export function EmployeeDetailDialog({
     open ? employeeId : null
   )
 
-  const { setSelectedContactId } = useChatStore()
+  const queryClient = useQueryClient()
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [uploadingAvatar, setUploadingAvatar] = React.useState(false)
+  const numericEmployeeId = Number(employeeId)
+  // employee.avatar 是后端相对路径(/employees/{id}/avatar?v=..)，渲染要拼后端 base；
+  // contact.employee.avatar 是已映射好的完整 URL，作兜底。
+  const resolvedAvatar = employee?.avatar
+    ? getServerBaseUrl() + employee.avatar
+    : (contact.employee?.avatar ?? undefined)
+  const hasCustomAvatar = Boolean(employee?.avatar)
+
+  const refreshAfterAvatar = () => {
+    if (employeeId) {
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.employee(String(employeeId)),
+      })
+    }
+    void queryClient.invalidateQueries({ queryKey: chatKeys.contacts() })
+  }
+
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file || !numericEmployeeId) return
+    setUploadingAvatar(true)
+    try {
+      await uploadEmployeeAvatar(numericEmployeeId, file)
+      refreshAfterAvatar()
+      toast.success("头像已更新")
+    } catch (err) {
+      toast.error(
+        "头像上传失败：" + (err instanceof Error ? err.message : String(err))
+      )
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
+  const handleRemoveAvatar = async () => {
+    if (!numericEmployeeId) return
+    setUploadingAvatar(true)
+    try {
+      await deleteEmployeeAvatar(numericEmployeeId)
+      refreshAfterAvatar()
+      toast.success("已恢复文字头像")
+    } catch (err) {
+      toast.error(
+        "移除失败：" + (err instanceof Error ? err.message : String(err))
+      )
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
 
   const handleSendMessage = () => {
     onOpenChange(false)
-    setSelectedContactId(employeeId)
+    enterChatTab()
   }
 
   const metadata = employee?.metadata
@@ -131,16 +190,42 @@ export function EmployeeDetailDialog({
             </div>
           ) : (
             <>
-              <div className="flex justify-center">
-                <EmployeeContactAvatar
-                  name={employee?.name ?? contact.employee?.name}
-                  avatar={createDiceBearAvatar(
-                    String(employee?.id ?? contact.employee?.id ?? "")
-                  )}
-                  status={contact.employee?.status}
-                  showStatus
-                  avatarClassName="h-16 w-16"
-                  statusClassName="h-3.5 w-3.5 border-2"
+              <div className="flex flex-col items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingAvatar || !numericEmployeeId}
+                  className="group relative"
+                  title="点击更换头像"
+                >
+                  <EmployeeContactAvatar
+                    name={employee?.name ?? contact.employee?.name}
+                    avatar={resolvedAvatar}
+                    status={contact.employee?.status}
+                    showStatus
+                    avatarClassName="h-16 w-16"
+                    statusClassName="h-3.5 w-3.5 border-2"
+                  />
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45 text-[11px] text-white opacity-0 transition group-hover:opacity-100">
+                    {uploadingAvatar ? "上传中…" : "更换"}
+                  </span>
+                </button>
+                {hasCustomAvatar && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveAvatar}
+                    disabled={uploadingAvatar}
+                    className="text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    移除头像
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleAvatarFile}
                 />
               </div>
               <DialogTitle className="text-base">

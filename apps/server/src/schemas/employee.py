@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional, List, Dict
+from typing import Any, Literal, Optional, List, Dict
 
 from pydantic import BaseModel, Field, field_serializer, model_validator
 
@@ -70,6 +70,9 @@ class EmployeeRead(BaseModel):
     metadata: dict[str, Any]
     shift_schedule: dict[str, Any]
     is_curator: bool
+    avatar: str | None = None
+    # 待确认技能候选数（联系人列表/卡片用以显示「✨N」角标）。
+    skill_candidate_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -78,17 +81,17 @@ class EmployeeRead(BaseModel):
         return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
-class EmployeeUpdate(EmployeeBase):
+class EmployeeUpdate(BaseModel):
+    """员工更新：仅显式传入的字段会写入（employee_name 可选）。"""
+
+    employee_name: Optional[str] = None
+    capability_desc: Optional[str] = None
+    status: int = 1
+    detail_page_url: Optional[str] = None
     skill_ids: Optional[List[int]] = None
     mcp_ids: Optional[List[int]] = None
     shift_schedule: Optional[ShiftScheduleCreateWithoutEmployee] = None
     tasks: Optional[List[SchedulingTaskCreateWithoutEmployee]] = None
-
-
-class EmployeeSyncResult(BaseModel):
-    workspace_id: int
-    synced_count: int
-    employees: list[EmployeeRead]
 
 
 class EmployeeCreate(EmployeeBase):
@@ -127,3 +130,54 @@ class EmployeeProfile(BaseModel):
     description: str
     skill_ids: list[int] = Field(default_factory=list)
     skills_list: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class EmployeeGrowthJournalEntry(BaseModel):
+    ts: str
+    task_name: str
+    status: str
+    duration_ms: int | None = None
+
+
+class EmployeeSkillCandidate(BaseModel):
+    """自动晋升出的技能候选（待人确认才转为正式技能）。"""
+    name: str
+    zh: str = ""
+    description: str = ""
+
+
+class EmployeeSkillEditEntry(BaseModel):
+    """技能自改进审计记录（来自 <brain>/skill_edits.jsonl）。"""
+    ts: str
+    skill_name: str
+    reason: str
+    backup_version: str | None = None
+
+
+class EmployeeSkillLifecycleEntry(BaseModel):
+    """单个技能的生命周期状态（来自 <brain>/skill_lifecycle.json）。"""
+    status: Literal["active", "stale", "archived"]
+    pinned: bool
+
+
+class EmployeeArchiveSuggestion(BaseModel):
+    """员工闲置归档建议（只建议，不自动归档）。"""
+    employee_id: int
+    last_active: str | None
+    idle_days: int
+
+
+class EmployeeGrowthBrainRead(BaseModel):
+    profile_md: str
+    skills_list: list[str]
+    memories_md: str
+    journal_entries: list[EmployeeGrowthJournalEntry]
+    skill_candidates: list[EmployeeSkillCandidate] = Field(default_factory=list)
+    recent_skill_edits: list[EmployeeSkillEditEntry] = Field(default_factory=list)
+    skill_lifecycle: dict[str, EmployeeSkillLifecycleEntry] = Field(default_factory=dict)
+    archive_suggestion: EmployeeArchiveSuggestion | None = None
+
+
+class SkillPinRequest(BaseModel):
+    """置顶/取消置顶技能请求体。"""
+    pinned: bool

@@ -1,86 +1,70 @@
-/**
- * Workbench block types
- */
-export type BlockType =
-  | "lark-bitable"
-  | "data-stats"
-  | "schedule-view"
-  | "custom"
+export type WidgetType =
+  | "kpi"
+  | "line"
+  | "bar"
+  | "area"
+  | "pie"
+  | "table"
+  | "progress"
+  | "list"
+  | "gauge"
+  | "sparkline"
+  | "radar"
+  | "scatter"
 
-/**
- * Chart display type for data visualization
- */
-export type ChartDisplayType = "pie" | "bar" | "line" | "table" | "metric" | "list"
-
-/**
- * Query interface from skill prompt
- */
-export interface QueryInterface {
-  id: string
-  name: string
-  description: string
-  method: "GET" | "POST" | "PUT" | "DELETE"
-  path: string
-  /** Full base URL including IP and port, e.g. http://192.168.1.100:8080 */
-  baseUrl?: string
-  /** Fixed chart type for display */
-  chartType?: ChartDisplayType
-  /** Request headers to include in API calls */
-  headers?: Record<string, string>
-  /** AI-analyzed field binding for chart display */
-  fieldBinding?: {
-    /** Field name for category/label axis */
-    labelField?: string
-    /** Field names for value axis (can be multiple for comparison) */
-    valueFields?: string[]
-  }
-  /**
-   * 技能正文中为接口字段标注的中文说明（如 JSON 示例里 `"price":"1",//单价`），用于数据板块表头/图例
-   */
-  fieldLabels?: Record<string, string>
-  parameters?: Record<string, { type: string; description: string; required: boolean }>
-  responseFormat?: string
+export interface WidgetDataSource {
+  metricId: string
+  params?: Record<string, unknown>
+  refreshSec?: number
 }
 
-/**
- * Skill block configuration stored in localStorage
- */
-export interface WorkbenchBlock {
+export interface WorkbenchWidget {
   id: string
-  type: BlockType
+  type: WidgetType
   title: string
-  enabled: boolean
-  skillId: number | null
+  subtitle?: string
   order: number
-  /** Fixed chart type for custom blocks */
-  chartType?: ChartDisplayType
-  // For custom blocks
-  queryInterface?: QueryInterface
-  /** Custom width in pixels (default: auto from grid) */
   width?: number
-  /** Custom height in pixels */
   height?: number
+  data?: Record<string, any>
+  dataSource?: WidgetDataSource
+  options?: Record<string, any>
+  /** 稳定业务键:后端 upsert 用(同 key 原地更新);前端透传保留 */
+  key?: string
 }
 
-/**
- * Workbench configuration for an employee
- */
-export interface WorkbenchConfig {
-  employeeId: string
-  blocks: WorkbenchBlock[]
-  lastModified: number
+export interface HtmlArtifactRef {
+  conversationId: string | number
+  resourcePath: string
+  pinnedAt: number
 }
 
-/**
- * Mapping from skill pattern to block type
- */
-export interface SkillBlockMapping {
-  skillPattern: RegExp
-  blockType: BlockType
+export interface HtmlTab {
+  id: string
   title: string
+  htmlRef: HtmlArtifactRef
 }
 
+export interface WorkbenchConfig {
+  dashboard: { widgets: WorkbenchWidget[] }
+  htmlTabs: HtmlTab[]
+  tabOrder: string[]
+  activeTabId?: string
+  updatedAt: number
+}
+
+export const DASHBOARD_TAB_ID = "dashboard"
+
 /**
- * Task status for badge display
+ * 任务状态（task-status-badge / today-task-list 用，保留）
  */
-export type TaskStatus = "success" | "failed" | "pending" | "running" | "timeout" | "stuck" | "cancelled"
+export type TaskStatus =
+  | "success"
+  | "failed"
+  | "pending"
+  | "queued"
+  | "running"
+  | "timeout"
+  | "stuck"
+  | "cancelled"
+  | "superseded"

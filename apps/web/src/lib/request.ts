@@ -1,18 +1,19 @@
 import { ofetch } from "ofetch"
+import { isElectron, withElectronApi } from "@/lib/electron/host"
+import { isOfflineModeFlag } from "@/lib/runtime/runtime-provider"
 
 const defaultHeaders: HeadersInit = {
   Accept: "application/json",
 }
 
-const isElectron = !!(typeof window !== "undefined" && window.electronApi)
-
 const server_url = `${import.meta.env.VITE_BACKEND_URL}:${import.meta.env.VITE_BACKEND_PORT}`
 
-const fallbackBaseURL = isElectron
-  ? server_url
-  : import.meta.env.DEV
-    ? "/actus"
-    : server_url
+const useActusProxy =
+  import.meta.env.DEV &&
+  import.meta.env.VITE_USE_ACTUS_PROXY !== "false" &&
+  !isElectron()
+
+const fallbackBaseURL = useActusProxy ? "/actus" : server_url
 
 /**
  * KV 中的通讯（远端）地址，供 apps/server 转发；渲染进程发 HTTP 时不得以此作为 base。
@@ -51,7 +52,7 @@ function normalizeRequestPathLike(request: unknown): string {
  */
 function mergeBaseAndPath(
   baseRaw: string,
-  pathLike: string,
+  pathLike: string
 ): { baseURL: string; path: string } {
   if (/^https?:\/\//i.test(baseRaw)) {
     return { baseURL: baseRaw, path: pathLike }
@@ -69,7 +70,7 @@ async function loadRemoteApiBaseFromKv(): Promise<void> {
   try {
     const kvMerge = mergeBaseAndPath(
       fallbackBaseURL,
-      "/config-kvs/REMOTE_API_BASE_URL",
+      "/config-kvs/REMOTE_API_BASE_URL"
     )
     const res = await ofetch<{
       data?: { config_value?: string }
@@ -109,6 +110,13 @@ export function getAuthToken() {
   return localStorage.getItem("token")
 }
 
+export function getAuthUserId() {
+  if (typeof window === "undefined") {
+    return null
+  }
+  return localStorage.getItem("userId")
+}
+
 export function getRequestHeaders(customHeaders?: HeadersInit) {
   const nextHeaders = new Headers({
     ...defaultHeaders,
@@ -122,7 +130,72 @@ export function getRequestHeaders(customHeaders?: HeadersInit) {
     nextHeaders.set("token", `${token}`)
   }
 
+  const userId = getAuthUserId()
+  if (userId) {
+    nextHeaders.set("userid", userId)
+  }
+
   return nextHeaders
+}
+
+type ApiErrorBody = {
+  detail?: unknown
+  msg?: unknown
+  message?: unknown
+}
+
+function formatApiErrorDetail(detail: unknown): string | null {
+  if (typeof detail === "string" && detail.trim()) {
+    return detail.trim()
+  }
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item === "string") return item
+        if (
+          item &&
+          typeof item === "object" &&
+          typeof (item as { msg?: string }).msg === "string"
+        ) {
+          return (item as { msg: string }).msg
+        }
+        return null
+      })
+      .filter((part): part is string => Boolean(part))
+    if (parts.length > 0) return parts.join("；")
+  }
+  return null
+}
+
+/** 从 ofetch FetchError 的 response body 提取后端 detail/msg，避免只显示 HTTP 状态码 */
+export function getRequestErrorMessage(
+  error: unknown,
+  fallback = "请求失败"
+): string {
+  if (error && typeof error === "object" && "data" in error) {
+    const data = (error as { data?: unknown }).data
+    if (typeof data === "string" && data.trim()) {
+      return data.trim()
+    }
+    if (data && typeof data === "object") {
+      const body = data as ApiErrorBody
+      const fromDetail = formatApiErrorDetail(body.detail)
+      if (fromDetail) return fromDetail
+      if (typeof body.msg === "string" && body.msg.trim()) {
+        return body.msg.trim()
+      }
+      if (typeof body.message === "string" && body.message.trim()) {
+        return body.message.trim()
+      }
+    }
+  }
+  if (error instanceof Error) {
+    const msg = error.message.trim()
+    if (msg && !/^\[.+\] ".+": \d{3}/.test(msg)) {
+      return msg
+    }
+  }
+  return fallback
 }
 
 export const request = ofetch.create({
@@ -142,6 +215,11 @@ export const request = ofetch.create({
     const token = getAuthToken()
     if (token) {
       headers.set("token", `${token}`)
+    }
+
+    const userId = getAuthUserId()
+    if (userId) {
+      headers.set("userid", userId)
     }
 
     const workspaceId = localStorage.getItem("workspaceId")
@@ -167,13 +245,17 @@ export const request = ofetch.create({
 
     ctx.options.headers = headers
   },
-  async onRequestError() { },
-  async onResponse() { },
+  async onRequestError() {},
+  async onResponse() {},
   async onResponseError({ response }) {
+    if (isOfflineModeFlag) return
     const status = response?.status
     if (status === 401 || status === 403) {
       localStorage.removeItem("token")
-      await window.electronApi?.clearAuth()
+      localStorage.removeItem("userId")
+      if (isElectron()) {
+        await withElectronApi((api) => api.clearAuth(), { silent: true })
+      }
       if (typeof window !== "undefined") {
         window.location.hash = "#/login"
       }

@@ -25,8 +25,7 @@
 
 ```bash
 # 使用 npm 脚本（推荐）
-pnpm build:server           # 正常构建
-pnpm build:server:clean    # 清理后构建
+pnpm build:server           # 正常构建（每次会先清空 py-server）
 pnpm build:server:debug    # 调试模式构建
 
 # 直接使用 Python 脚本
@@ -36,9 +35,44 @@ python scripts/build-server.py [--clean] [--debug]
 python scripts/build-server.py --app
 ```
 
+**清理策略**：每次打包前会**默认清空 `apps/web/py-server/`**，避免离线版写入的 `.offline` 等文件污染后续在线包。`--clean` 额外清理 `build/server` 临时目录（PyInstaller 中断后 Windows 上建议加上）。
+
+## 离线版打包脚本 (`build-offline-app.py`)
+
+### 功能
+
+- 自动执行 `build-server.py` 打包后端
+- 在 `py-server` 目录写入 `.offline` 标记文件，确保 Electron 运行时识别为离线模式
+- 调用 `pnpm build:app:offline` 打包离线版 Electron 应用
+- 产物名称带有 `Offline` 后缀（如 `DigitalEmployee-Offline-Windows-Setup.exe`）
+
+### 使用方法
+
+```bash
+pnpm build:app:offline           # 正常打包离线版
+pnpm build:app:offline:clean     # 额外清 build/server 后打包（Windows 文件占用时可试）
+```
+
+### 区别
+
+- **在线版** (`pnpm build:app`)：安装后默认连接远程服务，需登录。
+- **离线版** (`pnpm build:app:offline`)：安装包内嵌 `.offline` 标记，安装后直接进入主界面，禁用远程集成（技能、MCP、绩效等），仅保留本地功能。
+
+## Linux ARM64 DEB 打包 (`build-deb.sh`)
+
+**须在 Apple Silicon（arm64）macOS 上运行**（Docker Desktop 交叉构建 Ubuntu ARM64 `.deb`）。Windows / Linux 宿主机请勿直接执行 `bash scripts/build-deb.sh`。
+
+```bash
+pnpm build:deb:arm64                  # 在线 deb（macOS arm64 终端）
+pnpm build:deb:arm64:offline          # 离线 deb（产物名带 Offline）
+pnpm build:deb:arm64:offline:clean    # 离线 + 额外清 build/server
+```
+
+详见 [`docs/build-deb-arm64.md`](../docs/build-deb-arm64.md)。
+
 #### 3. 参数说明
 
-- `--clean`: 清理之前的构建产物
+- `--clean`: 额外清理 `build/server` 临时目录（`py-server` 每次打包前默认已清空）
 - `--debug`: 启用调试模式，不删除临时文件
 
 ### 输出文件
@@ -73,7 +107,7 @@ apps/web/py-server/backend      # macOS/Linux
 
 1. 首次构建可能需要较长时间下载依赖
 2. 确保有足够的磁盘空间（构建产物约 50-100MB）
-3. 生产环境建议使用 `--clean` 参数确保干净的构建
+3. Windows 上 PyInstaller 报 `WinError 32` 时，关闭 dev 进程后加 `--clean` 重试
 4. 调试时使用 `--debug` 参数保留临时文件以便排查问题
 
 ### 集成到 Electron

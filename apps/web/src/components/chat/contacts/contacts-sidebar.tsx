@@ -2,7 +2,6 @@ import * as React from "react"
 import {
   IconChevronLeft,
   IconChevronRight,
-  IconCirclePlus,
   IconRefresh,
   IconSearch,
   IconUser,
@@ -16,16 +15,13 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useContactsQuery } from "@/hooks/use-chat-queries"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { request } from "@/lib/request"
-import {
-  findContactInList,
-  type AIEmployee,
-  type Contact,
-} from "@/lib/mock-data/ai-employees"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
+import { findContactInList, getContactId } from "@/lib/chat/contact-utils"
+import { switchToContact } from "@/lib/chat/conversation-selection"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
 
 import { ContactItem } from "./contact-item"
-import { CreateGroupDialog } from "../dialogs/create-group-dialog"
 import { ScrollArea } from "@workspace/ui/components/scroll-area"
 
 const CONTACTS_SIDEBAR_COLLAPSED_STORAGE_KEY = "chat:contacts-sidebar:collapsed"
@@ -40,12 +36,17 @@ export function ContactsSidebar({
       defaultValue: false,
     }
   )
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false)
-  const { setContacts, selectedContactId, setSelectedContactId } = useChatStore(
+  const {
+    setContacts,
+    detailContactId,
+    setDetailContactId,
+    migrateLegacyEmployeeSelection,
+  } = useChatStore(
     useShallow((state) => ({
       setContacts: state.setContacts,
-      selectedContactId: state.selectedContactId,
-      setSelectedContactId: state.setSelectedContactId,
+      detailContactId: state.detailContactId,
+      setDetailContactId: state.setDetailContactId,
+      migrateLegacyEmployeeSelection: state.migrateLegacyEmployeeSelection,
     }))
   )
   const { data: apiContacts } = useContactsQuery()
@@ -54,7 +55,9 @@ export function ContactsSidebar({
 
   const syncMutation = useMutation({
     mutationFn: () =>
-      request<{ code: number; msg: string }>(`/workspaces/1/tasks/sync`),
+      request<{ code: number; msg: string }>(
+        `/workspaces/${getActiveWorkspaceId()}/tasks/sync`
+      ),
     onSuccess: (res) => {
       toast.success(res.msg || "同步成功")
     },
@@ -67,28 +70,26 @@ export function ContactsSidebar({
 
   React.useEffect(() => {
     setContacts(contacts)
-  }, [contacts, setContacts])
+    migrateLegacyEmployeeSelection()
+  }, [contacts, setContacts, migrateLegacyEmployeeSelection])
 
   React.useEffect(() => {
     if (
       contacts.length > 0 &&
-      selectedContactId &&
-      !findContactInList(contacts, selectedContactId)
+      detailContactId &&
+      !findContactInList(contacts, detailContactId)
     ) {
-      const firstCurator = contacts.find((c) => c.type === "curator")
-      if (firstCurator?.curator) {
-        setSelectedContactId(firstCurator.curator.id)
-      }
+      setDetailContactId(null)
     }
-  }, [contacts, selectedContactId, setSelectedContactId])
+  }, [contacts, detailContactId, setDetailContactId])
 
   React.useEffect(() => {
-    if (!selectedContactId) return
-    const contact = findContactInList(contacts, selectedContactId)
+    if (!detailContactId) return
+    const contact = findContactInList(contacts, detailContactId)
     if (contact?.type === "employee" && contact.employee) {
       setTargetEmployee(String(contact.employee.id), contact.employee.name)
     }
-  }, [selectedContactId, contacts, setTargetEmployee])
+  }, [detailContactId, contacts, setTargetEmployee])
 
   const curatorContacts = React.useMemo(
     () => contacts.filter((contact) => contact.type === "curator"),
@@ -100,30 +101,14 @@ export function ContactsSidebar({
     [contacts]
   )
 
-  const handleCreateGroup = (selectedEmployees: AIEmployee[]) => {
-    console.log("创建群聊，选择员工:", selectedEmployees)
-    setIsDialogOpen(false)
+  const handleDoubleClickCurator = (contactId: string) => {
+    if (contactId.startsWith("curator:")) {
+      switchToContact(contactId)
+    }
   }
-
-  const groupContacts = React.useMemo(
-    () => contacts.filter((contact) => contact.type === "group"),
-    [contacts]
-  )
-
-  const employeeList = React.useMemo(
-    () =>
-      employeeContacts.map((c) => c.employee).filter(Boolean) as AIEmployee[],
-    [employeeContacts]
-  )
 
   return (
     <>
-      <CreateGroupDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-        employees={employeeList}
-        onCreate={handleCreateGroup}
-      />
       <div
         className={cn(
           "flex h-full flex-col border-r bg-muted/50 transition-all duration-300",
@@ -155,15 +140,6 @@ export function ContactsSidebar({
             >
               <IconSearch className="size-4" />
             </Button>
-            <Button
-              onClick={() => setIsDialogOpen(true)}
-              variant="ghost"
-              size="icon-sm"
-              className="h-8 w-8"
-              title="新建群聊"
-            >
-              <IconCirclePlus className="size-4" />
-            </Button>
           </div>
         </div>
 
@@ -177,16 +153,7 @@ export function ContactsSidebar({
                   key={contact.curator?.id}
                   contact={contact}
                   isCollapsed={isCollapsed}
-                />
-              ))}
-
-              <div className="my-1 h-px w-7 bg-border" />
-
-              {groupContacts.map((contact) => (
-                <ContactItem
-                  key={contact.group?.id}
-                  contact={contact}
-                  isCollapsed={isCollapsed}
+                  clickAction="select"
                 />
               ))}
 
@@ -197,6 +164,7 @@ export function ContactsSidebar({
                   key={contact.employee?.id}
                   contact={contact}
                   isCollapsed={isCollapsed}
+                  clickAction="select"
                 />
               ))}
             </div>
@@ -211,24 +179,13 @@ export function ContactsSidebar({
                     key={contact.curator?.id}
                     contact={contact}
                     isCollapsed={isCollapsed}
+                    clickAction="select"
+                    onDoubleClick={() =>
+                      handleDoubleClickCurator(getContactId(contact) ?? "")
+                    }
                   />
                 ))}
               </div>
-
-              {groupContacts.length > 0 && (
-                <div className="space-y-0.5">
-                  <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
-                    群聊
-                  </p>
-                  {groupContacts.map((contact) => (
-                    <ContactItem
-                      key={contact.group?.id}
-                      contact={contact}
-                      isCollapsed={isCollapsed}
-                    />
-                  ))}
-                </div>
-              )}
 
               {employeeContacts.length > 0 && (
                 <div className="space-y-0.5">
@@ -240,12 +197,13 @@ export function ContactsSidebar({
                       key={contact.employee?.id}
                       contact={contact}
                       isCollapsed={isCollapsed}
+                      clickAction="select"
                     />
                   ))}
                 </div>
               )}
 
-              {groupContacts.length === 0 && employeeContacts.length === 0 && (
+              {employeeContacts.length === 0 && (
                 <div className="flex flex-col items-center justify-center px-2 py-10 text-muted-foreground/60">
                   <IconUser className="size-8 stroke-1" />
                   <p className="mt-2 text-xs">暂无联系人</p>
@@ -275,14 +233,6 @@ export function ContactsSidebar({
               className={cn("size-4", syncMutation.isPending && "animate-spin")}
             />
           </Button>
-          {/* <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-8 w-8"
-            title="设置"
-          >
-            <IconSettings className="size-4" />
-          </Button> */}
           <Button
             variant="ghost"
             size="icon-sm"

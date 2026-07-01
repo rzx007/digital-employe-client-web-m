@@ -1,58 +1,110 @@
 import type { UIMessage } from "ai"
-
-type ToolPart = Extract<UIMessage["parts"][number], { type: `tool-${string}` }>
+import { normalizeToolPart } from "./tools/normalize-tool-part"
+import { isToolUIPart, type ToolUIPart } from "./tools/tool-part"
+import { normalizeToolFilePath } from "@/components/chat/message-blocks/tool-shared"
+import {
+  getResourceBucket,
+  toBucketRelativeSegments,
+} from "@/lib/chat/pending-resources/paths"
 
 export type FileChangeAction = "created" | "edited"
+
+/**
+ * 交付物 vs 中间产物：用户关心的是 Word/PPTX/MD 等成果（deliverable），
+ * 而非生成它们用的脚本/依赖（intermediate）。面板据此分区展示。
+ */
+export type FileChangeCategory = "deliverable" | "intermediate"
 
 export interface FileChangeItem {
   id: string
   kind: "file" | "skill-folder"
+  category: FileChangeCategory
   action: FileChangeAction
   title: string
   path: string
   extension?: string
   size?: number
-  toolCallId: string
+  /** parts 派生时有；file_outputs 权威来源派生时无（后端 journal 不带 toolCallId）。 */
+  toolCallId?: string
 }
 
-function isToolPart(part: UIMessage["parts"][number]): part is ToolPart {
-  return part.type.startsWith("tool-") && "toolCallId" in part
+/** 后端 journal 写入消息 extra_meta.file_outputs 的单条结构（透传到 message metadata）。 */
+export interface FileOutput {
+  path: string
+  action: "create" | "modify"
 }
 
-function isCompletedToolPart(part: ToolPart) {
-  return (
-    "state" in part &&
-    part.state === "output-available" &&
-    !("preliminary" in part && part.preliminary === true)
-  )
-}
+// 代码/脚本扩展名 → 中间产物（口径对齐后端 artifacts.py _ARTIFACT_CODE_EXTENSIONS，
+// 另补常见脚本类型）。其余（文档/表格/图片/文本）默认视为交付物。
+const INTERMEDIATE_EXTENSIONS = new Set([
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "json",
+  "py",
+  "sql",
+  "css",
+  "java",
+  "go",
+  "rs",
+  "cpp",
+  "c",
+  "h",
+  "sh",
+  "bat",
+  "ps1",
+  "rb",
+  "lock",
+  "toml",
+  "ini",
+  "cfg",
+  "yaml",
+  "yml",
+])
 
-function getToolName(part: ToolPart) {
-  return part.type.replace(/^tool-/, "")
-}
+// 已知依赖/构建清单文件名 → 中间产物（与扩展名无关，按文件名整体匹配）。
+const INTERMEDIATE_FILENAMES = new Set([
+  "requirements.txt",
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "pyproject.toml",
+  "poetry.lock",
+  ".gitignore",
+  "dockerfile",
+  "makefile",
+])
 
-function getToolInput(part: ToolPart): Record<string, unknown> | null {
-  if (!("input" in part) || !part.input || typeof part.input !== "object") {
-    return null
+/** 判定文件是用户要的交付物，还是生成交付物用的脚本/依赖。 */
+function classifyFileCategory(
+  basename: string,
+  extension: string | undefined
+): FileChangeCategory {
+  if (INTERMEDIATE_FILENAMES.has(basename.toLowerCase())) {
+    return "intermediate"
   }
-
-  return part.input as Record<string, unknown>
+  if (extension && INTERMEDIATE_EXTENSIONS.has(extension)) {
+    return "intermediate"
+  }
+  return "deliverable"
 }
 
-function normalizePath(path: string) {
-  const normalized = path.replace(/\\/g, "/")
-  if (
-    normalized.startsWith("artifacts/") ||
-    normalized.startsWith("skills-draft/")
-  ) {
-    return `/${normalized}`
-  }
+/** 据路径判定交付物 / 中间产物（供「团队交付物」聚合卡分区，复用同一口径）。 */
+export function categorizeArtifactPath(path: string): FileChangeCategory {
+  return classifyFileCategory(getBasename(path), getExtension(path))
+}
 
-  return normalized
+function isUserVisibleFileChange(path: string): boolean {
+  // 仅交付物桶（产物 / 草稿技能）的写入展示 FileChangeCard；
+  // 真实路径里仍含 artifacts/ 或 skills-draft/ 段，按桶判定（uploads/skills 等不展示）。
+  const bucket = getResourceBucket(path)
+  return bucket === "artifacts" || bucket === "skills_draft"
 }
 
 function getBasename(path: string) {
-  const normalized = normalizePath(path)
+  const normalized = normalizeToolFilePath(path)
   const segments = normalized.split("/").filter(Boolean)
   return segments.at(-1) ?? path
 }
@@ -66,46 +118,59 @@ function getExtension(path: string) {
   return filename.slice(dotIndex + 1).toLowerCase()
 }
 
-function getContentSize(input: Record<string, unknown>, action: FileChangeAction) {
+function getContentSize(input: unknown, action: FileChangeAction) {
+  if (!input || typeof input !== "object") return undefined
   const contentKey = action === "created" ? "content" : "new_string"
-  const content = input[contentKey]
+  const content = (input as Record<string, unknown>)[contentKey]
   return typeof content === "string" ? content.length : undefined
 }
 
 function getSkillDraftFolder(path: string) {
-  const normalized = normalizePath(path)
-  const segments = normalized.split("/").filter(Boolean)
-  if (segments[0] !== "skills-draft" || !segments[1]) {
+  const normalized = normalizeToolFilePath(path)
+  if (getResourceBucket(normalized) !== "skills_draft") {
     return null
   }
-
+  const rel = toBucketRelativeSegments(normalized)
+  const name = rel[0]
+  if (!name) return null
+  // 草稿技能文件夹的真实绝对路径（截到 skills-draft/<name>）
+  const m = normalized.match(/^(.*\/skills-draft\/[^/]+)/)
   return {
-    name: segments[1],
-    path: `/skills-draft/${segments[1]}`,
+    name,
+    path: m ? m[1]! : name,
   }
 }
 
-function buildFileChange(part: ToolPart): FileChangeItem | null {
-  const toolName = getToolName(part)
+function buildFileChange(part: ToolUIPart): FileChangeItem | null {
+  const vm = normalizeToolPart(part)
   const action: FileChangeAction | null =
-    toolName === "write_file" ? "created" : toolName === "edit_file" ? "edited" : null
+    vm.toolName === "write_file"
+      ? "created"
+      : vm.toolName === "edit_file"
+        ? "edited"
+        : null
 
-  if (!action || !isCompletedToolPart(part)) {
+  if (!action || vm.state !== "output-available" || vm.preliminary) {
     return null
   }
 
-  const input = getToolInput(part)
-  const rawFilePath = input?.file_path
+  const rawFilePath = (vm.input as Record<string, unknown>)?.file_path
   if (typeof rawFilePath !== "string" || !rawFilePath) {
     return null
   }
 
-  const path = normalizePath(rawFilePath)
+  const path = normalizeToolFilePath(rawFilePath)
+  if (!isUserVisibleFileChange(path)) {
+    return null
+  }
+
   const skillFolder = getSkillDraftFolder(path)
   if (skillFolder) {
+    // 草稿技能是用户要导入的成果，恒为交付物
     return {
       id: `skill-folder:${skillFolder.path}`,
       kind: "skill-folder",
+      category: "deliverable",
       action,
       title: skillFolder.name,
       path: skillFolder.path,
@@ -113,23 +178,118 @@ function buildFileChange(part: ToolPart): FileChangeItem | null {
     }
   }
 
+  const basename = getBasename(path)
+  const extension = getExtension(path)
   return {
     id: `file:${path}`,
     kind: "file",
+    category: classifyFileCategory(basename, extension),
     action,
-    title: getBasename(path),
+    title: basename,
     path,
-    extension: getExtension(path),
-    size: getContentSize(input, action),
+    extension,
+    size: getContentSize(vm.input, action),
     toolCallId: part.toolCallId,
   }
 }
 
-export function getFileChangesFromUIMessage(message: UIMessage): FileChangeItem[] {
+/**
+ * 从 file_outputs 单条构造 FileChangeItem。复用与 parts 派生（buildFileChange）一致的
+ * id / kind / category 口径，保证两条来源去重命中一致。无 toolCallId、无 size。
+ */
+function buildFileChangeFromOutput(output: FileOutput): FileChangeItem | null {
+  const path = normalizeToolFilePath(output.path)
+  if (!isUserVisibleFileChange(path)) {
+    return null
+  }
+
+  const action: FileChangeAction =
+    output.action === "create" ? "created" : "edited"
+
+  const skillFolder = getSkillDraftFolder(path)
+  if (skillFolder) {
+    // 草稿技能是用户要导入的成果，恒为交付物
+    return {
+      id: `skill-folder:${skillFolder.path}`,
+      kind: "skill-folder",
+      category: "deliverable",
+      action,
+      title: skillFolder.name,
+      path: skillFolder.path,
+    }
+  }
+
+  const basename = getBasename(path)
+  const extension = getExtension(path)
+  return {
+    id: `file:${path}`,
+    kind: "file",
+    category: classifyFileCategory(basename, extension),
+    action,
+    title: basename,
+    path,
+    extension,
+  }
+}
+
+/** 读 message.metadata.file_outputs，逐条构造并按 id 去重。 */
+export function getFileChangesFromFileOutputs(
+  message: UIMessage
+): FileChangeItem[] {
+  const outputs = readFileOutputs(message)
+  const changes = new Map<string, FileChangeItem>()
+
+  for (const output of outputs) {
+    const change = buildFileChangeFromOutput(output)
+    if (!change) {
+      continue
+    }
+    changes.set(change.id, change)
+  }
+
+  return Array.from(changes.values())
+}
+
+/** 从 UIMessage.metadata 安全读取 file_outputs（参考 metadata.usage/streamState 的读法）。 */
+function readFileOutputs(message: UIMessage): FileOutput[] {
+  const metadata = (message as UIMessage & { metadata?: unknown }).metadata
+  if (!metadata || typeof metadata !== "object") {
+    return []
+  }
+  const raw = (metadata as Record<string, unknown>).file_outputs
+  if (!Array.isArray(raw)) {
+    return []
+  }
+  const outputs: FileOutput[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue
+    const path = (item as Record<string, unknown>).path
+    const action = (item as Record<string, unknown>).action
+    if (typeof path !== "string" || !path) continue
+    if (action !== "create" && action !== "modify") continue
+    outputs.push({ path, action })
+  }
+  return outputs
+}
+
+/** 该消息是否带 file_outputs（权威来源）。供调用方决定是否对 file-changes 做资源树交集。 */
+export function messageHasFileOutputs(message: UIMessage): boolean {
+  return readFileOutputs(message).length > 0
+}
+
+export function getFileChangesFromUIMessage(
+  message: UIMessage
+): FileChangeItem[] {
+  // file_outputs 是权威来源（含 bash 写的、已过滤幻影/删除）。有则只用它（忽略 parts
+  // 派生）；无（流式进行中 / 极老历史消息）才回退 parts 解析作即时兜底。
+  if (readFileOutputs(message).length > 0) {
+    return getFileChangesFromFileOutputs(message)
+  }
+
   const changes = new Map<string, FileChangeItem>()
 
   for (const part of message.parts) {
-    if (!isToolPart(part)) {
+    if (!isToolUIPart(part)) {
       continue
     }
 
@@ -142,4 +302,46 @@ export function getFileChangesFromUIMessage(message: UIMessage): FileChangeItem[
   }
 
   return Array.from(changes.values())
+}
+
+/** 当前轮（最后一条 user 之后）的首条 assistant；尚无回复时为 null */
+export function getCurrentTurnAssistantMessageId(
+  messages: UIMessage[]
+): string | null {
+  let lastUserIndex = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === "user") {
+      lastUserIndex = i
+      break
+    }
+  }
+  if (lastUserIndex < 0) {
+    return null
+  }
+  for (let i = lastUserIndex + 1; i < messages.length; i++) {
+    const message = messages[i]
+    if (message?.role === "assistant") {
+      return message.id
+    }
+  }
+  return null
+}
+
+/** 仅对「当前轮流式中的 assistant」在回合未结束前隐藏文件变更卡片 */
+export function shouldIncludeFileChangesForMessage(
+  message: UIMessage,
+  messages: UIMessage[],
+  hasCurrentTurnEnded: boolean
+): boolean {
+  if (message.role !== "assistant") {
+    return false
+  }
+  const currentTurnAssistantId = getCurrentTurnAssistantMessageId(messages)
+  if (currentTurnAssistantId == null) {
+    return true
+  }
+  if (message.id !== currentTurnAssistantId) {
+    return true
+  }
+  return hasCurrentTurnEnded
 }

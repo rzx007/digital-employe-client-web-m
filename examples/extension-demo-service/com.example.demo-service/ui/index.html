@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>示例插件 · 本地服务</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem;
+        line-height: 1.5;
+      }
+      pre {
+        background: #f4f4f5;
+        padding: 1rem;
+        border-radius: 8px;
+        overflow: auto;
+      }
+      button {
+        margin-top: 1rem;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>数字员工 · 本地服务示例</h1>
+    <p>
+      打开窗口前宿主会启动 <code>service/server.mjs</code>，并通过
+      <code>getContext().serviceBaseUrl</code> 注入 API 地址。
+    </p>
+    <pre id="output">加载中…</pre>
+    <button type="button" id="close">关闭窗口</button>
+    <script>
+      async function main() {
+        const out = document.getElementById("output")
+        if (!window.extension) {
+          out.textContent =
+            "window.extension 不可用（请在桌面客户端插件窗口中打开）"
+          return
+        }
+        try {
+          const pluginId = await window.extension.getPluginId()
+          const ctx = await window.extension.getContext()
+          let apiResult = null
+          if (ctx.serviceBaseUrl) {
+            const res = await fetch(`${ctx.serviceBaseUrl}/api/hello`)
+            apiResult = await res.json()
+          }
+          out.textContent = JSON.stringify(
+            { pluginId, ctx, apiResult },
+            null,
+            2,
+          )
+        } catch (err) {
+          out.textContent = String(err)
+        }
+      }
+      document.getElementById("close").addEventListener("click", () => {
+        void window.extension?.close().catch((err) => {
+          console.error("[extension-demo-service] close failed", err)
+        })
+      })
+      main()
+    </script>
+  </body>
+</html>

@@ -11,7 +11,6 @@ export interface ApiResponse<T> {
  * 员工能力项
  */
 export interface Capability {
-
   capability_name: string
   capability_desc: string
   mcp_server_name: string
@@ -38,8 +37,10 @@ export interface McpListItem {
 export interface SkillListItem {
   id: number
   skillName: string
+  skill_name_zh: string | null
   description: string | null
   displayNameZh: string | null
+  tags?: string[]
   prompt?: string
   inputSchema?: unknown
   skillContent?: string
@@ -48,7 +49,7 @@ export interface SkillListItem {
   createTime?: string
   updateTime?: string
   directoryName: string | null
-  source?: "remote" | "local"
+  source?: "remote" | "local" | "builtin"
   sourceLabel?: string
 }
 
@@ -58,6 +59,8 @@ export interface SkillListItem {
 export interface MetadataSkill {
   id: number
   skillName: string
+  skill_name_zh: string | null
+  skill_name: string | null
   description: string
   prompt: string
   directoryId: number | null
@@ -122,6 +125,8 @@ export interface EmployeeMetadata {
 export interface Skill {
   id: number
   skillName: string
+  skill_name_zh: string | null
+  skill_name: string | null
   description: string
   prompt: string
   directoryId: number | null
@@ -152,18 +157,10 @@ export interface Employee {
   metadata: EmployeeMetadata
   shift_schedule: ShiftSchedule
   is_curator: boolean
-  created_at: string
-  updated_at: string
-}
-
-/**
- * 群聊（员工组）
- */
-export interface Group {
-  id: number
-  workspace_id: number
-  name: string
-  employee_ids: number[]
+  /** 自定义上传头像 URL；为空时前端回落到「名字前两个字」文本头像。 */
+  avatar?: string | null
+  /** 待确认技能候选数（>0 时联系人卡片显示「✨N」角标）。 */
+  skill_candidate_count?: number
   created_at: string
   updated_at: string
 }
@@ -192,9 +189,9 @@ export interface ConversationQuery {
 }
 
 /**
- * 会话列表项
+ * 会话列表项（API 响应，snake_case 时间字段）
  */
-export interface ConversationItem {
+export interface ConversationListItemDto {
   id: number
   workspace_id: number
   target_type: ChatTargetType
@@ -206,19 +203,18 @@ export interface ConversationItem {
   lastMessage?: string
   lastMessageTime?: string
   unreadCount?: number
+  session_flags?: string | null
 }
 
 /**
- * 聊天消息
+ * 聊天消息（API 响应）
  */
-export interface ChatMessage {
+export interface ChatMessageDto {
   id: string
   conversationId?: number
-  senderId?: string
-  senderName?: string
+  conversation_id?: number
   role: "user" | "assistant" | "system"
   content: string
-  chunk_json?: string
   stream_state?: string | null
   stream_cursor?: number | null
   extra_meta?: Record<string, any>
@@ -301,23 +297,30 @@ export type LoginResponse =
 export interface LocalSkillItem {
   skillName: string
   path: string
-  directoryId: number | null
+  localId?: number | null
   hasSkillMd: boolean
   importedAt: string | null
+  description?: string | null
+  displayNameZh?: string | null
+  isBuiltin?: boolean
+  directoryId?: number | null
 }
 
 export interface LocalSkillDetail {
   skillName: string
   path: string
-  directoryId: number | null
+  localId?: number | null
+  directoryId?: number | null
   importedAt: string | null
   skillMdContent: string | null
   files: string[]
+  displayNameZh?: string | null
+  isBuiltin?: boolean
 }
 
 export interface LocalSkillImportResult {
   skillName: string
-  directoryId: number
+  localId?: number | null
   path: string
   overwritten: boolean
 }
@@ -325,6 +328,10 @@ export interface LocalSkillImportResult {
 export interface ResourceEntry {
   name: string
   path: string
+  /** 相对工作空间产物根的路径（正斜杠）；越界/无法计算时为 null。供复制相对路径。 */
+  rel_path?: string | null
+  /** 分桶 key（后端按真实子目录归属推导）：artifacts/uploads/skills_draft/workspace/public */
+  bucket?: string | null
   entry_type: "file" | "directory"
   artifact_type: string | null
   size: number
@@ -336,6 +343,9 @@ export interface ResourceList {
   artifacts: ResourceEntry[]
   uploads: ResourceEntry[]
   skills_draft: ResourceEntry[]
+  /** 员工工作空间全树（按 conv-* 分）；公共区 shared/** 全树（按来源分） */
+  workspace?: ResourceEntry[]
+  public?: ResourceEntry[]
 }
 
 export interface ResourceContent {

@@ -77,7 +77,7 @@ export function EndpointConfig({
     } catch (err) {
       setStatus("error")
       toast.error(
-        err instanceof Error ? err.message : "保存通讯配置失败，请重试",
+        err instanceof Error ? err.message : "保存通讯配置失败，请重试"
       )
       setTimeout(() => setStatus("idle"), 2000)
     }
@@ -97,12 +97,19 @@ export function EndpointConfig({
           : undefined
       }
     >
-      <div className={cn("mx-auto w-full", isElectron ? "mt-5 w-[95%]" : "max-w-md")}>
-        <form onSubmit={handleValidate} className="space-y-5">
-          <div className="flex flex-col gap-1.5">
-            <Label className="mb-4 text-sm font-bold">协议</Label>
+      <div
+        className={cn(
+          "mx-auto w-full",
+          isElectron ? "mt-5 w-[95%]" : "max-w-md"
+        )}
+      >
+        <form onSubmit={handleValidate} className="space-y-4">
+          <div>
+            <Label className="mb-2 text-[13px] font-semibold text-foreground">
+              协议
+            </Label>
             <Select value={protocol} onValueChange={setProtocol}>
-              <SelectTrigger className="rounded-xs">
+              <SelectTrigger className="!h-10 w-full rounded-lg text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -112,31 +119,35 @@ export function EndpointConfig({
             </Select>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label className="mb-4 text-sm font-bold">
+          <div>
+            <Label className="mb-2 text-[13px] font-semibold text-foreground">
               通讯地址
-              <em className="ml-1 text-xs font-light">(ip或域名)</em>
+              <em className="ml-1 text-xs font-normal text-muted-foreground">
+                (ip或域名)
+              </em>
             </Label>
             <Input
+              className="h-10 rounded-lg text-sm"
               placeholder="请输入IP地址"
               value={ip}
               onChange={(e) => setIp(e.target.value)}
-              className="rounded-xs"
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label className="mb-4 text-sm font-bold">端口</Label>
+          <div>
+            <Label className="mb-2 text-[13px] font-semibold text-foreground">
+              端口
+            </Label>
             <Input
+              className="h-10 rounded-lg text-sm"
               type="number"
               placeholder="请输入端口"
               value={port}
               onChange={(e) => setPort(Number(e.target.value))}
-              className="rounded-xs"
             />
           </div>
 
-          <div className="flex w-full justify-end gap-2">
+          <div className="flex w-full justify-end gap-2 pt-1">
             {status === "success" || validated ? (
               <Button variant="outline" onClick={handleSave}>
                 <IconShieldCheck className="mr-1 size-5 text-green-500" />

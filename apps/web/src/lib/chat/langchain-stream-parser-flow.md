@@ -206,29 +206,25 @@ flowchart TD
   C -- "text + i <= lastToolIndex" --> E[thinking block]
   C -- "tool-*" --> F[tool-group block]
 
-  F --> G[ToolGroupBlock]
-  G --> H{simpleMode?}
-  H -- true --> I[ToolActionRowSimple]
-  H -- false --> J[ToolActionRow]
+  F --> G[mergeConsecutiveToolGroups]
+  G --> H[ToolGroupBlock]
+  H --> I{多工具?}
+  I -- 是 --> J[可折叠活动流 + ToolActivityLine]
+  I -- 否 --> K{write_todos / edit diff?}
+  K -- 是 --> L[ToolActionRow]
+  K -- 否 --> M[ToolActivityLine]
 
-  I --> K["Header: [Icon] [状态文字] [StatusIcon]"]
-  I --> L["Content: 流式/最终输出"]
-
-  J --> M["Header: [Icon] [label] [toolName] [StatusIcon]"]
-  J --> N["Content: 命令 + 输出"]
+  J --> N["Header: [类型图标] [summary.label] [StatusIcon]"]
+  L --> O["大卡 + ToolDetailPanel"]
+  M --> N
 ```
 
-### ToolGroupBlock simpleMode
+### ToolGroupBlock
 
-`ToolGroupBlock` 通过 `simpleMode?: boolean`（默认 `true`）选择渲染组件：
-
-| 特性 | `ToolActionRow`（simpleMode=false） | `ToolActionRowSimple`（simpleMode=true） |
-|------|--------------------------------------|------------------------------------------|
-| Header label | `执行 multi_output_script.py` | `正在执行命令...` / `执行完成` |
-| 右侧 toolName | 显示 `execute` | 不显示 |
-| 状态文字 | 固定不变 | 随状态动态变化（running/done/error） |
-| 展开内容 | 命令 + 输出 | 仅输出 |
-| write_todos | 专用 TodoListBlock | 不处理（使用原组件） |
+- 连续工具调用（不分类型）由 `mergeConsecutiveToolGroups` 合并为单个 `tool-group`
+- 多工具：可折叠组头 + 组内 `ToolActivityLine`（无独立灰条边框）
+- 单工具：默认 `ToolActivityLine`；`write_todos`（含列表）与 `edit_file`（含 diff）仍用 `ToolActionRow`
+- 行布局：`[类型图标] [summary.label] [状态]`，不展示 `toolName`
 
 ### message-classifier ToolGroupItem
 
@@ -277,9 +273,10 @@ sequenceDiagram
 - `transport` 负责：读流、切帧、事件类型分发（artifact/tool_output/updates/messages）、懒创建 text part、分发 chunk、处理 artifact 事件
 - `stream-parser` 负责：识别 LangChain 消息、聚合工具参数、累积 `tool_output` 流式输出、输出标准 `UIMessageChunk`
 - `message-classifier` 负责：将 `UIMessage.parts` 分类为 thinking/tool-group/final-response 块，计算 preliminary/hasNewerActiveTool 等渲染辅助字段
-- `tool-summarizer` 负责：生成工具调用的显示标签（开发模式 label + simple 模式状态文字）
-- `tool-action-row` / `tool-action-row-simple` 负责：渲染单个工具调用的 header + 折叠内容（流式输出/最终结果）
-- `tool-group-block` 负责：管理 simpleMode 开关，选择渲染组件
+- `tool-summarizer` + `tool-label-registry` 负责：语义化 `summary.label`（shell intent、业务工具固定文案）
+- `merge-consecutive-tool-groups` 负责：合并相邻工具块（不分类型）
+- `tool-activity-line` / `tool-action-row` 负责：紧凑行或富交互行 + `ToolDetailPanel`
+- `tool-group-block` 负责：单工具/多工具活动流布局与 `toolAutoCollapseMap` 下发
 
 ## V2 Event Dispatch
 

@@ -17,6 +17,7 @@ import {
 } from "@workspace/ui/components/tabs"
 import { Input } from "@workspace/ui/components/input"
 import type { McpListItem, SkillListItem } from "@/api/types"
+import { sourceBadgeProps } from "@/components/skills/skill-utils"
 import { cn } from "@workspace/ui/lib/utils"
 
 interface CapabilityPickerDialogProps {
@@ -70,16 +71,21 @@ export function CapabilityPickerDialog({
     onOpenChange(false)
   }
 
+  const localPickerSkills = React.useMemo(
+    () => allSkillList.filter((s) => s.source !== "remote"),
+    [allSkillList]
+  )
+
   const filteredSkills = React.useMemo(() => {
-    if (!searchQuery.trim()) return allSkillList
+    if (!searchQuery.trim()) return localPickerSkills
     const q = searchQuery.toLowerCase()
-    return allSkillList.filter(
+    return localPickerSkills.filter(
       (item) =>
         item.skillName.toLowerCase().includes(q) ||
-        (item.description?.toLowerCase().includes(q)) ||
+        item.description?.toLowerCase().includes(q) ||
         (item.displayNameZh && item.displayNameZh.toLowerCase().includes(q))
     )
-  }, [allSkillList, searchQuery])
+  }, [localPickerSkills, searchQuery])
 
   const filteredMcps = React.useMemo(() => {
     if (!searchQuery.trim()) return allMcpList
@@ -118,7 +124,7 @@ export function CapabilityPickerDialog({
             className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
           >
             <div className="relative shrink-0 px-6 pb-3">
-              <IconSearch className="pointer-events-none absolute top-2/5 left-[2.25rem] size-4 -translate-y-1/2 text-muted-foreground" />
+              <IconSearch className="pointer-events-none absolute top-2/5 left-9 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-9"
                 placeholder="搜索技能..."
@@ -137,7 +143,8 @@ export function CapabilityPickerDialog({
                 <div className="grid grid-cols-2 gap-3">
                   {filteredSkills.map((item) => {
                     const checked = draftSkillIds.includes(item.id)
-                    const isLocal = item.source === "local"
+                    const src = item.source ?? "local"
+                    const sourceIsLocal = src === "local" || src === "builtin"
                     return (
                       <button
                         key={item.id}
@@ -155,11 +162,13 @@ export function CapabilityPickerDialog({
                             {item.displayNameZh || item.skillName}
                           </span>
                           <div className="flex shrink-0 items-center gap-1">
-                            <Badge
-                              variant={isLocal ? "outline" : "secondary"}
-                              className="px-1 py-0 text-[10px]"
-                            >
-                              {item.sourceLabel || (isLocal ? "本地" : "远程")}
+                            <Badge {...sourceBadgeProps(src)}>
+                              {item.sourceLabel ||
+                                (src === "builtin"
+                                  ? "内置"
+                                  : src === "local"
+                                    ? "本地"
+                                    : "远程")}
                             </Badge>
                             <IconCheck
                               className={cn(
@@ -170,7 +179,8 @@ export function CapabilityPickerDialog({
                           </div>
                         </div>
                         <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                          {item.description || (isLocal ? item.skillName : "")}
+                          {item.description ||
+                            (sourceIsLocal ? item.skillName : "")}
                         </span>
                       </button>
                     )
@@ -184,7 +194,7 @@ export function CapabilityPickerDialog({
             className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
           >
             <div className="relative shrink-0 px-6 pb-3">
-              <IconSearch className="pointer-events-none absolute top-2/5 left-[2.25rem] size-4 -translate-y-1/2 text-muted-foreground" />
+              <IconSearch className="pointer-events-none absolute top-2/5 left-9 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-9"
                 placeholder="搜索 MCP 工具..."

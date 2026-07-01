@@ -1,5 +1,5 @@
-import { BigInteger, SecureRandom } from 'jsbn'
-import { ECCurveFp } from './ec'
+import { BigInteger, SecureRandom } from "jsbn"
+import { ECCurveFp } from "./ec"
 
 const rng = new SecureRandom()
 const { curve, G, n } = generateEcparam()
@@ -16,17 +16,31 @@ export function getGlobalCurve(): ECCurveFp {
  */
 export function generateEcparam() {
   // 椭圆曲线
-  const p = new BigInteger('FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF', 16)
-  const a = new BigInteger('FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFC', 16)
-  const b = new BigInteger('28E9FA9E9D9F5E344D5A9E4BCF6509A7F39789F515AB8F92DDBCBD414D940E93', 16)
+  const p = new BigInteger(
+    "FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF",
+    16
+  )
+  const a = new BigInteger(
+    "FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFC",
+    16
+  )
+  const b = new BigInteger(
+    "28E9FA9E9D9F5E344D5A9E4BCF6509A7F39789F515AB8F92DDBCBD414D940E93",
+    16
+  )
   const curve = new ECCurveFp(p, a, b)
 
   // 基点
-  const gxHex = '32C4AE2C1F1981195F9904466A39C9948FE30BBFF2660BE1715A4589334C74C7'
-  const gyHex = 'BC3736A2F4F6779C59BDCEE36B692153D0A9877CC62A474002DF32E52139F0A0'
-  const G = curve.decodePointHex('04' + gxHex + gyHex)
+  const gxHex =
+    "32C4AE2C1F1981195F9904466A39C9948FE30BBFF2660BE1715A4589334C74C7"
+  const gyHex =
+    "BC3736A2F4F6779C59BDCEE36B692153D0A9877CC62A474002DF32E52139F0A0"
+  const G = curve.decodePointHex("04" + gxHex + gyHex)
 
-  const n = new BigInteger('FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFF7203DF6B21C6052B53BBF40939D54123', 16)
+  const n = new BigInteger(
+    "FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFF7203DF6B21C6052B53BBF40939D54123",
+    16
+  )
 
   return { curve, G, n }
 }
@@ -35,13 +49,15 @@ export function generateEcparam() {
  * 生成密钥对
  */
 export function generateKeyPairHex() {
-  const d = new BigInteger(n.bitLength(), rng).mod(n.subtract(BigInteger.ONE)).add(BigInteger.ONE) // 随机数
+  const d = new BigInteger(n.bitLength(), rng)
+    .mod(n.subtract(BigInteger.ONE))
+    .add(BigInteger.ONE) // 随机数
   const privateKey = leftPad(d.toString(16), 64)
 
   const P = G.multiply(d) // P = dG，p 为公钥，d 为私钥
   const Px = leftPad(P.getX().toBigInteger().toString(16), 64)
   const Py = leftPad(P.getY().toBigInteger().toString(16), 64)
-  const publicKey = '04' + Px + Py
+  const publicKey = "04" + Px + Py
 
   return { privateKey, publicKey }
 }
@@ -68,14 +84,16 @@ export function parseUtf8StringToHex(input: string): string {
     hexChars.push((bite & 0x0f).toString(16))
   }
 
-  return hexChars.join('')
+  return hexChars.join("")
 }
 
 /**
  * 解析arrayBuffer到16进制字符串
  */
 export function parseArrayBufferToHex(input: ArrayBuffer): string {
-  return Array.prototype.map.call(new Uint8Array(input), (x) => ('00' + x.toString(16)).slice(-2)).join('')
+  return Array.prototype.map
+    .call(new Uint8Array(input), (x) => ("00" + x.toString(16)).slice(-2))
+    .join("")
 }
 
 /**
@@ -84,7 +102,7 @@ export function parseArrayBufferToHex(input: ArrayBuffer): string {
 export function leftPad(input: string, num: number): string {
   if (input.length >= num) return input
 
-  return new Array(num - input.length + 1).join('0') + input
+  return new Array(num - input.length + 1).join("0") + input
 }
 
 /**
@@ -106,7 +124,7 @@ export function arrayToHex(arr: number[]): string {
     hexChars.push((bite & 0x0f).toString(16))
   }
 
-  return hexChars.join('')
+  return hexChars.join("")
 }
 
 /**
@@ -128,9 +146,9 @@ export function arrayToUtf8(arr: number[]): string {
       latin1Chars.push(String.fromCharCode(bite))
     }
 
-    return decodeURIComponent(escape(latin1Chars.join('')))
+    return decodeURIComponent(escape(latin1Chars.join("")))
   } catch (e) {
-    throw new Error('Malformed UTF-8 data')
+    throw new Error("Malformed UTF-8 data")
   }
 }
 

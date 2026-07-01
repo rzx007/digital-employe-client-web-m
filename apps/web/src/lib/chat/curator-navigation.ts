@@ -1,0 +1,76 @@
+import {
+  selectConversationForContact,
+  selectWorkbenchCuratorConversation,
+} from "@/lib/chat/conversation-selection"
+import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
+import type { ActiveTab } from "@/stores/chat-store"
+import { useChatStore } from "@/stores/chat-store"
+
+export type CuratorNavigationReturn = {
+  curatorContactId: string
+  curatorConversationId: string | number
+  employeeId: string
+  employeeConversationId: string | number
+  returnTab: ActiveTab
+}
+
+export function navigateToEmployeeFromCurator(options: {
+  curatorContactId: string
+  curatorConversationId: string | number
+  employeeId: string
+  employeeConversationId: string | number
+}) {
+  const state = useChatStore.getState()
+  const returnCtx: CuratorNavigationReturn = {
+    curatorContactId: options.curatorContactId,
+    curatorConversationId: options.curatorConversationId,
+    employeeId: options.employeeId.startsWith("employee:")
+      ? options.employeeId
+      : `employee:${options.employeeId}`,
+    employeeConversationId: options.employeeConversationId,
+    returnTab: state.activeTab,
+  }
+  state.setCuratorNavigationReturn(returnCtx)
+  const employeeContactId = options.employeeId.startsWith("employee:")
+    ? options.employeeId
+    : `employee:${options.employeeId}`
+  // 跳到员工对话前收起总管侧的右栏（员工任务/子任务/产物/监控/浏览器）——
+  // 它们都是总管会话上下文的面板，留着会与员工对话错位（修：查看任务详情后 panel 没收起）。
+  resetChatRightPanels()
+  selectConversationForContact(
+    employeeContactId,
+    options.employeeConversationId
+  )
+  state.setActiveTab("chat")
+}
+
+export function returnToCuratorFromEmployeeNavigation(): boolean {
+  const state = useChatStore.getState()
+  const ctx = state.curatorNavigationReturn
+  if (!ctx) return false
+
+  state.clearCuratorNavigationReturn()
+
+  if (ctx.returnTab === "workbench") {
+    state.setActiveTab("workbench")
+    selectWorkbenchCuratorConversation(ctx.curatorConversationId)
+    return true
+  }
+
+  selectConversationForContact(
+    ctx.curatorContactId,
+    ctx.curatorConversationId
+  )
+  state.setActiveTab("chat")
+  return true
+}
+
+export function shouldShowCuratorReturnBar(
+  ctx: CuratorNavigationReturn | null,
+  selectedContactId: string | null,
+  selectedConversationId: string | number | null
+): boolean {
+  if (!ctx) return false
+  if (selectedContactId !== ctx.employeeId) return false
+  return String(selectedConversationId) === String(ctx.employeeConversationId)
+}

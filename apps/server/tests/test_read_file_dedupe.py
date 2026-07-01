@@ -1,0 +1,206 @@
+"""Tests for read_file duplicate suppression before LLM calls."""
+
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+from src.service.agent.read_file_dedupe import (
+    dedupe_read_file_tool_messages,
+    extract_path_from_write_exists_error,
+    extract_read_file_path,
+    inject_write_already_exists_hint,
+    is_write_already_exists_error,
+    read_file_dedupe_placeholder,
+)
+
+
+def test_no_duplicate_unchanged() -> None:
+    messages = [
+        HumanMessage(content="hi"),
+        ToolMessage(content="line1\nline2", name="read_file", tool_call_id="c1"),
+    ]
+    out = dedupe_read_file_tool_messages(messages)
+    assert out[1].content == "line1\nline2"
+
+
+def test_same_path_keeps_latest_only() -> None:
+    path = "/artifacts/report.md"
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "c1",
+                    "name": "read_file",
+                    "args": {"file_path": path, "offset": 0},
+                }
+            ],
+        ),
+        ToolMessage(content="OLD BODY " * 50, name="read_file", tool_call_id="c1"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "c2",
+                    "name": "read_file",
+                    "args": {"file_path": path, "offset": 0},
+                }
+            ],
+        ),
+        ToolMessage(content="NEW BODY", name="read_file", tool_call_id="c2"),
+    ]
+    out = dedupe_read_file_tool_messages(messages)
+    assert read_file_dedupe_placeholder(path) in str(out[1].content)
+    assert out[3].content == "NEW BODY"
+
+
+def test_same_path_different_offsets_both_kept() -> None:
+    """分页阅读：offset 0 与 offset 200 的片段必须同时保留，否则模型会迷失读到哪里。"""
+    path = "/artifacts/report.md"
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "c1",
+                    "name": "read_file",
+                    "args": {"file_path": path, "offset": 0, "limit": 200},
+                }
+            ],
+        ),
+        ToolMessage(
+            content="PART1",
+            name="read_file",
+            tool_call_id="c1",
+            additional_kwargs={"read_file_path": path, "read_file_offset": 0},
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "c2",
+                    "name": "read_file",
+                    "args": {"file_path": path, "offset": 200, "limit": 300},
+                }
+            ],
+        ),
+        ToolMessage(
+            content="PART2",
+            name="read_file",
+            tool_call_id="c2",
+            additional_kwargs={"read_file_path": path, "read_file_offset": 200},
+        ),
+    ]
+    out = dedupe_read_file_tool_messages(messages)
+    assert out[1].content == "PART1"
+    assert out[3].content == "PART2"
+
+
+def test_different_paths_both_kept() -> None:
+    messages = [
+        ToolMessage(
+            content="a",
+            name="read_file",
+            tool_call_id="c1",
+            additional_kwargs={"read_file_path": "/a.md"},
+        ),
+        ToolMessage(
+            content="b",
+            name="read_file",
+            tool_call_id="c2",
+            additional_kwargs={"read_file_path": "/b.md"},
+        ),
+    ]
+    out = dedupe_read_file_tool_messages(messages)
+    assert out[0].content == "a"
+    assert out[1].content == "b"
+
+
+def test_error_read_not_replaced() -> None:
+    path = "/missing.md"
+    messages = [
+        ToolMessage(
+            content="Error: not found",
+            name="read_file",
+            tool_call_id="c1",
+            status="error",
+            additional_kwargs={"read_file_path": path},
+        ),
+        ToolMessage(
+            content="ok",
+            name="read_file",
+            tool_call_id="c2",
+            additional_kwargs={"read_file_path": path},
+        ),
+    ]
+    out = dedupe_read_file_tool_messages(messages)
+    assert out[0].content == "Error: not found"
+    assert out[1].content == "ok"
+
+
+def test_extract_path_from_ai_tool_call() -> None:
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "c9",
+                    "name": "read_file",
+                    "args": {"file_path": "/uploads/x.txt"},
+                }
+            ],
+        ),
+        ToolMessage(content="data", name="read_file", tool_call_id="c9"),
+    ]
+    path = extract_read_file_path(messages[1], messages, 1)
+    assert path == "/uploads/x.txt"
+
+
+def test_image_read_clears_content_blocks_on_dedupe() -> None:
+    path = "/uploads/photo.png"
+    messages = [
+        ToolMessage(
+            content="",
+            content_blocks=[{"type": "image", "base64": "abc", "mime_type": "image/png"}],
+            name="read_file",
+            tool_call_id="c1",
+            additional_kwargs={"read_file_path": path},
+        ),
+        ToolMessage(
+            content="latest text",
+            name="read_file",
+            tool_call_id="c2",
+            additional_kwargs={"read_file_path": path},
+        ),
+    ]
+    out = dedupe_read_file_tool_messages(messages)
+    assert read_file_dedupe_placeholder(path) in str(out[0].content)
+    blocks = out[0].content_blocks or []
+    assert not any(b.get("type") == "image" for b in blocks)
+
+
+def test_is_write_already_exists_error() -> None:
+    err = (
+        "Cannot write to /global-gaming-market/generate_doc.py "
+        "because it already exists. Read and then make an edit."
+    )
+    assert is_write_already_exists_error(err) is True
+    assert extract_path_from_write_exists_error(err) == (
+        "/global-gaming-market/generate_doc.py"
+    )
+
+
+def test_inject_write_already_exists_hint() -> None:
+    err = (
+        "Cannot write to /artifacts/generate_doc.py because it already exists. "
+        "Read and then make an edit, or write to a new path."
+    )
+    messages = [
+        ToolMessage(content="file body", name="read_file", tool_call_id="r1"),
+        ToolMessage(content=err, name="write_file", tool_call_id="w1"),
+    ]
+    out = inject_write_already_exists_hint(messages)
+    assert out[1].content != err
+    assert "edit_file" in str(out[1].content)
+    assert "禁止再次 write_file" in str(out[1].content)
+    # 幂等：二次注入不重复
+    out2 = inject_write_already_exists_hint(out)
+    assert out2[1].content == out[1].content

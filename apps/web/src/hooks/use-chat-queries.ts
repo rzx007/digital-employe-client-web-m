@@ -1,29 +1,34 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { deleteConversation as deleteConversationApi } from "@/api/conversation"
 import {
   fetchEmployeeById,
   updateEmployee,
   type CreateEmployeeParams,
 } from "@/api/employee"
-import { fetchGroupById } from "@/api/group"
 import {
   createConversation,
+  deleteConversation as deleteConversationApi,
+  deleteTaskExecutionsByOrchestratorConversation,
   fetchContacts,
-  fetchConversationsByContactId,
-  fetchMessagesByConversationId,
-} from "@/api/chat"
-import {
   fetchConversationResources,
-  fetchResourceContent,
+  fetchConversationsByContactId,
   fetchCuratorConversation,
-  deleteAllTaskExecutions,
+  fetchMessagesByConversationId,
+  fetchResourceContent,
+  updateConversationTitle as updateConversationTitleApi,
   uploadConversationFile,
-} from "@/api/conversation"
-import type { Contact } from "@/lib/mock-data/ai-employees"
-import type { Conversation } from "@/lib/mock-data/conversations"
-import type { Message } from "@/lib/mock-data/messages"
+} from "@/api/chat"
+import type { Contact, Conversation, Message } from "@/types/chat"
+import { findContactInList } from "@/lib/chat/contact-utils"
+import {
+  enterDraftConversation,
+  selectConversationById,
+} from "@/lib/chat/conversation-selection"
+import { resetChatRightPanels } from "@/lib/chat/reset-chat-right-panels"
+import { conversationListQueryKey } from "@/lib/chat/conversation-list-query-key"
 import { chatKeys } from "@/lib/query-keys/chat"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
+import { useChatStore } from "@/stores/chat-store"
 
 export function useContactsQuery() {
   return useQuery({
@@ -37,11 +42,10 @@ export function useConversationsQuery(
   contact?: Contact | undefined
 ) {
   return useQuery({
-    queryKey: chatKeys.conversations(contactId ?? ""),
+    queryKey: conversationListQueryKey(contactId ?? ""),
     queryFn: ({ signal }) =>
       fetchConversationsByContactId(contactId!, contact, { signal }),
-    enabled:
-      Boolean(contactId) && Boolean(contact),
+    enabled: Boolean(contactId) && Boolean(contact),
   })
 }
 
@@ -51,7 +55,11 @@ export function useMessagesQuery(conversationId: string | number | null) {
     queryFn: ({ signal }) =>
       fetchMessagesByConversationId(conversationId!, { signal }),
     enabled: Boolean(conversationId),
-    staleTime: 1000 * 15 * 0,
+    staleTime: 0,
+    /** 切回会话时不用创建会话时写入的空缓存，始终拉最新 DB */
+    refetchOnMount: "always",
+    /**  refetch 期间保留上一份消息，避免切走再切回闪成空白 */
+    placeholderData: (previous) => previous,
   })
 }
 
@@ -66,15 +74,33 @@ export function useCuratorConversationQuery() {
   })
 }
 
-export function useOrchestrationPlansQuery() {
+export function useOrchestrationPlansQuery(
+  conversationId?: string | number | null
+) {
+  const convKey = conversationId != null ? String(conversationId) : null
   return useQuery({
-    queryKey: [...chatKeys.all, "orchestration-plans"],
+    queryKey: chatKeys.orchestrationPlans(convKey),
     queryFn: async ({ signal }) => {
       const { request } = await import("@/lib/request")
-      const res = await request<{ code: number; data: Array<{ id: number; workspace_id: number; conversation_id: number; user_input: string; plan_json: string; status: string; total_tasks: number; completed_tasks: number; created_at: string; updated_at: string }> }>(
-        "/workspaces/1/orchestration/plans",
-        { signal },
-      )
+      const qs =
+        convKey != null ? `?conversation_id=${encodeURIComponent(convKey)}` : ""
+      const res = await request<{
+        code: number
+        data: Array<{
+          id: number
+          workspace_id: number
+          conversation_id: number
+          user_input: string
+          plan_json: string
+          status: string
+          total_tasks: number
+          completed_tasks: number
+          created_at: string
+          updated_at: string
+        }>
+      }>(`/workspaces/${getActiveWorkspaceId()}/orchestration/plans${qs}`, {
+        signal,
+      })
       return res?.data ?? []
     },
     refetchInterval: 5000,
@@ -87,7 +113,7 @@ export function useCreateConversationMutation() {
     mutationFn: createConversation,
     onSuccess: (conversation) => {
       queryClient.setQueryData<Conversation[]>(
-        chatKeys.conversations(conversation.contactId),
+        conversationListQueryKey(conversation.contactId),
         (current) => {
           if (!current) {
             return [conversation]
@@ -105,21 +131,41 @@ export function useCreateConversationMutation() {
   })
 }
 
-export function useEmployeeDetailQuery(id: string | null) {
-  return useQuery({
-    queryKey: chatKeys.employee(id ?? ""),
-    queryFn: ({ signal }) =>
-      fetchEmployeeById(Number(id!), { signal }),
-    enabled: Boolean(id),
-    select: (res) => res.data,
+export function useUpdateConversationTitleMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      conversationId,
+      title,
+    }: {
+      conversationId: string | number
+      title: string
+      contactId: string
+    }) => {
+      const res = await updateConversationTitleApi(conversationId, title)
+      if (!res?.data) {
+        throw new Error("更新会话标题失败")
+      }
+      return res.data
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.setQueryData<Conversation[]>(
+        conversationListQueryKey(variables.contactId),
+        (current) =>
+          current?.map((item) =>
+            String(item.id) === String(variables.conversationId)
+              ? { ...item, title: variables.title }
+              : item
+          )
+      )
+    },
   })
 }
 
-export function useGroupDetailQuery(id: string | null) {
+export function useEmployeeDetailQuery(id: string | null) {
   return useQuery({
-    queryKey: chatKeys.group(id ?? ""),
-    queryFn: ({ signal }) =>
-      fetchGroupById(Number(id!), { signal }),
+    queryKey: chatKeys.employee(id ?? ""),
+    queryFn: ({ signal }) => fetchEmployeeById(Number(id!), { signal }),
     enabled: Boolean(id),
     select: (res) => res.data,
   })
@@ -129,61 +175,94 @@ export function useDeleteConversationMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       conversationId,
+      contactId,
     }: {
       conversationId: string
       contactId: string
-    }) => deleteConversationApi(conversationId),
+    }) => {
+      const contact = findContactInList(
+        useChatStore.getState().contacts,
+        contactId
+      )
+      if (contact?.type === "curator") {
+        await deleteTaskExecutionsByOrchestratorConversation(conversationId)
+      }
+      return deleteConversationApi(conversationId)
+    },
     onMutate: async ({ conversationId, contactId }) => {
       await queryClient.cancelQueries({
-        queryKey: chatKeys.conversations(contactId),
+        queryKey: conversationListQueryKey(contactId),
       })
 
       const previousConversations = queryClient.getQueryData<Conversation[]>(
-        chatKeys.conversations(contactId)
+        conversationListQueryKey(contactId)
       )
 
       queryClient.setQueryData<Conversation[]>(
-        chatKeys.conversations(contactId),
-        (current) => current?.filter((c) => c.id !== conversationId)
+        conversationListQueryKey(contactId),
+        (current) =>
+          current?.filter((c) => String(c.id) !== String(conversationId))
       )
+
+      const remaining =
+        queryClient.getQueryData<Conversation[]>(
+          conversationListQueryKey(contactId)
+        ) ?? []
+      const contact = findContactInList(
+        useChatStore.getState().contacts,
+        contactId
+      )
+      const { selectedConversationId, isDraftConversation } =
+        useChatStore.getState()
+      const deletedId = String(conversationId)
+      const targetsCurrentSelection =
+        String(selectedConversationId) === deletedId ||
+        (selectedConversationId == null && remaining.length === 0)
+
+      if (targetsCurrentSelection && contact?.type !== "curator") {
+        const next = remaining[0]
+        if (next) {
+          selectConversationById(next.id)
+        } else if (!isDraftConversation) {
+          enterDraftConversation()
+        }
+      }
 
       return { previousConversations, contactId }
     },
     onError: (_error, _variables, context) => {
       if (context?.previousConversations) {
         queryClient.setQueryData(
-          chatKeys.conversations(context.contactId),
+          conversationListQueryKey(context.contactId),
           context.previousConversations
         )
       }
     },
     onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({
-        queryKey: chatKeys.conversations(variables.contactId),
+        queryKey: conversationListQueryKey(variables.contactId),
       })
-    },
-  })
-}
-
-export function useResetCuratorConversation() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({ conversationId, clearTaskLogs }: {
-      conversationId: number | string
-      clearTaskLogs?: boolean
-    }) => {
-      const promises: Promise<unknown>[] = [deleteConversationApi(conversationId)]
-      if (clearTaskLogs) {
-        promises.push(deleteAllTaskExecutions())
+      const contact = findContactInList(
+        useChatStore.getState().contacts,
+        variables.contactId
+      )
+      if (contact?.type === "curator") {
+        queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
+        queryClient.invalidateQueries({
+          queryKey: [...chatKeys.all, "all-task-executions"],
+        })
+        queryClient.invalidateQueries({
+          queryKey: [...chatKeys.all, "curator-executions"],
+        })
+        queryClient.invalidateQueries({
+          queryKey: [...chatKeys.all, "orchestration-plans"],
+        })
       }
-      await Promise.all(promises)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: chatKeys.curator() })
-      queryClient.invalidateQueries({ queryKey: [...chatKeys.all, "all-task-executions"] })
+      resetChatRightPanels()
     },
   })
 }
@@ -205,7 +284,9 @@ export function useUpdateEmployeeMutation(employeeId: string) {
   })
 }
 
-export function useConversationResourcesQuery(conversationId: string | number | null) {
+export function useConversationResourcesQuery(
+  conversationId: string | number | null
+) {
   return useQuery({
     queryKey: chatKeys.resources(String(conversationId)),
     queryFn: async ({ signal }) => {
@@ -218,7 +299,7 @@ export function useConversationResourcesQuery(conversationId: string | number | 
 
 export function useResourceContentQuery(
   conversationId: string | number,
-  path: string | null,
+  path: string | null
 ) {
   return useQuery({
     queryKey: chatKeys.resourceContent(String(conversationId), path ?? ""),

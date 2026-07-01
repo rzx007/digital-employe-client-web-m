@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow"
 import {
   IconCalendar,
   IconArchive,
+  IconChecklist,
   IconFolder,
   IconMessage2Plus,
   IconDots,
@@ -32,18 +33,20 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 
+import { useQueryClient } from "@tanstack/react-query"
 import { useDeleteConversationMutation } from "@/hooks/use-chat-queries"
+import { focusAfterDeletedConversation } from "@/lib/chat/conversation-selection"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useArtifactStore } from "@/stores/artifact-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useMonitorStore } from "@/stores/monitor-store"
+import { useTasksPanelStore } from "@/stores/tasks-panel-store"
+import { useUnifiedRunningCount } from "@/hooks/use-unified-tasks"
 import { cn } from "@workspace/ui/lib/utils"
 import { Separator } from "@workspace/ui/components/separator"
 import type { ChatViewContact } from "../shared/chat-view-shared"
-import {
-  EmployeeContactAvatar,
-  GroupMembersAvatar,
-} from "../contacts/contact-avatars"
+
+import { EmployeeContactAvatar } from "../contacts/contact-avatars"
 
 interface ChatPanelHeaderProps {
   title: string
@@ -63,24 +66,21 @@ export function ChatPanelHeader({
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [alertOpen, setAlertOpen] = React.useState(false)
-  const {
-    selectedContactId,
-    setSelectedConversationId,
-    setDraftConversation,
-    selectedConversationId,
-  } = useChatStore(
+  const { selectedContactId, selectedConversationId } = useChatStore(
     useShallow((state) => ({
       selectedContactId: state.selectedContactId,
       selectedConversationId: state.selectedConversationId,
-      setSelectedConversationId: state.setSelectedConversationId,
-      setDraftConversation: state.setDraftConversation,
     }))
   )
+  const queryClient = useQueryClient()
   const deleteMutation = useDeleteConversationMutation()
   const openMonitor = useMonitorStore((s) => s.openMonitor)
   const isArtifactPanelOpen = useArtifactStore((s) => s.isPanelOpen)
   const setArtifactPanelOpen = useArtifactStore((s) => s.setPanelOpen)
   const isCompactMode = useChatStore((s) => s.isCompactMode)
+  const isTasksPanelOpen = useTasksPanelStore((s) => s.isOpen)
+  const toggleTasksPanel = useTasksPanelStore((s) => s.toggle)
+  const runningTaskCount = useUnifiedRunningCount(selectedConversationId)
 
   const handleDeleteClick = () => {
     setMenuOpen(false)
@@ -98,10 +98,18 @@ export function ChatPanelHeader({
         contactId: selectedContactId,
       },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           toast.success(`已删除「${title}」`)
-          setSelectedConversationId(null)
-          setDraftConversation(true)
+          try {
+            await focusAfterDeletedConversation(
+              queryClient,
+              selectedContactId,
+              selectedConversationId,
+              contact
+            )
+          } catch {
+            // 总管删光后 create 失败时 toast 已在 focus 内处理
+          }
         },
         onError: () => {
           toast.error("删除失败，请稍后重试")
@@ -125,12 +133,7 @@ export function ChatPanelHeader({
           )}
           {contact && (
             <>
-              {contact.type === "group" ? (
-                <GroupMembersAvatar
-                  participants={contact.group?.participants}
-                  className="h-8 w-8"
-                />
-              ) : contact.type === "curator" ? (
+              {contact.type === "curator" ? (
                 <EmployeeContactAvatar
                   name={contact.curator?.name}
                   avatar={contact.curator?.avatar}
@@ -178,6 +181,22 @@ export function ChatPanelHeader({
               onClick={onOpenConversations}
             >
               <IconHistory className="size-4" />
+            </Button>
+          )}
+          {selectedConversationId && (
+            <Button
+              title={isTasksPanelOpen ? "收起任务" : "查看任务"}
+              variant="ghost"
+              size="icon-sm"
+              className="relative"
+              onClick={toggleTasksPanel}
+            >
+              <IconChecklist className="size-4" />
+              {runningTaskCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground">
+                  {runningTaskCount}
+                </span>
+              )}
             </Button>
           )}
           {selectedConversationId && (

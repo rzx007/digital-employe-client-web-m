@@ -1,4 +1,1 @@
-export {
-  EmployeeContactAvatar,
-  GroupMembersAvatar,
-} from "./contacts/contact-avatars"
+export { EmployeeContactAvatar } from "./contacts/contact-avatars"

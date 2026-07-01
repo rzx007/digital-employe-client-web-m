@@ -25,6 +25,11 @@ const STATUS_CONFIG: Record<
     className: "bg-muted text-muted-foreground",
     dotClassName: "bg-muted-foreground",
   },
+  queued: {
+    label: "排队中",
+    className: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClassName: "bg-slate-500",
+  },
   running: {
     label: "运行中",
     className: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
@@ -44,6 +49,11 @@ const STATUS_CONFIG: Record<
     label: "已取消",
     className: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
     dotClassName: "bg-slate-500",
+  },
+  superseded: {
+    label: "已打回",
+    className: "bg-gray-500/10 text-gray-500 dark:text-gray-400",
+    dotClassName: "bg-gray-400",
   },
 }
 

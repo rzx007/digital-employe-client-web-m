@@ -1,0 +1,32 @@
+{
+  "summary": {
+    "total": 1,
+    "rule_passed": 0,
+    "judge_avg": 1.0,
+    "errored": 0
+  },
+  "results": [
+    {
+      "id": "multi-employee-split",
+      "category": "delegation",
+      "rule_pass": false,
+      "checks": [
+        {
+          "name": "tools_called_any",
+          "passed": false,
+          "detail": "需其一 ['create_orchestration_plan']；实际调用 ['list_workspace_employees', 'get_employee', 'get_employee', 'submit_clarifying_questions']"
+        }
+      ],
+      "judge_score": 1,
+      "judge_reason": "员工未执行任务拆解与指令生成，仅通过提问中断流程，完全不符合评分标准。",
+      "tool_calls": [
+        "list_workspace_employees",
+        "get_employee",
+        "get_employee",
+        "submit_clarifying_questions"
+      ],
+      "interrupted": true,
+      "final_text": "两位员工都在。在创建编排计划之前，我需要先确认一些关键信息，以便给员工准确的指令：\n\n"
+    }
+  ]
+}

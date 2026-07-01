@@ -1,0 +1,45 @@
+[project]
+name = "digital-employee-workspace"
+version = "0.0.0"
+description = "Monorepo uv workspace root (Python apps)"
+# 与下方 [tool.uv].environments 一致封顶 <3.13，避免 uv 在 .venv 缺失时按
+# requires-python 选到 managed 的 3.13/3.14（lockfile 解析环境仅覆盖 <3.13，
+# 选超出版本会撞 "current Python platform is not compatible with the lockfile's
+# supported environments"）。
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "digital-employee-client",
+    "digital-employee-activation-core",
+    "digital-employee-license-issuer",
+]
+
+[tool.uv.workspace]
+members = [
+    "apps/server",
+    "packages/activation-core",
+    "apps/license-issuer",
+    "apps/license-issuer-server",
+]
+
+# 国内构建：阿里云 PyPI 为主，npmmirror 备用（勿用 uv sync --frozen/--locked）
+[tool.uv]
+index-url = "https://mirrors.aliyun.com/pypi/simple/"
+extra-index-url = [
+    "https://npmmirror.com/mirror/pypi/simple",
+    "https://pypi.org/simple",
+]
+index-strategy = "unsafe-best-match"
+# 支持 3.11(Windows runner)与 3.12(Mac runner)；封顶 <3.13 避免 3.13 split 重新解析失败
+environments = ["python_version >= '3.11' and python_version < '3.13'"]
+
+# --no-build-isolation 时 uv 需先将 build 工具装入 venv 再构建 workspace 成员
+# hatchling 做可编辑安装(build_editable)还需 editables，单装 hatchling 不会带上
+[tool.uv.extra-build-dependencies]
+digital-employee-activation-core = ["hatchling", "editables"]
+digital-employee-license-issuer = ["hatchling", "editables"]
+digital-employee-client = ["setuptools>=61.0"]
+
+[tool.uv.sources]
+digital-employee-client = { workspace = true }
+digital-employee-activation-core = { workspace = true }
+digital-employee-license-issuer = { workspace = true }

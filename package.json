@@ -8,12 +8,20 @@
     "lint": "turbo lint",
     "format": "turbo format",
     "typecheck": "turbo typecheck",
+    "test": "turbo test",
     "dev:client": "turbo dev:app",
     "build:client": "turbo build:app",
-    "build:app": "python scripts/build-server.py --app && pnpm build:client",
+    "build:app": "python3 scripts/build-server.py --app && pnpm build:client",
+    "build:app:offline": "python3 scripts/build-offline-app.py",
+    "build:app:offline:clean": "python3 scripts/build-offline-app.py --clean",
+    "build:deb:arm64": "bash scripts/build-deb.sh",
+    "build:deb:arm64:offline": "bash scripts/build-deb.sh --offline",
+    "build:deb:arm64:offline:clean": "bash scripts/build-deb.sh --offline --clean",
     "dev:server": "cd apps/server && uv run python start.py",
-    "build:server": "python scripts/build-server.py",
-    "build:server:debug": "python scripts/build-server.py --debug"
+    "build:server": "python3 scripts/build-server.py",
+    "build:server:debug": "python3 scripts/build-server.py --debug",
+    "build:license-issuer": "python apps/license-issuer/scripts/build-binary.py",
+    "publish:browserctl-cli": "pnpm --filter browserctl-cli release"
   },
   "devDependencies": {
     "prettier": "^3.8.1",
@@ -26,6 +34,9 @@
     "node": ">=20"
   },
   "pnpm": {
+    "overrides": {
+      "recharts": "3.8.1"
+    },
     "onlyBuiltDependencies": [
       "electron",
       "better-sqlite3"

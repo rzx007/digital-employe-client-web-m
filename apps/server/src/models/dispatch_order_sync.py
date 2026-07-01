@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
+from src.db.types import CstDateTime
 
 from src.db.base import Base
 from src.models.workspace import cst_now
@@ -24,13 +25,13 @@ class DispatchOrderSync(Base):
     dispatcher: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     receiver: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     start_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        CstDateTime, nullable=True
     )
     end_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        CstDateTime, nullable=True
     )
     occur_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, index=True
+        CstDateTime, nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     eval: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
@@ -41,14 +42,14 @@ class DispatchOrderSync(Base):
     )
     trigger_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     last_triggered_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        CstDateTime, nullable=True
     )
     last_synced_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=cst_now, index=True
+        CstDateTime, nullable=False, default=cst_now, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=cst_now
+        CstDateTime, nullable=False, default=cst_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=cst_now, onupdate=cst_now
+        CstDateTime, nullable=False, default=cst_now, onupdate=cst_now
     )

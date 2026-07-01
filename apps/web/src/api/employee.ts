@@ -1,4 +1,5 @@
 import { request } from "@/lib/request"
+import { getActiveWorkspaceId } from "@/lib/workspace-id"
 import type {
   ApiResponse,
   Capability,
@@ -8,10 +9,6 @@ import type {
   MetadataSkill,
   SkillListItem,
 } from "./types"
-import type { TaskFormData, ShiftScheduleForm } from "@/types/task"
-
-/** 当前固定工作空间 ID */
-const WORKSPACE_ID = 1
 
 export async function fetchMcpList(): Promise<McpListItem[]> {
   const res = await request<{ code?: number; data?: McpListItem[] }>(
@@ -22,22 +19,14 @@ export async function fetchMcpList(): Promise<McpListItem[]> {
 
 export async function fetchSkillList(opts?: {
   signal?: AbortSignal
+  localOnly?: boolean
 }): Promise<SkillListItem[]> {
+  const suffix = opts?.localOnly ? "?localOnly=true" : ""
   const res = await request<{ code?: number; data?: SkillListItem[] }>(
-    "/skills/list",
-    opts?.signal ? { signal: opts.signal } : {},
+    `/skills/list${suffix}`,
+    opts?.signal ? { signal: opts.signal } : {}
   )
   return Array.isArray(res?.data) ? res.data : []
-}
-
-/**
- * 导入员工列表并解析
- * GET /workspaces/{workspace_id}/employees/sync
- */
-export async function syncEmployees() {
-  return request<ApiResponse<null>>(
-    `/workspaces/${WORKSPACE_ID}/employees/sync`
-  )
 }
 
 /**
@@ -46,9 +35,26 @@ export async function syncEmployees() {
  */
 export async function fetchEmployees(opts?: { signal?: AbortSignal }) {
   return request<ApiResponse<Employee[]>>(
-    `/workspaces/${WORKSPACE_ID}/employees`,
-    opts?.signal ? { signal: opts.signal } : {},
+    `/workspaces/${getActiveWorkspaceId()}/employees`,
+    opts?.signal ? { signal: opts.signal } : {}
   )
+}
+
+/** 上传/替换员工自定义头像（图片，multipart）。POST /employees/{id}/avatar */
+export async function uploadEmployeeAvatar(employeeId: number, file: File) {
+  const form = new FormData()
+  form.append("file", file)
+  return request<ApiResponse<Employee>>(`/employees/${employeeId}/avatar`, {
+    method: "POST",
+    body: form,
+  })
+}
+
+/** 删除员工自定义头像，恢复为文字头像。DELETE /employees/{id}/avatar */
+export async function deleteEmployeeAvatar(employeeId: number) {
+  return request<ApiResponse<Employee>>(`/employees/${employeeId}/avatar`, {
+    method: "DELETE",
+  })
 }
 
 /**
@@ -126,38 +132,12 @@ export interface CreateEmployeeParams {
   detail_page_url?: string | null
   mcp_ids?: number[]
   skill_ids?: number[]
-  shift_schedule?: ShiftScheduleForm | null
-  tasks?: TaskFormData[]
 }
 
 function buildEmployeeBody(
   params: CreateEmployeeParams
 ): Record<string, unknown> {
-  const { shift_schedule, tasks, ...basic } = params
-
-  const body: Record<string, unknown> = { ...basic }
-  if (shift_schedule) {
-    body.shift_schedule = shift_schedule
-  }
-
-  if (tasks && tasks.length > 0) {
-    body.tasks = tasks.map((task) => ({
-      id: task.id,
-      task_name: task.task_name,
-      capability_id: task.capability_id,
-      task_type: task.task_type ?? 2,
-      config: {},
-      cron_expression: task.cron_expression || "",
-      is_active: task.is_active ?? true,
-      cron_expression_type: task.cron_expression_type || "daily",
-      user_prompt: task.user_prompt,
-      task_resource_type: task.task_resource_type,
-      skill_id: task.skill_id,
-      confirm_execution_result: task.confirm_execution_result ?? false,
-    }))
-  }
-
-  return body
+  return { ...params }
 }
 
 /**
@@ -168,11 +148,118 @@ export async function createEmployee(
   params: CreateEmployeeParams
 ): Promise<ApiResponse<unknown>> {
   return request<ApiResponse<unknown>>(
-    `/workspaces/${WORKSPACE_ID}/employees`,
+    `/workspaces/${getActiveWorkspaceId()}/employees`,
     {
       method: "POST",
       body: buildEmployeeBody(params),
-    },
+    }
+  )
+}
+
+export interface EmployeeSkillCandidate {
+  name: string
+  zh: string
+  description: string
+}
+
+export interface EmployeeGrowthBrain {
+  profile_md: string
+  skills_list: string[]
+  memories_md: string
+  journal_entries: Array<{
+    ts: string
+    task_name: string
+    status: string
+    duration_ms: number | null
+  }>
+  skill_candidates: EmployeeSkillCandidate[]
+  recent_skill_edits?: Array<{
+    ts: string
+    skill_name: string
+    reason: string
+    backup_version: string | null
+  }>
+  skill_lifecycle?: Record<
+    string,
+    { status: "active" | "stale" | "archived"; pinned: boolean }
+  >
+  archive_suggestion?: {
+    employee_id: number
+    last_active: string | null
+    idle_days: number
+  } | null
+}
+
+/**
+ * 获取员工成长脑图数据
+ * GET /employees/{employee_id}/growth/brain
+ */
+export async function fetchEmployeeGrowthBrain(
+  employeeId: number | string,
+  opts?: { signal?: AbortSignal }
+) {
+  return request<ApiResponse<EmployeeGrowthBrain>>(
+    `/employees/${employeeId}/growth/brain`,
+    opts?.signal ? { signal: opts.signal } : {}
+  )
+}
+
+/**
+ * 采纳技能候选 → 转为该员工正式技能
+ * POST /employees/{employee_id}/growth/skill-candidates/{slug}/adopt
+ */
+export async function adoptSkillCandidate(
+  employeeId: number | string,
+  slug: string
+) {
+  return request<ApiResponse<{ adopted: string }>>(
+    `/employees/${employeeId}/growth/skill-candidates/${encodeURIComponent(slug)}/adopt`,
+    { method: "POST" }
+  )
+}
+
+/**
+ * 忽略技能候选 → 删除候选
+ * POST /employees/{employee_id}/growth/skill-candidates/{slug}/dismiss
+ */
+export async function dismissSkillCandidate(
+  employeeId: number | string,
+  slug: string
+) {
+  return request<ApiResponse<{ dismissed: string }>>(
+    `/employees/${employeeId}/growth/skill-candidates/${encodeURIComponent(slug)}/dismiss`,
+    { method: "POST" }
+  )
+}
+
+/**
+ * 恢复已归档的技能
+ * POST /employees/{employee_id}/growth/skills/{skill_name}/restore
+ * 后端返回 ResponseBase[dict] → data: { skillName, status }
+ */
+export async function restoreSkill(
+  employeeId: number,
+  skillName: string
+) {
+  return request<ApiResponse<{ skillName: string; status: string }>>(
+    `/employees/${employeeId}/growth/skills/${encodeURIComponent(skillName)}/restore`,
+    { method: "POST" }
+  )
+}
+
+/**
+ * 置顶/取消置顶技能
+ * POST /employees/{employee_id}/growth/skills/{skill_name}/pin
+ * 后端返回 ResponseBase[dict] → data: { skillName, pinned }
+ */
+export async function pinSkill(
+  employeeId: number,
+  skillName: string,
+  pinned: boolean
+) {
+  return request<ApiResponse<{ skillName: string; pinned: boolean }>>(
+    `/employees/${employeeId}/growth/skills/${encodeURIComponent(skillName)}/pin`,
+    { method: "POST", body: { pinned } }
   )
 }
 
@@ -185,10 +272,10 @@ export async function updateEmployee(
   params: CreateEmployeeParams
 ): Promise<ApiResponse<unknown>> {
   return request<ApiResponse<unknown>>(
-    `/workspaces/${WORKSPACE_ID}/employees/${employeeId}`,
+    `/workspaces/${getActiveWorkspaceId()}/employees/${employeeId}`,
     {
       method: "PUT",
       body: buildEmployeeBody(params),
-    },
+    }
   )
 }

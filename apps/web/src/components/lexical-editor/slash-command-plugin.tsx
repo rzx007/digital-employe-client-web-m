@@ -28,14 +28,18 @@ export interface SlashCommandItem {
   icon: React.ReactElement
   description: string
   keywords: string[]
+  kind?: "skill" | "shortcut" // 默认按 skill 处理
+  prompt?: string // 仅 shortcut：选中后注入正文的模板
 }
 
-class SlashCommandOption extends MenuOption {
+export class SlashCommandOption extends MenuOption {
   id: string
   title: string
   icon: React.ReactElement
   description: string
   keywords: Array<string>
+  kind?: "skill" | "shortcut"
+  prompt?: string // 仅 shortcut：由调用方(resolveCuratorSend)读取，插件本身不消费
   onSelect: (queryString: string) => void
 
   constructor(item: SlashCommandItem, onSelect: (queryString: string) => void) {
@@ -45,11 +49,13 @@ class SlashCommandOption extends MenuOption {
     this.icon = item.icon
     this.description = item.description
     this.keywords = item.keywords
+    this.kind = item.kind
+    this.prompt = item.prompt
     this.onSelect = onSelect.bind(this)
   }
 }
 
-function FloatingMenu({
+export function FloatingMenu({
   anchorElementRef,
   options,
   selectedIndex,
@@ -86,6 +92,44 @@ function FloatingMenu({
   const isBottomOverflow = rect.bottom + 300 > window.innerHeight
   const topPosition = isBottomOverflow ? rect.top - 40 : rect.bottom + 4
 
+  const indexed = options.map((option, i) => ({ option, i }))
+  const shortcuts = indexed.filter((x) => x.option.kind === "shortcut")
+  const skills = indexed.filter((x) => x.option.kind !== "shortcut")
+  const renderItem = (option: SlashCommandOption, i: number) => (
+    <CommandItem
+      key={option.key}
+      // 把 DOM 节点登记到 option.ref：Lexical 方向键导航据此 scrollIntoView，
+      // 缺失则高亮变化但菜单不滚动（option.ref.current 恒 null）。
+      ref={option.setRefElement}
+      onSelect={() => {
+        setHighlightedIndex(i)
+        selectOptionAndCleanUp(option)
+      }}
+      className={cn(
+        "flex cursor-pointer items-start gap-2 rounded-sm p-2 hover:bg-accent hover:text-accent-foreground",
+        selectedIndex === i && "bg-accent text-accent-foreground"
+      )}
+      onMouseEnter={() => {
+        setHighlightedIndex(i)
+      }}
+      onMouseDown={(e) => {
+        e.preventDefault()
+      }}
+    >
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+        {option.icon}
+      </div>
+      <div className="flex flex-col">
+        <span className="text-sm leading-none font-medium">
+          {option.title}
+        </span>
+        <span className="line-clamp-2 text-xs text-muted-foreground">
+          {option.description}
+        </span>
+      </div>
+    </CommandItem>
+  )
+
   return createPortal(
     <div
       data-prompt-typeahead-menu="true"
@@ -101,39 +145,16 @@ function FloatingMenu({
     >
       <Command>
         <CommandList>
-          <CommandGroup heading="技能">
-            {options.map((option, i) => (
-              <CommandItem
-                key={option.key}
-                onSelect={() => {
-                  setHighlightedIndex(i)
-                  selectOptionAndCleanUp(option)
-                }}
-                className={cn(
-                  "flex cursor-pointer items-start gap-2 rounded-sm p-2 hover:bg-accent hover:text-accent-foreground",
-                  selectedIndex === i && "bg-accent text-accent-foreground"
-                )}
-                onMouseEnter={() => {
-                  setHighlightedIndex(i)
-                }}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                }}
-              >
-                <div className="flex h-6 w-6 items-center justify-center rounded-sm bg-muted text-muted-foreground">
-                  {option.icon}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm leading-none font-medium">
-                    {option.title}
-                  </span>
-                  <span className="text-xs text-muted-foreground line-clamp-2 ">
-                    {option.description}
-                  </span>
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
+          {shortcuts.length > 0 && (
+            <CommandGroup heading="快捷指令">
+              {shortcuts.map(({ option, i }) => renderItem(option, i))}
+            </CommandGroup>
+          )}
+          {skills.length > 0 && (
+            <CommandGroup heading="技能">
+              {skills.map(({ option, i }) => renderItem(option, i))}
+            </CommandGroup>
+          )}
         </CommandList>
       </Command>
     </div>,
@@ -160,9 +181,13 @@ export function SlashCommandPlugin({
           editor.update(() => {
             const selection = $getSelection()
             if ($isRangeSelection(selection)) {
+              const trailing =
+                cmd.kind === "shortcut" && cmd.prompt
+                  ? cmd.prompt
+                  : " "
               selection.insertNodes([
                 $createCommandPillNode(cmd.id, cmd.title),
-                $createTextNode(" "),
+                $createTextNode(trailing),
               ])
             }
           })

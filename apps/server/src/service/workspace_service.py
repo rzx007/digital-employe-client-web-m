@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from src.core.config import get_settings
@@ -14,34 +14,24 @@ from src.schemas.workspace import WorkspaceCreate, WorkspaceUpdate
 logger = logging.getLogger(__name__)
 
 
+def _is_unsafe_rmtree_target(target: Path) -> bool:
+    """拒绝删除文件系统根、托管基目录本身、或其任何祖先——防误删整个 projects 区。"""
+    from src.service.agent import workspace_paths
+
+    t = target.resolve()
+    base = workspace_paths.APP_PROJECTS_BASE.resolve()
+    if t == t.parent:  # 文件系统根（C:\ 或 /）
+        return True
+    if t == base or base.is_relative_to(t):  # base 本身或 base 的祖先
+        return True
+    return False
+
+
 class WorkspaceService:
     @staticmethod
     def ensure_workspace_initialized(db: Session, workspace: Workspace) -> None:
-        """
-        确保 workspace 拥有默认的 seed 员工、总管和任务。
-        幂等：已初始化过的 workspace 跳过（已有总管员工即为已初始化）。
-        """
-        from src.models.employee import Employee
-        from src.service.employee_service import EmployeeService
-        from src.service.task_service import TaskService
-
-        existing_curator = db.scalar(
-            select(Employee).where(
-                Employee.workspace_id == workspace.id,
-                Employee.is_curator.is_(True),
-            )
-        )
-        if existing_curator:
-            return
-
-        EmployeeService.ensure_builtin_seed_employees(db, workspace)
-        EmployeeService.ensure_curator_employee(db, workspace.id)
-        TaskService.sync_workspace_tasks(db, workspace.id)
-        logger.info(
-            "Workspace initialized: id=%s name=%s",
-            workspace.id,
-            workspace.name,
-        )
+        """新建工作空间=空项目：不再播种员工/任务（团队改为 per-用户，见 ensure_user_team）。"""
+        return
 
     @staticmethod
     def _resolve_default_root() -> Path:
@@ -59,9 +49,11 @@ class WorkspaceService:
         return Path(Path.cwd().anchor or str(Path.cwd()))
 
     @staticmethod
-    def get_or_create_user_workspace(db: Session, user_id: str, username: str | None = None) -> Workspace:
+    def ensure_user_default_workspace(
+        db: Session, user_id: str, username: str | None = None
+    ) -> Workspace:
         """
-        根据用户ID获取或创建专属工作空间。
+        解析（或创建）用户的默认工作空间，不做任何播种。
 
         1. 如果已存在该用户的 workspace，直接返回
         2. 如果不存在：
@@ -69,11 +61,14 @@ class WorkspaceService:
            - 是则认领该 workspace（将存量数据迁移给该用户）
            - 否则创建新 workspace，命名为 "<username>的工作空间" 或 "用户工作空间"
         """
+        # 用户可拥有多个工作空间（新增外部文件夹特性后合法）：默认取最早（主）那个，
+        # 不能用 scalar_one_or_none（多行会抛 MultipleResultsFound 致 /workspaces/my 500）。
         existing_workspace = db.execute(
-            select(Workspace).where(Workspace.user_id == user_id)
-        ).scalar_one_or_none()
+            select(Workspace)
+            .where(Workspace.user_id == user_id)
+            .order_by(Workspace.id.asc())
+        ).scalars().first()
         if existing_workspace:
-            WorkspaceService.ensure_workspace_initialized(db, existing_workspace)
             return existing_workspace
 
         # 尝试认领 workspace_id=1（如果还未被认领）
@@ -84,22 +79,53 @@ class WorkspaceService:
             default_workspace.name = username + "的工作空间" if username else "用户工作空间"
             db.commit()
             db.refresh(default_workspace)
-            WorkspaceService.ensure_workspace_initialized(db, default_workspace)
             return default_workspace
 
-        # 创建新的用户专属 workspace
+        # 创建新的用户专属 workspace：自动建托管项目目录（与 create_user_workspace 一致）。
+        from src.service.agent.workspace_paths import APP_PROJECTS_BASE
+
         workspace_name = username + "的工作空间" if username else "用户工作空间"
-        workspace_root = WorkspaceService._resolve_default_root()
         workspace = Workspace(
             name=workspace_name,
-            root_path=str(workspace_root),
+            root_path="",
             user_id=user_id,
         )
         db.add(workspace)
+        db.flush()  # 拿自增 id 给托管目录命名
+        managed_root = APP_PROJECTS_BASE / str(workspace.id)
+        managed_root.mkdir(parents=True, exist_ok=True)
+        workspace.root_path = str(managed_root)
         db.commit()
         db.refresh(workspace)
-        WorkspaceService.ensure_workspace_initialized(db, workspace)
         return workspace
+
+    @staticmethod
+    def ensure_user_team(
+        db: Session, user_id: str, workspace_id: int | None = None
+    ) -> None:
+        """per-用户播种团队（总管 + 内置员工），幂等（存在性按 user_id 判定）。
+
+        员工改为用户级，NOT-NULL 的 workspace_id 此刻仅作装饰性盖戳：
+        未显式给定时，解析到用户默认工作空间的 id。
+        """
+        from src.service.employee_service import EmployeeService
+
+        if workspace_id is None:
+            workspace_id = WorkspaceService.ensure_user_default_workspace(
+                db, user_id
+            ).id
+
+        EmployeeService.ensure_builtin_seed_employees(db, user_id, workspace_id)
+        EmployeeService.ensure_curator_employee(db, user_id, workspace_id)
+
+    @staticmethod
+    def get_or_create_user_workspace(
+        db: Session, user_id: str, username: str | None = None
+    ) -> Workspace:
+        """获取或创建用户默认工作空间，并确保其团队已 per-用户播种。"""
+        ws = WorkspaceService.ensure_user_default_workspace(db, user_id, username)
+        WorkspaceService.ensure_user_team(db, user_id, ws.id)
+        return ws
 
     @staticmethod
     def ensure_default_workspace(db: Session) -> Workspace:
@@ -110,7 +136,10 @@ class WorkspaceService:
         if workspace:
             return workspace
 
-        default_root = WorkspaceService._resolve_default_root()
+        from src.service.agent.workspace_paths import APP_PROJECTS_BASE
+
+        default_root = APP_PROJECTS_BASE / str(default_workspace_id)
+        default_root.mkdir(parents=True, exist_ok=True)
         workspace = Workspace(
             id=default_workspace_id,
             name=default_workspace_name,
@@ -144,6 +173,77 @@ class WorkspaceService:
         return list[Workspace](db.scalars(select(Workspace).order_by(Workspace.id.desc())).all())
 
     @staticmethod
+    def list_user_workspaces(db: Session, user_id: str) -> list[Workspace]:
+        """列出指定用户拥有的所有工作空间（按 id 倒序）。"""
+        return list[Workspace](
+            db.scalars(
+                select(Workspace)
+                .where(Workspace.user_id == user_id)
+                .order_by(Workspace.id.desc())
+            ).all()
+        )
+
+    @staticmethod
+    def create_user_workspace(
+        db: Session,
+        user_id: str,
+        name: str | None,
+        root_path: str | None,
+    ) -> Workspace:
+        """为用户新建一个空项目工作空间（不播种员工/任务）。
+
+        - 未显式给 root_path：自动建托管项目目录 APP_PROJECTS_BASE/<id>/ 并 mkdir
+          （需先 flush 拿到自增 id）。
+        - 显式给外部 root_path（用户手选文件夹，不在 APP_PROJECTS_BASE 下）：
+          原样存储，不重定位、不 mkdir 其本体（用户拥有该目录）。flat 模型——
+          产物直接落该文件夹本体（无 .boban-staff/ 子目录）。文件夹必须已存在
+          （不存在报 400），允许非空（可挂已有项目目录）。建好后置
+          auto_grant_external_dirs=True 并自动授权该目录，避免运行期反复弹审批。
+        """
+        from src.service.agent.workspace_paths import APP_PROJECTS_BASE
+
+        settings = get_settings()
+        workspace_name = name or settings.default_workspace_name or "新项目"
+        explicit_root = bool(root_path)
+
+        is_external = False
+        if explicit_root:
+            rp = Path(root_path)
+            is_external = not rp.is_relative_to(APP_PROJECTS_BASE)
+            if is_external and not rp.exists():
+                # 外部文件夹必须已存在；非空不校验（允许已有项目目录）。
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"文件夹不存在：{root_path}",
+                )
+
+        workspace = Workspace(
+            name=workspace_name,
+            root_path=str(root_path) if explicit_root else "",
+            user_id=user_id,
+        )
+        db.add(workspace)
+        if not explicit_root:
+            # 托管目录需用自增 id 命名：先 flush 拿 id，再 mkdir 回填 root_path。
+            db.flush()
+            managed_root = APP_PROJECTS_BASE / str(workspace.id)
+            managed_root.mkdir(parents=True, exist_ok=True)
+            workspace.root_path = str(managed_root)
+        if is_external:
+            # 外部根：自动授权 + 置 workspace 级 auto 放行，免运行期反复弹审批。
+            workspace.auto_grant_external_dirs = True
+        db.commit()
+        db.refresh(workspace)
+        if is_external:
+            from src.service.authorized_dir_service import grant_dir
+
+            grant_dir(db, workspace.id, str(root_path))
+        from src.service.chat_service import ChatService
+
+        ChatService.ensure_curator_conversation(db, user_id, workspace.id)
+        return workspace
+
+    @staticmethod
     def get_workspace(db: Session, workspace_id: int) -> Workspace:
         workspace = db.get(Workspace, workspace_id)
         if not workspace:
@@ -166,6 +266,80 @@ class WorkspaceService:
 
     @staticmethod
     def delete_workspace(db: Session, workspace_id: int) -> None:
+        """删除工作空间：显式清理项目级行 + 磁盘产物目录，永不触及用户级资源/外部文件。
+
+        项目级（随空间删）：TaskExecutionLog / EmployeeTask / OrchestrationPlan / RecentContact。
+        用户级（保留）：Employee / EmployeeSkill / EmployeeMcp / SkillRating / Conversation。
+
+        磁盘产物：
+        - 托管目录（root_path 在 APP_PROJECTS_BASE 下）：整删 root_path 目录。
+        - 外部用户文件夹（flat 直挂，root 即用户整个文件夹，归用户所有）：
+          磁盘上**什么都不删**，仅撤销该目录的 authorized_dir 授权，
+          永不触碰外部本体及用户文件（否则会抹掉用户真实代码）。
+        清理在 DB 行删除前进行且全程 try/except，磁盘失败绝不阻断 DB 删除。
+        """
+        import shutil
+
+        from src.service.agent import workspace_paths
+
         workspace = WorkspaceService.get_workspace(db, workspace_id)
+
+        # 先捕获 root_path（DB 行删除后 workspace 失效），再算产物目标。
+        root_path = workspace.root_path
+        if root_path:
+            p = Path(root_path)
+            # 在调用时按属性查 APP_PROJECTS_BASE（测试可 monkeypatch 模块属性命中托管分支）。
+            if p.is_relative_to(workspace_paths.APP_PROJECTS_BASE):
+                # 托管：整删 projects/<id> 目录。
+                target = p
+                try:
+                    if target.exists():
+                        if _is_unsafe_rmtree_target(target):
+                            logger.error(
+                                "delete_workspace: 拒绝删除危险目标 %s"
+                                "（疑似托管基目录/根），跳过磁盘清理",
+                                target,
+                            )
+                        else:
+                            logger.warning(
+                                "delete_workspace: 删除产物目录 %s", target
+                            )
+                            shutil.rmtree(target, ignore_errors=True)
+                except Exception:
+                    logger.warning(
+                        "delete_workspace: 清理产物目录失败 %s", target, exc_info=True
+                    )
+            else:
+                # 外部 flat：root 即用户整个文件夹，磁盘上什么都不删，
+                # 只撤销该目录的 authorized_dir 授权。
+                logger.info(
+                    "delete_workspace: 外部工作空间 %s 磁盘内容保留（归用户所有），"
+                    "仅撤销授权 ws#%s",
+                    root_path,
+                    workspace_id,
+                )
+                try:
+                    from src.service.authorized_dir_service import revoke_dir
+
+                    revoke_dir(db, workspace_id, root_path)
+                except Exception:
+                    logger.warning(
+                        "delete_workspace: 撤销外部目录授权失败 %s",
+                        root_path,
+                        exc_info=True,
+                    )
+
+        from src.models.employee_task import EmployeeTask
+        from src.models.orchestration_plan import OrchestrationPlan
+        from src.models.recent_contact import RecentContact
+        from src.models.task_execution_log import TaskExecutionLog
+
+        # 先删执行日志再删任务（TaskExecutionLog.task_id 引用 employee_tasks）。
+        # 运行时 FK OFF，顺序非强制，但为整洁仍按依赖顺序删。
+        for model in (TaskExecutionLog, EmployeeTask, OrchestrationPlan, RecentContact):
+            db.execute(delete(model).where(model.workspace_id == workspace_id))
+
+        # 会话/员工/技能/评分是用户级，不删；其 workspace_id 仍指向已删空间
+        # （FK 运行时 OFF，孤儿无害，仍按 user_id 出现在侧边栏；前端对已删项目名兜底）。
         db.delete(workspace)
         db.commit()
