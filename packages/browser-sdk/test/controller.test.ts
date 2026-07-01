@@ -826,12 +826,35 @@ test("snapshot scope 用 Accessibility.getChildAXTree", async () => {
   assert.ok(t.calls.some(([m]) => m === "Accessibility.getChildAXTree"))
 })
 
-test("snapshot scope 回退：getChildAXTree 抛错 → getFullAXTree", async () => {
+test("snapshot scope 回退：getChildAXTree 抛错 → describeNode + 子树过滤", async () => {
+  const fullTree = [
+    {
+      nodeId: "1",
+      role: { value: "RootWebArea" },
+      childIds: ["2", "5"],
+      backendDOMNodeId: 1,
+    },
+    {
+      nodeId: "2",
+      role: { value: "generic" },
+      childIds: ["3"],
+      backendDOMNodeId: 100,
+    },
+    {
+      nodeId: "3",
+      role: { value: "button" },
+      name: { value: "InModal" },
+      backendDOMNodeId: 101,
+    },
+    {
+      nodeId: "5",
+      role: { value: "button" },
+      name: { value: "Outside" },
+      backendDOMNodeId: 200,
+    },
+  ]
   const t = mockTransport({
     "DOM.querySelector": { nodeId: 100 },
-    "Accessibility.getFullAXTree": {
-      nodes: [{ nodeId: "1", role: { value: "RootWebArea" }, childIds: [] }],
-    },
     "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
   })
   t.sendCommand = async (method, params) => {
@@ -839,10 +862,11 @@ test("snapshot scope 回退：getChildAXTree 抛错 → getFullAXTree", async ()
     if (method === "Accessibility.getChildAXTree") {
       throw new Error("not supported")
     }
+    if (method === "DOM.describeNode") {
+      return { node: { backendNodeId: 100 } }
+    }
     if (method === "Accessibility.getFullAXTree") {
-      return {
-        nodes: [{ nodeId: "1", role: { value: "RootWebArea" }, childIds: [] }],
-      }
+      return { nodes: fullTree }
     }
     if (method === "DOM.querySelector") return { nodeId: 100 }
     return {}
@@ -850,10 +874,55 @@ test("snapshot scope 回退：getChildAXTree 抛错 → getFullAXTree", async ()
   const c = new BrowserController(t)
   const r = await c.snapshot(200, { scopeSelector: "#modal" })
   assert.equal(r.ok, true)
-  assert.ok(t.calls.some(([m]) => m === "Accessibility.getChildAXTree"))
+  const names = (r.data?.refs ?? []).map((ref) => ref.name)
+  assert.ok(names.includes("InModal"))
+  assert.ok(!names.includes("Outside"), "回退路径应裁剪 scope 外节点")
+  assert.ok(t.calls.some(([m]) => m === "DOM.describeNode"))
+})
+
+test("snapshot scope 仍收集 iframe 子 frame AX 树", async () => {
+  const t = mockTransport({
+    "DOM.querySelector": { nodeId: 100 },
+    "Accessibility.getChildAXTree": {
+      nodes: [{ nodeId: "10", role: { value: "button" }, name: { value: "OK" } }],
+    },
+    "Page.getFrameTree": {
+      frameTree: {
+        frame: { id: "main" },
+        childFrames: [{ frame: { id: "iframe-1" } }],
+      },
+    },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: ["2"],
+          backendDOMNodeId: 1,
+        },
+        {
+          nodeId: "2",
+          role: { value: "textbox" },
+          name: { value: "iframe输入" },
+          backendDOMNodeId: 20,
+        },
+      ],
+    },
+  })
+  const c = new BrowserController(t)
+  const r = await c.snapshot(200, { scopeSelector: "#modal" })
+  assert.equal(r.ok, true)
   assert.ok(
-    t.calls.some(([m]) => m === "Accessibility.getFullAXTree"),
-    "回退到 getFullAXTree"
+    t.calls.some(
+      ([m, p]) =>
+        m === "Accessibility.getFullAXTree" &&
+        (p as { frameId?: string }).frameId === "iframe-1"
+    ),
+    "scope 路径仍应收集 iframe 子 frame"
+  )
+  assert.ok(
+    (r.data?.refs ?? []).some((ref) => ref.name === "iframe输入"),
+    "iframe 内节点应出现在 refs"
   )
 })
 
@@ -902,6 +971,72 @@ test("screenshot --annotate：注入 overlay、captureBeyondViewport:true、移�
     evals.some(([, p]) =>
       String((p as { expression?: string }).expression).includes("remove()")
     )
+  )
+})
+
+test("screenshot --annotate：captureScreenshot 失败仍移除 overlay", async () => {
+  const t = mockTransport({
+    "DOM.resolveNode": { object: { objectId: "obj-1" } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "OK" },
+          backendDOMNodeId: 1,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+    "Runtime.callFunctionOn": {
+      result: { value: { x: 0, y: 0, width: 100, height: 50 } },
+    },
+    "Runtime.evaluate": { result: { value: true } },
+  })
+  t.sendCommand = async (method, params) => {
+    t.calls.push([method, params])
+    if (method === "Accessibility.getFullAXTree") {
+      return {
+        nodes: [
+          { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
+          {
+            nodeId: "2",
+            role: { value: "button" },
+            name: { value: "OK" },
+            backendDOMNodeId: 1,
+          },
+        ],
+      }
+    }
+    if (method === "DOM.resolveNode") return { object: { objectId: "obj-1" } }
+    if (method === "Runtime.callFunctionOn") {
+      return { result: { value: { x: 0, y: 0, width: 100, height: 50 } } }
+    }
+    if (method === "Runtime.evaluate") return { result: { value: true } }
+    if (method === "Page.captureScreenshot") {
+      throw new Error("capture failed")
+    }
+    return {}
+  }
+  const c = new BrowserController(t)
+  await c.snapshot(200)
+  const r = await c.screenshot({ annotate: true })
+  assert.equal(r.ok, false)
+  const evals = t.calls.filter(([m]) => m === "Runtime.evaluate")
+  assert.ok(
+    evals.some(([, p]) =>
+      String((p as { expression?: string }).expression).includes(
+        "__browserctl_annotations__"
+      )
+    ),
+    "应先注入 overlay"
+  )
+  assert.ok(
+    evals.some(([, p]) =>
+      String((p as { expression?: string }).expression).includes("remove()")
+    ),
+    "capture 失败时 finally 仍应移除 overlay"
   )
 })
 

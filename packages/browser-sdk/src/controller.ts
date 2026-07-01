@@ -136,17 +136,24 @@ export class BrowserController {
             })) as { nodes?: unknown[] }
             framesNodes.push(r.nodes ?? [])
           } catch {
+            const described = (await this.sendCommand("DOM.describeNode", {
+              nodeId: q.nodeId,
+            })) as { node?: { backendNodeId?: number } }
+            const scopeBackendId = described.node?.backendNodeId
             const r = (await this.sendCommand("Accessibility.getFullAXTree")) as {
               nodes?: unknown[]
             }
-            framesNodes.push(r.nodes ?? [])
+            const all = r.nodes ?? []
+            framesNodes.push(
+              scopeBackendId
+                ? this.filterAxSubtree(all, scopeBackendId)
+                : all
+            )
           }
         } else {
-          const r = (await this.sendCommand("Accessibility.getFullAXTree")) as {
-            nodes?: unknown[]
-          }
-          framesNodes.push(r.nodes ?? [])
+          framesNodes.push([])
         }
+        framesNodes.push(...(await this.collectChildFrameAxTrees()))
       } else {
         framesNodes = await this.collectFullSnapshotFrames()
       }
@@ -186,7 +193,19 @@ export class BrowserController {
     }
 
     const framesNodes: unknown[][] = [mainNodes]
-    let skippedFrames = 0
+    framesNodes.push(...(await this.collectChildFrameAxTrees()))
+
+    logger.debug("[browser-debugger] collectFullSnapshotFrames", {
+      frames: framesNodes.length,
+      mainRawNodes: mainNodes.length,
+      rootChildCount,
+    })
+    return framesNodes
+  }
+
+  /** 收集子 frame 的 AX 树（跨源 OOPIF 静默跳过）。 */
+  private async collectChildFrameAxTrees(): Promise<unknown[][]> {
+    const frames: unknown[][] = []
     try {
       const tree = (await this.sendCommand("Page.getFrameTree")) as {
         frameTree?: FrameTreeNode
@@ -199,9 +218,8 @@ export class BrowserController {
           const r = (await this.sendCommand("Accessibility.getFullAXTree", {
             frameId,
           })) as { nodes?: unknown[] }
-          framesNodes.push(r.nodes ?? [])
+          frames.push(r.nodes ?? [])
         } catch (err) {
-          skippedFrames++
           logger.debug("[browser-debugger] snapshot frame skipped", {
             frameId,
             err: (err as Error).message,
@@ -213,14 +231,34 @@ export class BrowserController {
         err: (e as Error).message,
       })
     }
+    return frames
+  }
 
-    logger.debug("[browser-debugger] collectFullSnapshotFrames", {
-      frames: framesNodes.length,
-      skippedFrames,
-      mainRawNodes: mainNodes.length,
-      rootChildCount,
-    })
-    return framesNodes
+  /** getChildAXTree 不可用时，按 scope 根 backendNodeId 裁剪整棵 AX 树。 */
+  private filterAxSubtree(
+    allNodes: unknown[],
+    rootBackendNodeId: number
+  ): unknown[] {
+    const nodeMap = new Map<string, AxNode>()
+    for (const n of allNodes) {
+      const node = n as AxNode
+      if (node.nodeId != null) nodeMap.set(String(node.nodeId), node)
+    }
+    const root = allNodes.find(
+      (n) => (n as AxNode).backendDOMNodeId === rootBackendNodeId
+    ) as AxNode | undefined
+    if (!root?.nodeId) return []
+    const kept = new Set<string>()
+    const walk = (id: string) => {
+      if (kept.has(id)) return
+      kept.add(id)
+      const node = nodeMap.get(id)
+      if (node?.childIds) {
+        for (const cid of node.childIds) walk(String(cid))
+      }
+    }
+    walk(String(root.nodeId))
+    return allNodes.filter((n) => kept.has(String((n as AxNode).nodeId)))
   }
 
   // 把目标滚进视口中心。@eN 走 DOM.resolveNode → callFunctionOn；
@@ -1097,6 +1135,7 @@ export class BrowserController {
         name?: string
         box: { x: number; y: number; width: number; height: number }
       }> = []
+      let overlayInjected = false
       if (opts.annotate) {
         if (!this.refCache.length) await this.snapshot()
         const items: Array<{
@@ -1177,20 +1216,28 @@ export class BrowserController {
             document.documentElement.appendChild(c); return true;
           })()`,
         })
+        overlayInjected = true
       }
-      const result = (await this.sendCommand("Page.captureScreenshot", {
-        format: "png",
-        captureBeyondViewport: true,
-      })) as { data?: string }
-      if (opts.annotate) {
-        await this.sendCommand("Runtime.evaluate", {
-          expression:
-            "document.getElementById('__browserctl_annotations__')?.remove()",
-        })
-      }
-      return {
-        ok: true,
-        data: { base64: result.data ?? "", annotations },
+      try {
+        const result = (await this.sendCommand("Page.captureScreenshot", {
+          format: "png",
+          captureBeyondViewport: true,
+        })) as { data?: string }
+        return {
+          ok: true,
+          data: { base64: result.data ?? "", annotations },
+        }
+      } finally {
+        if (overlayInjected) {
+          try {
+            await this.sendCommand("Runtime.evaluate", {
+              expression:
+                "document.getElementById('__browserctl_annotations__')?.remove()",
+            })
+          } catch {
+            /* overlay 清理失败不阻断返回 */
+          }
+        }
       }
     } catch (e) {
       return { ok: false, error: (e as Error).message, code: "BROWSER_ERROR" }
