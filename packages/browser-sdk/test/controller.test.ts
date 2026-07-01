@@ -806,3 +806,53 @@ test("waitForState hidden：元素 display:none 即满足", async () => {
   const r = await c.waitForState("#modal", "hidden", 5000)
   assert.equal(r.ok, true)
 })
+
+test("snapshot scope 用 Accessibility.getChildAXTree", async () => {
+  const t = mockTransport({
+    "Accessibility.getFullAXTree": {
+      nodes: [{ nodeId: "1", role: { value: "RootWebArea" }, childIds: [] }],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+    "DOM.querySelector": { nodeId: 100 },
+    "Accessibility.getChildAXTree": {
+      nodes: [
+        { nodeId: "10", role: { value: "button" }, name: { value: "OK" } },
+      ],
+    },
+  })
+  const c = new BrowserController(t)
+  const r = await c.snapshot(200, { scopeSelector: "#modal" })
+  assert.equal(r.ok, true)
+  assert.ok(t.calls.some(([m]) => m === "Accessibility.getChildAXTree"))
+})
+
+test("snapshot scope 回退：getChildAXTree 抛错 → getFullAXTree", async () => {
+  const t = mockTransport({
+    "DOM.querySelector": { nodeId: 100 },
+    "Accessibility.getFullAXTree": {
+      nodes: [{ nodeId: "1", role: { value: "RootWebArea" }, childIds: [] }],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  t.sendCommand = async (method, params) => {
+    t.calls.push([method, params])
+    if (method === "Accessibility.getChildAXTree") {
+      throw new Error("not supported")
+    }
+    if (method === "Accessibility.getFullAXTree") {
+      return {
+        nodes: [{ nodeId: "1", role: { value: "RootWebArea" }, childIds: [] }],
+      }
+    }
+    if (method === "DOM.querySelector") return { nodeId: 100 }
+    return {}
+  }
+  const c = new BrowserController(t)
+  const r = await c.snapshot(200, { scopeSelector: "#modal" })
+  assert.equal(r.ok, true)
+  assert.ok(t.calls.some(([m]) => m === "Accessibility.getChildAXTree"))
+  assert.ok(
+    t.calls.some(([m]) => m === "Accessibility.getFullAXTree"),
+    "回退到 getFullAXTree"
+  )
+})

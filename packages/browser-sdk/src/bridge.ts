@@ -222,7 +222,18 @@ async function handleBridgeRequest(
         }
         const maxNodes =
           typeof body.max_nodes === "number" ? body.max_nodes : 200
-        const result = await controller.snapshot(maxNodes)
+        const compact = Boolean(body.compact)
+        const maxDepth =
+          typeof body.max_depth === "number" ? body.max_depth : undefined
+        const scopeSelector =
+          typeof body.scope_selector === "string"
+            ? body.scope_selector
+            : undefined
+        const result = await controller.snapshot(maxNodes, {
+          compact,
+          maxDepth,
+          scopeSelector,
+        })
         reply(res, result.ok ? 200 : 502, result)
         return
       }

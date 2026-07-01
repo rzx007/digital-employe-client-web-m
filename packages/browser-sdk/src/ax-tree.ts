@@ -5,8 +5,8 @@
 export interface RefNode {
   ref: string
   role: string
-  name: string | null
-  value: string | null
+  name: string | null | undefined
+  value: string | null | undefined
   backendNodeId: number
   depth: number
 }
@@ -24,7 +24,12 @@ export interface AxNode {
 
 const MASKED_ROLES = new Set(["password"])
 
-export function buildRefs(framesNodes: unknown[][], maxNodes: number): RefNode[] {
+export function buildRefs(
+  framesNodes: unknown[][],
+  maxNodes: number,
+  opts: { compact?: boolean; maxDepth?: number; scopeSelector?: string } = {}
+): RefNode[] {
+  const { compact = false, maxDepth } = opts
   const refs: RefNode[] = []
   let counter = 0
 
@@ -37,6 +42,7 @@ export function buildRefs(framesNodes: unknown[][], maxNodes: number): RefNode[]
 
     const walk = (node: AxNode, depth: number) => {
       if (refs.length >= maxNodes) return
+      if (maxDepth !== undefined && depth > maxDepth) return
       const role = node.role?.value ?? "generic"
       // ignored 节点（wrapper / 布局容器）自身不暴露，但子节点可能是真正的可交互控件——
       // 必须透明穿透继续遍历，否则整棵子树被剪。
@@ -71,8 +77,12 @@ export function buildRefs(framesNodes: unknown[][], maxNodes: number): RefNode[]
       refs.push({
         ref: `@e${counter++}`,
         role,
-        name: node.name?.value ?? null,
-        value: node.value?.value ?? null,
+        name: compact
+          ? (node.name?.value ?? undefined)
+          : (node.name?.value ?? null),
+        value: compact
+          ? (node.value?.value ?? undefined)
+          : (node.value?.value ?? null),
         backendNodeId: node.backendDOMNodeId ?? 0,
         depth,
       })

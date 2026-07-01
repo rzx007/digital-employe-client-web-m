@@ -113,72 +113,114 @@ export class BrowserController {
     }
   }
 
-  async snapshot(maxNodes = 200): Promise<CdpResult<{ refs: RefNode[] }>> {
+  async snapshot(
+    maxNodes = 200,
+    opts: {
+      compact?: boolean
+      maxDepth?: number
+      scopeSelector?: string
+    } = {}
+  ): Promise<CdpResult<{ refs: RefNode[] }>> {
     try {
       await this.sendCommand("Accessibility.enable")
-      // 主 frame：a11y 树惰性构建，轮询直到 RootWebArea 暴露子节点或超时 3s
-      let mainNodes: unknown[] = []
-      let rootChildCount = 0
-      const deadline = Date.now() + 3000
-      for (;;) {
-        const result = (await this.sendCommand(
-          "Accessibility.getFullAXTree"
-        )) as { nodes?: unknown[] }
-        mainNodes = result.nodes ?? []
-        const root = mainNodes.find(
-          (n) => (n as AxNode).role?.value === "RootWebArea"
-        ) as AxNode | undefined
-        rootChildCount = root?.childIds?.length ?? 0
-        if (rootChildCount > 0 || Date.now() >= deadline) break
-        await new Promise((r) => setTimeout(r, 150))
-      }
+      let framesNodes: unknown[][] = []
 
-      // 子 frame：同源/in-process 能取到树→拼入；跨源 OOPIF 取不到→跳过、不崩
-      const framesNodes: unknown[][] = [mainNodes]
-      let skippedFrames = 0
-      try {
-        const tree = (await this.sendCommand("Page.getFrameTree")) as {
-          frameTree?: FrameTreeNode
-        }
-        const childFrameIds = tree.frameTree
-          ? collectChildFrames(tree.frameTree)
-          : []
-        for (const frameId of childFrameIds) {
+      if (opts.scopeSelector) {
+        const q = (await this.sendCommand("DOM.querySelector", {
+          selector: opts.scopeSelector,
+        })) as { nodeId?: number }
+        if (q.nodeId) {
           try {
-            const r = (await this.sendCommand("Accessibility.getFullAXTree", {
-              frameId,
+            const r = (await this.sendCommand("Accessibility.getChildAXTree", {
+              nodeId: q.nodeId,
             })) as { nodes?: unknown[] }
             framesNodes.push(r.nodes ?? [])
-          } catch (err) {
-            // 跨源 OOPIF 单 session 取不到树属预期；记 debug 以便与真实 CDP 异常区分
-            skippedFrames++
-            logger.debug("[browser-debugger] snapshot frame skipped", {
-              frameId,
-              err: (err as Error).message,
-            })
+          } catch {
+            const r = (await this.sendCommand("Accessibility.getFullAXTree")) as {
+              nodes?: unknown[]
+            }
+            framesNodes.push(r.nodes ?? [])
           }
+        } else {
+          const r = (await this.sendCommand("Accessibility.getFullAXTree")) as {
+            nodes?: unknown[]
+          }
+          framesNodes.push(r.nodes ?? [])
         }
-      } catch (e) {
-        // getFrameTree 失败：退化为仅主 frame，不影响主流程
-        logger.warn("[browser-debugger] getFrameTree failed, main-frame only", {
-          err: (e as Error).message,
-        })
+      } else {
+        framesNodes = await this.collectFullSnapshotFrames()
       }
 
-      const refs = buildRefs(framesNodes, maxNodes)
+      const refs = buildRefs(framesNodes, maxNodes, opts)
       this.refCache = refs
       logger.info("[browser-debugger] snapshot", {
         frames: framesNodes.length,
-        skippedFrames,
-        mainRawNodes: mainNodes.length,
-        rootChildCount,
         refs: refs.length,
         truncated: refs.length >= maxNodes,
+        compact: Boolean(opts.compact),
+        maxDepth: opts.maxDepth,
+        scopeSelector: opts.scopeSelector,
       })
       return { ok: true, data: { refs } }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
     }
+  }
+
+  /** 主 frame 惰性轮询 + 子 frame 收集（跨源 OOPIF 静默跳过）。 */
+  private async collectFullSnapshotFrames(): Promise<unknown[][]> {
+    let mainNodes: unknown[] = []
+    let rootChildCount = 0
+    const deadline = Date.now() + 3000
+    for (;;) {
+      const result = (await this.sendCommand(
+        "Accessibility.getFullAXTree"
+      )) as { nodes?: unknown[] }
+      mainNodes = result.nodes ?? []
+      const root = mainNodes.find(
+        (n) => (n as AxNode).role?.value === "RootWebArea"
+      ) as AxNode | undefined
+      rootChildCount = root?.childIds?.length ?? 0
+      if (rootChildCount > 0 || Date.now() >= deadline) break
+      await new Promise((r) => setTimeout(r, 150))
+    }
+
+    const framesNodes: unknown[][] = [mainNodes]
+    let skippedFrames = 0
+    try {
+      const tree = (await this.sendCommand("Page.getFrameTree")) as {
+        frameTree?: FrameTreeNode
+      }
+      const childFrameIds = tree.frameTree
+        ? collectChildFrames(tree.frameTree)
+        : []
+      for (const frameId of childFrameIds) {
+        try {
+          const r = (await this.sendCommand("Accessibility.getFullAXTree", {
+            frameId,
+          })) as { nodes?: unknown[] }
+          framesNodes.push(r.nodes ?? [])
+        } catch (err) {
+          skippedFrames++
+          logger.debug("[browser-debugger] snapshot frame skipped", {
+            frameId,
+            err: (err as Error).message,
+          })
+        }
+      }
+    } catch (e) {
+      logger.warn("[browser-debugger] getFrameTree failed, main-frame only", {
+        err: (e as Error).message,
+      })
+    }
+
+    logger.debug("[browser-debugger] collectFullSnapshotFrames", {
+      frames: framesNodes.length,
+      skippedFrames,
+      mainRawNodes: mainNodes.length,
+      rootChildCount,
+    })
+    return framesNodes
   }
 
   // 把目标滚进视口中心。@eN 走 DOM.resolveNode → callFunctionOn；

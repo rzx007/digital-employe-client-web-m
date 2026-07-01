@@ -55,6 +55,9 @@ browserctl open https://www.baidu.com
 # Take a full-page snapshot and enter interactive element-picker mode
 browserctl snapshot --interactive
 
+# Compact snapshot with depth limit and scoped subtree
+browserctl snapshot -c -d 3 -s "#main"
+
 # Fill an input identified by element number
 browserctl fill @eN "search query"
 

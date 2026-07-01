@@ -316,6 +316,24 @@ test("wait --fn-file 归一到 body.fn", async () => {
   }
 })
 
+test("snapshot -c -d 2 -s #main 传 compact/max_depth/scope_selector", async () => {
+  let received
+  const srv = await startServer(async (req, res) => {
+    received = JSON.parse(await readBody(req))
+    res.end(JSON.stringify({ ok: true, data: { refs: [] } }))
+  })
+  try {
+    await runCli(["snapshot", "-c", "-d", "2", "-s", "#main"], {
+      env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+    })
+    assert.equal(received.compact, true)
+    assert.equal(received.max_depth, 2)
+    assert.equal(received.scope_selector, "#main")
+  } finally {
+    await closeServer(srv)
+  }
+})
+
 test("snapshot --interactive 输出紧凑文本", async () => {
   const refs = [
     { ref: "@e0", role: "RootWebArea", name: "百度", depth: 0 },

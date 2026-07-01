@@ -31,7 +31,7 @@ Usage:
   browserctl open <url> [--pretty]
   browserctl navigate <url> [--pretty]
   browserctl open-artifact <virtual-path>   # 打开会话产物目录里的 HTML 到内嵌浏览器
-  browserctl snapshot [--max-nodes 200] [--tree | --interactive] [--pretty]
+  browserctl snapshot [--max-nodes 200] [--compact|-c] [--depth N|-d N] [--scope <sel>|-s <sel>] [--tree | --interactive] [--pretty]
   browserctl click <@eN|selector> [--confirm "message"] [--pretty]
   browserctl press <key> [@eN|selector] [--ctrl|--shift|--alt|--meta] [--pretty]
   browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>] [--pretty]
@@ -389,6 +389,9 @@ async function run(argv, baseUrl) {
   if (command === "snapshot") {
     const result = await postAction("snapshot", {
       max_nodes: Number.isFinite(flags.maxNodes) ? flags.maxNodes : 200,
+      compact: Boolean(flags.compact),
+      max_depth: Number.isFinite(flags.depth) ? flags.depth : undefined,
+      scope_selector: flags.scope || undefined,
     })
     if (
       (flags.tree || flags.interactive) &&

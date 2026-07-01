@@ -133,3 +133,33 @@ test("多 frame：空组 / 无 RootWebArea 组不崩", () => {
   const refs = buildRefs([[], f1], 200)
   assert.ok(refs.some((r) => r.name === "ok"))
 })
+
+test("buildRefs compact 丢弃 null name/value，保留 ref/role/backendNodeId/depth", () => {
+  const nodes = [
+    { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2", "3"] },
+    { nodeId: "2", role: { value: "button" }, name: { value: "Submit" } },
+    { nodeId: "3", role: { value: "generic" } },
+  ]
+  const refs = buildRefs([nodes], 200, { compact: true })
+  const e3 = refs.find((r) => r.role === "generic")
+  assert.ok(e3)
+  assert.equal(e3.name, undefined)
+  assert.equal(e3.value, undefined)
+})
+
+test("buildRefs maxDepth 限深", () => {
+  const nodes = [
+    { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
+    {
+      nodeId: "2",
+      role: { value: "button" },
+      name: { value: "A" },
+      childIds: ["3"],
+    },
+    { nodeId: "3", role: { value: "button" }, name: { value: "B" } },
+  ]
+  const refs = buildRefs([nodes], 200, { maxDepth: 1 })
+  assert.ok(refs.some((r) => r.role === "RootWebArea"))
+  assert.ok(refs.some((r) => r.name === "A"))
+  assert.ok(!refs.some((r) => r.name === "B"))
+})

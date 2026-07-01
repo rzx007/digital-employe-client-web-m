@@ -68,7 +68,7 @@ browserctl health
 ```bash
 browserctl open https://example.com
 browserctl open-artifact report.html   # 打开产物目录里的 HTML（cwd 即产物目录，纯文件名即可；无文件卡片时用）
-browserctl snapshot --max-nodes 200   # 自动含同源 iframe 内元素；跨源 iframe 跳过
+browserctl snapshot [--interactive] [-c] [-d N] [-s <sel>]   # 自动含同源 iframe；-c 裁剪 null 字段，-d 限深，-s 限定子树
 browserctl click @e3
 browserctl click @e8 --confirm "确认提交申请？"
 browserctl fill @e4 "输入内容"

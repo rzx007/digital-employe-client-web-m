@@ -19,7 +19,7 @@
 ```bash
 browserctl health
 browserctl open <url>                 # = navigate，自动等到 readyState=complete
-browserctl snapshot [--max-nodes 200] [--tree | --interactive]
+browserctl snapshot [--max-nodes 200] [--compact|-c] [--depth N|-d N] [--scope <sel>|-s <sel>] [--tree | --interactive]
 browserctl wait (--selector <css> [--state visible|hidden] | --text <text> | --url <glob> | --load networkidle | --fn <js> | --fn-file <path> | --fn-stdin | --ms <n>) [--timeout 10000]
 browserctl click <@eN|selector> [--confirm "确认文案"]
 browserctl fill <@eN|selector> (<text> | --text-file <path> | --text-stdin)

@@ -69,7 +69,7 @@ browserctl health
 browserctl open <url>
 browserctl navigate <url>
 browserctl open-artifact <文件名或真实路径>   # 打开会话产物目录里的 HTML（纯文件名按 $ARTIFACTS_DIR 解析，自动识别会话，支持相对资源），无文件卡片时用
-browserctl snapshot [--max-nodes 200] [--tree|--interactive]   # 文本模式省 token；--interactive 仅可交互节点平铺，--tree 全量缩进树，默认 JSON
+browserctl snapshot [--max-nodes 200] [--compact|-c] [--depth N|-d N] [--scope <sel>|-s <sel>] [--tree|--interactive]   # 文本模式省 token；--interactive 仅可交互节点平铺，--tree 全量缩进树，默认 JSON；-c 裁剪 null 字段，-d 限深，-s 限定子树
 browserctl click <@eN|selector> [--confirm "确认文案"]
 browserctl wait --selector <css> [--state visible|hidden]  # 等元素出现/隐藏（默认超时 10s，--timeout 改）
 browserctl wait --text <文本>        # 等文本出现在页面
