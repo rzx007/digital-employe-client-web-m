@@ -568,7 +568,10 @@ async function handleBridgeRequest(
           result = await controller.waitForUrl(url, timeoutMs)
         } else if (fn) {
           result = await controller.waitForFunction(fn, timeoutMs)
-        } else if (selector && state) {
+        } else if (
+          selector &&
+          (state === "visible" || state === "hidden")
+        ) {
           result = await controller.waitForState(selector, state, timeoutMs)
         } else {
           result = await controller.waitFor({ selector, text, timeoutMs })
