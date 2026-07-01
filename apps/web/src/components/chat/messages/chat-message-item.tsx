@@ -115,6 +115,12 @@ function ChatMessageItemInner({
     return null
   }, [message])
 
+  const isStreamingEmptyShell =
+    message.role === "assistant" &&
+    isLastAssistantMessage &&
+    !isTurnEnded &&
+    classifiedBlocks.length === 0
+
   const messageBody = (
     <div className="space-y-1.5">
       {classifiedBlocks.length > 0 ? (
@@ -136,7 +142,9 @@ function ChatMessageItemInner({
             }}
           />
         ))
-      ) : (
+      ) : message.role === "assistant" &&
+        isLastAssistantMessage &&
+        !isTurnEnded ? null : (
         <MessageResponse />
       )}
     </div>
@@ -210,7 +218,7 @@ function ChatMessageItemInner({
           meta={voiceMeta}
           transcript={copyText}
         />
-      ) : (
+      ) : isStreamingEmptyShell ? null : (
         <MessageContent className="w-auto">{messageBody}</MessageContent>
       )}
       {message.role === "assistant" ? (

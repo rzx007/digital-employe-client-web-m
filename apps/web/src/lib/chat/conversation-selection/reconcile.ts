@@ -75,6 +75,15 @@ export function useReconcileConversationSelection(
         return
       }
 
+      const wbId = useChatStore.getState().workbenchCuratorConversationId
+      if (
+        wbId != null &&
+        String(wbId) !== String(selectedConversationId) &&
+        conversationExistsInList(conversations, wbId)
+      ) {
+        selectConversationById(wbId)
+      }
+
       // 新建会话刚选中时列表 refetch 可能尚未包含该 id，勿抢选回旧会话
       return
     }

@@ -37,7 +37,11 @@ function ActivationPage() {
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <div className="flex flex-col items-center gap-2">
-          <img src={brand.logos.login} alt={brand.productName} className="w-12" />
+          <img
+            src={brand.logos.login}
+            alt={brand.productName}
+            className="h-[58px] w-auto max-w-[280px] object-contain"
+          />
           <h1 className="text-lg font-semibold">应用激活</h1>
           <p className="text-center text-xs text-muted-foreground">
             首次使用需绑定本机设备并输入授权码

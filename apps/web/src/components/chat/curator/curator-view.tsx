@@ -177,6 +177,11 @@ function CuratorMessageItem({
     message,
     session.activeHitl
   )
+  const isStreamingEmptyShell =
+    message.role === "assistant" &&
+    isLastAssistantMessage &&
+    !hasCurrentTurnEnded &&
+    classifiedBlocks.length === 0
   const ctx = {
     messageId: hitlApproveMessageId,
     conversationId: curatorConversationId,
@@ -258,7 +263,7 @@ function CuratorMessageItem({
           meta={voiceMeta}
           transcript={copyText}
         />
-      ) : (
+      ) : isStreamingEmptyShell ? null : (
         <MessageContent className="w-auto">
           <div className="space-y-3">
             {classifiedBlocks.length > 0 ? (
@@ -480,19 +485,20 @@ export function CuratorView({
   const backendStreaming =
     getLastAssistantMessage(storedMessages)?.streamState === "streaming"
   // 忙 = 总管自身的流在跑 / 后端假结束仍在跑 / 员工任务在后台跑。
-  // (curatorExecutions/tasksRunning/cancelExec 已在 handleStop 前定义。)
   const isBusy =
     status === "submitted" ||
     status === "streaming" ||
     backendStreaming ||
     tasksRunning
-  // 忙时(本地 status=ready 但后端/任务在跑)提交按钮显示「停止」(■)，
-  // 点 handleStop 取消总管流并中止所有在跑任务。
   const chatStatus: typeof status =
     status === "ready" && isBusy ? "submitted" : status
 
   const displayMessages = useMemo(() => {
-    const source = pickMessageDisplaySource(messages, initialMessages, status)
+    const source = pickMessageDisplaySource(
+      messages,
+      initialMessages,
+      chatStatus
+    )
     const filtered = source.filter((msg) => {
       const meta = (msg as unknown as { metadata?: unknown }).metadata
       if (!meta || typeof meta !== "object") return true
@@ -502,7 +508,7 @@ export function CuratorView({
       )
     })
     return prepareDisplayMessages(filtered)
-  }, [messages, initialMessages, status])
+  }, [messages, initialMessages, chatStatus])
 
   const lastAssistantMessageId = useMemo(() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
@@ -512,7 +518,7 @@ export function CuratorView({
   }, [displayMessages])
 
   const hasCurrentTurnEnded =
-    status === "ready" || status === "error" || !!error
+    (status === "ready" || status === "error" || !!error) && !backendStreaming
   const showStreamingIndicator =
     !isMessagesLoading &&
     (status === "submitted" || status === "streaming" || backendStreaming) &&

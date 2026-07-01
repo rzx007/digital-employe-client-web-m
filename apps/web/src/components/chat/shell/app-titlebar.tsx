@@ -80,7 +80,11 @@ export function AppTitlebar({ title }: AppTitlebarProps) {
             aria-hidden
           >
             <div className="flex items-center gap-2">
-              <img src={logoSvg} alt="" className="w-4" />
+              <img
+                src={logoSvg}
+                alt=""
+                className="h-6 w-auto max-w-[140px] object-contain"
+              />
               <span className="text-xs text-muted-foreground">
                 {resolvedTitle}
               </span>
@@ -90,7 +94,11 @@ export function AppTitlebar({ title }: AppTitlebarProps) {
         </>
       ) : (
         <div className="flex h-full items-center gap-2 px-3">
-          <img src={logoSvg} alt="" className="w-4" />
+          <img
+            src={logoSvg}
+            alt=""
+            className="h-6 w-auto max-w-[140px] object-contain"
+          />
           <span className="text-xs text-muted-foreground">{title}</span>
         </div>
       )}

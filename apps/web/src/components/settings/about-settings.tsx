@@ -55,9 +55,11 @@ export function AboutSettings() {
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
           <div className="flex flex-col items-center gap-3 py-4">
-            <div className="flex size-16 items-center justify-center rounded-2xl text-2xl font-bold text-primary-foreground">
-              <img src={brand.logos.app} className="w-10" alt="" />
-            </div>
+            <img
+              src={brand.logos.app}
+              alt={brand.productName}
+              className="h-14 w-auto max-w-[220px] object-contain"
+            />
             <span className="text-xl font-semibold">{brand.productName}</span>
             <span className="text-xs text-muted-foreground">
               {brand.subtitle}

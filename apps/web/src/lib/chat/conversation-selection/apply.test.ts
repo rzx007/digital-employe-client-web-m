@@ -80,6 +80,47 @@ describe("setActiveTab chat safety net", () => {
     useChatStore.getState().setActiveTab("chat")
     expect(useChatStore.getState().selectedContactId).toBe("curator:5")
   })
+
+  it("restores curator conversation id after employee deep link (not stale exec id)", () => {
+    useChatStore.setState({
+      selectedContactId: "curator:5",
+      selectedConversationId: 9999,
+      workbenchCuratorConversationId: 101,
+      curatorNavigationReturn: {
+        curatorContactId: "curator:5",
+        curatorConversationId: 101,
+        employeeId: "employee:7",
+        employeeConversationId: 9999,
+        returnTab: "workbench",
+      },
+      activeTab: "workbench",
+    })
+    useChatStore.getState().setActiveTab("chat")
+    const state = useChatStore.getState()
+    expect(state.selectedContactId).toBe("curator:5")
+    expect(state.selectedConversationId).toBe(101)
+    expect(state.curatorNavigationReturn).toBeNull()
+  })
+
+  it("does not reset to curator while active employee deep link (查看)", () => {
+    useChatStore.setState({
+      selectedContactId: "employee:7",
+      selectedConversationId: 9999,
+      curatorNavigationReturn: {
+        curatorContactId: "curator:5",
+        curatorConversationId: 101,
+        employeeId: "employee:7",
+        employeeConversationId: 9999,
+        returnTab: "chat",
+      },
+      activeTab: "workbench",
+    })
+    useChatStore.getState().setActiveTab("chat")
+    const state = useChatStore.getState()
+    expect(state.selectedContactId).toBe("employee:7")
+    expect(state.selectedConversationId).toBe(9999)
+    expect(state.curatorNavigationReturn).not.toBeNull()
+  })
 })
 
 describe("switchToContact", () => {

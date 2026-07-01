@@ -45,6 +45,68 @@ function isInterruptedAwaitingApproval(
   )
 }
 
+function liveHasOnlyTextParts(parts: UIMessage["parts"]): boolean {
+  if (!parts?.length) return false
+  return parts.every(
+    (part) => part.type === "text" || part.type === "reasoning"
+  )
+}
+
+function storedHasStructuredToolParts(parts: UIMessage["parts"]): boolean {
+  if (!parts?.length) return false
+  return parts.some(
+    (part) =>
+      typeof part.type === "string" &&
+      (part.type.startsWith("tool-") || part.type === "dynamic-tool")
+  )
+}
+
+/**
+ * live 仅有 text/reasoning、DB 同 id 已有 tool parts 时，用 DB 结构化 parts 替换，
+ * 避免切回会话后只显示纯文字、工具卡/组件缺失（SSE 断线前 composer 可能只累积了 text）。
+ */
+export function preferStoredStructuredPartsWhenLiveTextOnly(
+  liveMessages: UIMessage[],
+  storedMessages: UIMessage[]
+): UIMessage[] {
+  if (liveMessages.length === 0 || storedMessages.length === 0) {
+    return liveMessages
+  }
+
+  const storedById = storedMessageIndexByDbId(storedMessages)
+  let changed = false
+
+  const next = liveMessages.map((liveMsg) => {
+    if (liveMsg.role !== "assistant") return liveMsg
+    const liveParts = liveMsg.parts ?? []
+    if (!liveHasOnlyTextParts(liveParts)) return liveMsg
+
+    const dbId = parseDbMessageId(liveMsg.id)
+    if (dbId == null) return liveMsg
+
+    const stored = storedById.get(String(dbId))
+    const storedParts = stored?.parts ?? []
+    if (
+      !storedHasStructuredToolParts(storedParts) ||
+      storedParts.length <= liveParts.length
+    ) {
+      return liveMsg
+    }
+
+    changed = true
+    return {
+      ...liveMsg,
+      parts: storedParts,
+      metadata: {
+        ...readMetadata(liveMsg),
+        ...(readMetadata(stored) ?? {}),
+      },
+    } as UIMessage
+  })
+
+  return changed ? next : liveMessages
+}
+
 function storedMessageIndexByDbId(
   storedMessages: UIMessage[]
 ): Map<string, UIMessage> {
@@ -215,7 +277,23 @@ export function pickMessageDisplaySource(
   status: string
 ): UIMessage[] {
   if (status === "streaming" || status === "submitted") {
-    return hydrateEmptyAssistantShellsFromDb(liveMessages, storedMessages)
+    if (
+      liveMessages.length === 0 ||
+      messagesNeedHydrateFromDb(liveMessages, storedMessages)
+    ) {
+      const merged =
+        patchComposerFromStoredWhenSameTurn(liveMessages, storedMessages) ??
+        storedMessages
+      return preferStoredStructuredPartsWhenLiveTextOnly(
+        hydrateEmptyAssistantShellsFromDb(merged, storedMessages),
+        storedMessages
+      )
+    }
+    const hydrated = hydrateEmptyAssistantShellsFromDb(
+      liveMessages,
+      storedMessages
+    )
+    return preferStoredStructuredPartsWhenLiveTextOnly(hydrated, storedMessages)
   }
 
   let source = liveMessages
@@ -243,6 +321,8 @@ export function pickMessageDisplaySource(
       )
     }
   }
+
+  source = preferStoredStructuredPartsWhenLiveTextOnly(source, storedMessages)
 
   return hydrateEmptyAssistantShellsFromDb(source, storedMessages)
 }

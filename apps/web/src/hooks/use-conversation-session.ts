@@ -46,6 +46,7 @@ import {
   shouldAttemptResume,
 } from "@/lib/chat/session/resume-decision"
 import { resetLastAssistantPartsForResume } from "@/lib/chat/session/reset-assistant-parts-for-resume"
+import { hydrateEmptyAssistantShellsFromDb } from "@/lib/chat/pick-message-display-source"
 import { shouldSkipResumeWhenInFlight } from "@/lib/chat/resume-inflight-guard"
 import { decideHydration } from "@/lib/chat/session/hydrate-decision"
 
@@ -223,7 +224,13 @@ export function useConversationSession({
         // 否则重放的新 text part 会叠在断线前已渲染的旧 part 上→前缀重复（SDK 的
         // text part 不按 id upsert）。清空后重放等于「权威快照原地覆盖整条气泡」，
         // 不丢不重。同步 setMessages 后再 resumeStream，确保 SDK 读到的是空壳基底。
-        setMessages(resetLastAssistantPartsForResume)
+        setMessages((prev) => {
+          const cleared = resetLastAssistantPartsForResume(prev)
+          return hydrateEmptyAssistantShellsFromDb(
+            cleared,
+            initialMessagesRef.current
+          )
+        })
         resumeStream()
       }, attemptIndex)
 

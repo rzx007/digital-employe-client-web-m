@@ -124,13 +124,18 @@ function PlanGeneratedCardInner({
   const executionByTaskId = React.useMemo(() => {
     const map = new Map<
       number,
-      { conversation_id?: number; employee_id?: number }
+      {
+        conversation_id?: number
+        employee_id?: number
+        employee_name?: string
+      }
     >()
     for (const execution of planExecutions) {
       if (execution.task_id == null) continue
       map.set(execution.task_id, {
         conversation_id: execution.conversation_id ?? undefined,
         employee_id: execution.employee_id,
+        employee_name: execution.employee_name,
       })
     }
     return map
@@ -441,7 +446,11 @@ function PlanGeneratedCardInner({
                 task_id: t.task_id ?? i,
                 task_name: t.task_name,
                 employee_id: t.employee_id ?? execution?.employee_id,
-                employee_name: t.employee_name ?? "",
+                employee_name:
+                  t.employee_name ||
+                  execution?.employee_name ||
+                  detailEmployeeNameById[t.task_id ?? -1] ||
+                  "",
                 status:
                   t.task_id != null
                     ? (statusByTaskId[t.task_id] ?? "pending")

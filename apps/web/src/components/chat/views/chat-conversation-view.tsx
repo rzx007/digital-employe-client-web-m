@@ -287,10 +287,19 @@ export function ConversationChatView({
       ? error
       : undefined
 
+  const isBusy = status === "submitted" || status === "streaming"
+  const effectiveBusy = isBusy || backendStreaming || tasksRunning
+  const chatStatus: typeof status =
+    effectiveBusy && status === "ready" ? "submitted" : status
+
   const displayMessages = useMemo(() => {
-    const source = pickMessageDisplaySource(messages, initialMessages, status)
+    const source = pickMessageDisplaySource(
+      messages,
+      initialMessages,
+      chatStatus
+    )
     return prepareDisplayMessages(source)
-  }, [initialMessages, messages, status])
+  }, [initialMessages, messages, chatStatus])
 
   const handleHitlApproved = useCallback(
     (options?: Parameters<typeof session.onHitlApproved>[0]) => {
@@ -306,16 +315,6 @@ export function ConversationChatView({
 
     setInputValue(event.value)
   }, [])
-
-  const isBusy = status === "submitted" || status === "streaming"
-
-  // 含「后端仍在跑」(总管自身的流) + 「员工任务在后台跑」：用于发送决策(走排队)、禁用态。
-  const effectiveBusy = isBusy || backendStreaming || tasksRunning
-
-  // 忙但本地 status=ready(后端仍在跑/员工任务在后台跑)时，提交按钮显示「停止」(■)，
-  // 点击 handleStop 会取消总管流并中止所有在跑任务。
-  const chatStatus: typeof status =
-    effectiveBusy && status === "ready" ? "submitted" : status
 
   const isSubmitDisabled = useMemo(() => {
     if (effectiveBusy) {
