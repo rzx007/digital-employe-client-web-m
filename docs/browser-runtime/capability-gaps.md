@@ -1,7 +1,10 @@
 # browser-runtime 能力差距与待办
 
-> 最后更新：2026-06-03
-> 对照 agent-browser / playwright 一脉的 a11y-tree 浏览器自动化能力，列出当前 `browserctl` **尚缺**、且对企业系统表单操作有实际影响的功能。按必要性排序（不逐字对照 agent-browser 命令名）。
+> **已过时（2026-06-03）** — 多数项已在 Batch 1 / 高频命令 / iframe / Batch 5 P1 中完成。  
+> **当前权威对照**：[browserctl-vs-agent-browser-gap.md](./browserctl-vs-agent-browser-gap.md)
+
+> 最后更新：2026-06-03  
+> 对照 agent-browser / playwright 一脉的 a11y-tree 浏览器自动化能力，列出当前 `browserctl` **尚缺**、且对企业系统表单操作有实际影响的功能。按必要性排序（不逐字对照 agent-browser 命令名）。  
 > 现状已对照 [`browser-debugger-controller.ts`](../../apps/web/electron/features/browser/browser-debugger-controller.ts) 实际实现确认。
 
 ## 🔴 高优先（直接影响基本成功率）

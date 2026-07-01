@@ -108,6 +108,10 @@ browserctl get url
 browserctl get title
 browserctl get value <@eN|selector>    # 读元素当前值（el.value 优先，回退 value 属性），校验 fill/select
 browserctl get text <@eN|selector>     # 读元素 innerText/textContent（trim）
+browserctl get html <@eN|selector>     # 读元素 innerHTML
+browserctl get count <@eN|selector>    # @eN→1；CSS 选择器→主 frame querySelectorAll 长度
+browserctl get box <@eN|selector>      # getBoundingClientRect → { x, y, width, height }
+browserctl get styles <@eN|selector>   # 全量 computed styles → { styles: { ... } }
 browserctl get attr <@eN|selector> <name>    # 读元素属性（href/src/aria-* 等），不存在返回 null
 browserctl is visible <@eN|selector>   # 元素存在且可见 → { result: true }；存在但 hidden → { result: false }；不存在 → ELEMENT_NOT_FOUND
 browserctl is enabled <@eN|selector>   # 元素存在且未 disabled → { result: true/false }
@@ -158,6 +162,10 @@ browserctl close                       # 关闭内嵌浏览器并收起右栏（
 | 命令 | 语法 | 返回 data | 错误码 |
 |------|------|-----------|--------|
 | `get text` | `browserctl get text <ref_or_selector>` | `{ text: string }` | `ELEMENT_NOT_FOUND` |
+| `get html` | `browserctl get html <ref_or_selector>` | `{ html: string }` | `ELEMENT_NOT_FOUND` |
+| `get count` | `browserctl get count <ref_or_selector>` | `{ count: number }` | `ELEMENT_NOT_FOUND`（仅 `@eN` 不存在时） |
+| `get box` | `browserctl get box <ref_or_selector>` | `{ x, y, width, height }` | `ELEMENT_NOT_FOUND` |
+| `get styles` | `browserctl get styles <ref_or_selector>` | `{ styles: Record<string,string> }` | `ELEMENT_NOT_FOUND` |
 | `is visible` | `browserctl is visible <ref_or_selector>` | `{ result: boolean }` | `ELEMENT_NOT_FOUND` |
 | `is enabled` | `browserctl is enabled <ref_or_selector>` | `{ result: boolean }` | `ELEMENT_NOT_FOUND` |
 | `is checked` | `browserctl is checked <ref_or_selector>` | `{ result: boolean }` | `NOT_CHECKABLE` / `ELEMENT_NOT_FOUND` |
@@ -171,6 +179,19 @@ browserctl close                       # 关闭内嵌浏览器并收起右栏（
 | 存在，条件为假 | `{ ok: true, data: { result: false } }` |
 
 `checked` 额外：非 checkbox/radio → `{ ok: false, code: "NOT_CHECKABLE" }`（不是 true/false 三态）。
+
+**Batch 6 读 DOM 细节**（对齐 agent-browser `get html/count/box/styles`）：
+
+```bash
+browserctl get html @e3
+browserctl get count ".list-item"
+browserctl get box "#submit"
+browserctl get styles @e1
+```
+
+- `count`：CSS 选择器在主 frame `document.querySelectorAll`；`@eN` 存在时恒为 `1`。
+- `styles` 返回全量 computed 属性，JSON 较大，断言时优先取关键字段。
+- iframe 内元素：优先 snapshot `@eN`（与 `get text/value` 相同，backendNodeId 跨 frame）。
 
 ### 语义定位 find（Batch 5.3）
 

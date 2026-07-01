@@ -1627,6 +1627,141 @@ export class BrowserController {
     }
   }
 
+  /** 读元素 innerHTML。 */
+  async getHtml(
+    refOrSelector: string
+  ): Promise<CdpResult<{ html: string }>> {
+    try {
+      const v = await this.runOnElement(
+        refOrSelector,
+        "return el.innerHTML ?? '';"
+      )
+      if (v == null)
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      return { ok: true, data: { html: String(v) } }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg === "ELEMENT_NOT_FOUND")
+        return { ok: false, error: msg, code: "ELEMENT_NOT_FOUND" }
+      return { ok: false, error: msg, code: "BROWSER_ERROR" }
+    }
+  }
+
+  /** 读元素视口 bounding box（getBoundingClientRect）。 */
+  async getBox(
+    refOrSelector: string
+  ): Promise<
+    CdpResult<{ x: number; y: number; width: number; height: number }>
+  > {
+    try {
+      const v = await this.runOnElement(
+        refOrSelector,
+        `
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+        `
+      )
+      if (v == null || typeof v !== "object")
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      const box = v as {
+        x?: number
+        y?: number
+        width?: number
+        height?: number
+      }
+      return {
+        ok: true,
+        data: {
+          x: Number(box.x ?? 0),
+          y: Number(box.y ?? 0),
+          width: Number(box.width ?? 0),
+          height: Number(box.height ?? 0),
+        },
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg === "ELEMENT_NOT_FOUND")
+        return { ok: false, error: msg, code: "ELEMENT_NOT_FOUND" }
+      return { ok: false, error: msg, code: "BROWSER_ERROR" }
+    }
+  }
+
+  /** 读元素 computed styles（全量 CSS 属性键值）。 */
+  async getStyles(
+    refOrSelector: string
+  ): Promise<CdpResult<{ styles: Record<string, string> }>> {
+    try {
+      const v = await this.runOnElement(
+        refOrSelector,
+        `
+        const s = getComputedStyle(el);
+        const result = {};
+        for (let i = 0; i < s.length; i++) {
+          const p = s[i];
+          result[p] = s.getPropertyValue(p);
+        }
+        return result;
+        `
+      )
+      if (v == null || typeof v !== "object")
+        return {
+          ok: false,
+          error: "ELEMENT_NOT_FOUND",
+          code: "ELEMENT_NOT_FOUND",
+        }
+      return {
+        ok: true,
+        data: { styles: v as Record<string, string> },
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg === "ELEMENT_NOT_FOUND")
+        return { ok: false, error: msg, code: "ELEMENT_NOT_FOUND" }
+      return { ok: false, error: msg, code: "BROWSER_ERROR" }
+    }
+  }
+
+  /**
+   * 计数：`@eN` 存在 → 1；CSS 选择器 → 主 frame `querySelectorAll` 长度。
+   */
+  async getCount(
+    refOrSelector: string
+  ): Promise<CdpResult<{ count: number }>> {
+    try {
+      if (refOrSelector.startsWith("@e")) {
+        const node = await this.resolveNode(refOrSelector)
+        if (!node)
+          return {
+            ok: false,
+            error: "ELEMENT_NOT_FOUND",
+            code: "ELEMENT_NOT_FOUND",
+          }
+        return { ok: true, data: { count: 1 } }
+      }
+      const r = (await this.sendCommand("Runtime.evaluate", {
+        expression: `document.querySelectorAll(${JSON.stringify(refOrSelector)}).length`,
+        returnByValue: true,
+      })) as { result?: { value?: number } }
+      return {
+        ok: true,
+        data: { count: Number(r.result?.value ?? 0) },
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      if (msg === "ELEMENT_NOT_FOUND")
+        return { ok: false, error: msg, code: "ELEMENT_NOT_FOUND" }
+      return { ok: false, error: msg, code: "BROWSER_ERROR" }
+    }
+  }
+
   /** 等待页面 readyState=complete；超时返回 ok:false（调用方可选择忽略） */
   async waitForReady(timeoutMs = 10_000): Promise<CdpResult> {
     try {
