@@ -993,6 +993,38 @@ test("get text 命中 /get-text 并返回 data.text", async () => {
   }
 })
 
+test("get html/box/styles/count 命中对应 bridge action", async () => {
+  const cases = [
+    ["html", "get-html", { html: "<b>x</b>" }],
+    ["box", "get-box", { x: 0, y: 0, width: 10, height: 20 }],
+    ["styles", "get-styles", { styles: { color: "red" } }],
+    ["count", "get-count", { count: 2 }],
+  ]
+  for (const [sub, action, data] of cases) {
+    let reqUrl
+    let received
+    const srv = await startServer(async (req, res) => {
+      reqUrl = req.url
+      received = JSON.parse(await readBody(req))
+      res.end(JSON.stringify({ ok: true, data }))
+    })
+    try {
+      const { stdout } = await runCli(["get", sub, ".item"], {
+        env: { BROWSER_RUNTIME_BRIDGE_URL: urlOf(srv) },
+      })
+      assert.ok(
+        reqUrl.endsWith(`/${action}`),
+        `${sub} expected /${action}, got ${reqUrl}`,
+      )
+      assert.equal(received.ref_or_selector, ".item")
+      const j = JSON.parse(stdout)
+      assert.deepEqual(j.data, data)
+    } finally {
+      await closeServer(srv)
+    }
+  }
+})
+
 test("is visible 命中 /is 且 body.kind=visible", async () => {
   let received
   const srv = await startServer(async (req, res) => {

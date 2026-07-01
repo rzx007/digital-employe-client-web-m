@@ -743,6 +743,86 @@ async function handleBridgeRequest(
         reply(res, result.ok ? 200 : 502, result)
         return
       }
+      case "get-html": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.getHtml(refOrSelector)
+        if (!result.ok && result.code === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "get-box": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.getBox(refOrSelector)
+        if (!result.ok && result.code === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "get-styles": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.getStyles(refOrSelector)
+        if (!result.ok && result.code === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
+      case "get-count": {
+        try {
+          await host.ensureAttached()
+        } catch (e) {
+          reply(res, 503, {
+            ok: false,
+            error: "BROWSER_UNAVAILABLE",
+            code: "BROWSER_UNAVAILABLE",
+          })
+          return
+        }
+        const refOrSelector = String(body.ref_or_selector ?? "")
+        const result = await controller.getCount(refOrSelector)
+        if (!result.ok && result.code === "ELEMENT_NOT_FOUND") {
+          reply(res, 404, result)
+          return
+        }
+        reply(res, result.ok ? 200 : 502, result)
+        return
+      }
       case "is": {
         try {
           await host.ensureAttached()

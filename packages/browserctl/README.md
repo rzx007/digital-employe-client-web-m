@@ -42,7 +42,7 @@ browserctl upload <@eN|selector> <file...>
 browserctl press <key> [@eN|selector] [--ctrl|--shift|--alt|--meta]
 browserctl scroll [@eN|selector] [--to top|bottom] [--by <px>]
 browserctl select <@eN|selector> (<value> | --label <文本>)
-browserctl get url|title|value|text|attr <@eN|selector> [attrName]
+browserctl get url|title|value|text|html|count|box|styles|attr <@eN|selector> [attrName]
 browserctl is visible|enabled|checked <@eN|selector>
 browserctl find role|text|…  # positional；或 find <action> --role|--selector|… flag 模式，见 reference.md
 browserctl back|forward|reload

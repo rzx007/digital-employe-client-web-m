@@ -1239,6 +1239,65 @@ test("getText 元素不存在 → ELEMENT_NOT_FOUND", async () => {
   assert.equal(r.code, "ELEMENT_NOT_FOUND")
 })
 
+test("getHtml 返回 innerHTML", async () => {
+  const c = new BrowserController(refElementTransport("<span>x</span>"))
+  const r = await c.getHtml("@e0")
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { html: string }).html, "<span>x</span>")
+})
+
+test("getBox 返回 bounding rect", async () => {
+  const c = new BrowserController(
+    refElementTransport({ x: 1, y: 2, width: 3, height: 4 })
+  )
+  const r = await c.getBox("@e0")
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.data, { x: 1, y: 2, width: 3, height: 4 })
+})
+
+test("getStyles 返回 styles 对象", async () => {
+  const c = new BrowserController(
+    refElementTransport({ color: "rgb(0, 0, 0)", display: "block" })
+  )
+  const r = await c.getStyles("@e0")
+  assert.equal(r.ok, true)
+  assert.deepEqual((r.data as { styles: Record<string, string> }).styles, {
+    color: "rgb(0, 0, 0)",
+    display: "block",
+  })
+})
+
+test("getCount @eN 存在 → 1", async () => {
+  const c = new BrowserController(refElementTransport("x"))
+  await c.snapshot(50)
+  const r = await c.getCount("@e0")
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { count: number }).count, 1)
+})
+
+test("getCount CSS 选择器 → querySelectorAll 长度", async () => {
+  const t = mockTransport({
+    "Runtime.evaluate": { result: { value: 3 } },
+    "Accessibility.getFullAXTree": {
+      nodes: [
+        {
+          nodeId: "1",
+          role: { value: "RootWebArea" },
+          childIds: [],
+          backendDOMNodeId: 1,
+        },
+      ],
+    },
+    "Page.getFrameTree": { frameTree: { frame: { id: "main" } } },
+  })
+  const c = new BrowserController(t)
+  const r = await c.getCount(".item")
+  assert.equal(r.ok, true)
+  assert.equal((r.data as { count: number }).count, 3)
+  const evalCall = t.calls.find(([m]) => m === "Runtime.evaluate")
+  assert.ok(String((evalCall?.[1] as { expression?: string }).expression).includes(".item"))
+})
+
 test("queryIs visible：存在且可见 → result true", async () => {
   const c = new BrowserController(refElementTransport(true))
   const r = await c.queryIs("visible", "@e0")

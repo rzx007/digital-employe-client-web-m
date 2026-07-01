@@ -7,7 +7,8 @@
 | 文档 | 内容 |
 |------|------|
 | [browser-runtime-roadmap.md](./browser-runtime-roadmap.md) | **主文档**：复盘、已知缺口、已修复记录（3.7 确认框遮挡 / 3.8 a11y snapshot）、后续计划 |
-| [capability-gaps.md](./capability-gaps.md) | **待办**：对照 agent-browser 的能力差距（press/scroll/select/get/upload/iframe…）与推荐顺序 |
+| [browserctl-vs-agent-browser-gap.md](./browserctl-vs-agent-browser-gap.md) | **当前权威**：与 agent-browser 能力对照（已对齐 / Batch 6 缺口 / 刻意不做） |
+| [capability-gaps.md](./capability-gaps.md) | **历史待办**（2026-06-03，多数项已合入；见上表） |
 | [agent-browser-research.md](./agent-browser-research.md) | agent-browser 范式调研（CDP + a11y tree + `@eN`） |
 
 ## 历史 / 背景（含已废弃方案）

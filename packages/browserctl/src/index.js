@@ -50,6 +50,10 @@ Usage:
   browserctl get url|title [--pretty]
   browserctl get value <@eN|selector> [--pretty]
   browserctl get text <@eN|selector> [--pretty]
+  browserctl get html <@eN|selector> [--pretty]
+  browserctl get count <@eN|selector> [--pretty]
+  browserctl get box <@eN|selector> [--pretty]
+  browserctl get styles <@eN|selector> [--pretty]
   browserctl get attr <@eN|selector> <name> [--pretty]
   browserctl is visible|enabled|checked <@eN|selector> [--pretty]
   browserctl find role <role> <action> [value] [--name <accessibleName>] [--exact] [--pretty]
@@ -755,6 +759,26 @@ async function execute(argv, baseUrl, opts = {}) {
       if (!refOrSelector) throw new Error("ref or selector required")
       return await postAction("get-text", { ref_or_selector: refOrSelector })
     }
+    if (target === "html") {
+      const refOrSelector = rest[1]
+      if (!refOrSelector) throw new Error("ref or selector required")
+      return await postAction("get-html", { ref_or_selector: refOrSelector })
+    }
+    if (target === "count") {
+      const refOrSelector = rest[1]
+      if (!refOrSelector) throw new Error("ref or selector required")
+      return await postAction("get-count", { ref_or_selector: refOrSelector })
+    }
+    if (target === "box") {
+      const refOrSelector = rest[1]
+      if (!refOrSelector) throw new Error("ref or selector required")
+      return await postAction("get-box", { ref_or_selector: refOrSelector })
+    }
+    if (target === "styles") {
+      const refOrSelector = rest[1]
+      if (!refOrSelector) throw new Error("ref or selector required")
+      return await postAction("get-styles", { ref_or_selector: refOrSelector })
+    }
     if (target === "attr" || target === "attribute") {
       const refOrSelector = rest[1],
         name = rest[2]
@@ -765,7 +789,9 @@ async function execute(argv, baseUrl, opts = {}) {
         name,
       })
     }
-    throw new Error("get target must be url|title|value|text|attr")
+    throw new Error(
+      "get target must be url|title|value|text|html|count|box|styles|attr",
+    )
   }
 
   if (command === "is") {
